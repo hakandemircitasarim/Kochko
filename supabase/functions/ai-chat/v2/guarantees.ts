@@ -236,7 +236,7 @@ export function clarifyLine(input: CoachInput): string | null {
   if (topic === '') return null;
   const refs = turnRefs(input.turnInput).rendered;
   const cands = (Array.isArray(c.candidate_refs) ? c.candidate_refs : [])
-    .map((r) => (typeof r === 'string' ? refs[r]?.summary_tr : null))
+    .map((r) => (typeof r === 'string' ? refs[r]?.user_summary_tr ?? refs[r]?.summary_tr : null))
     .filter((s): s is string => typeof s === 'string' && s.trim() !== '')
     .map((s) => quoteLine(s, 80));
   const bare = topic.endsWith('?') || topic.endsWith('.') ? topic.slice(0, -1).trimEnd() : topic;

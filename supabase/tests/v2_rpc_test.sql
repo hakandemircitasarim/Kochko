@@ -1,6 +1,6 @@
--- v2 veritabanı RPC testleri (AI_MIMARI_V2 Faz 1 · migrasyonlar 108-113).
+-- v2 veritabanı RPC testleri (AI_MIMARI_V2 Faz 1 · migrasyonlar 108-114).
 --
--- NEREDE: yalnızca bir DAL (branch) veritabanında, 108-113 uygulandıktan sonra. CANLIDA ÇALIŞTIRMA.
+-- NEREDE: yalnızca bir DAL (branch) veritabanında, 108-114 uygulandıktan sonra. CANLIDA ÇALIŞTIRMA.
 --   psql "$BRANCH_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/v2_rpc_test.sql
 -- Her şey tek işlemde koşar ve sonda ROLLBACK edilir: hiçbir satır kalıcı olmaz. Bir ASSERT tutmazsa
 -- psql durur ve hangi senaryonun kırıldığını mesajda yazar. Başarıda son satır 'v2_rpc_test OK' olur.
@@ -13,7 +13,7 @@
 -- bekletme açıldığı turda onaylanamaz · KVKK bekletme tekilliği korunur · v1 defter eki · v1 '23:00' eki
 -- kanonik saklanır ve geri alınır · antrenman + başarım + set'ler birlikte · 7 günden eski kayıt · yarıda kalan
 -- yazmanın geri sarılması · v2_turn_input şekli, ref kararlılığı ve yakında geri alınanlar · mesaj bağlama ·
--- 30 gün saklama (KVKK/güvenlik bekletmeleri kalır) · chat_messages v2 sütunları istemciden yazılamaz.
+-- 30 gün saklama (KVKK/güvenlik bekletmeleri kalır) · chat_messages v2 sütunları istemciden yazılamaz · yanlış eklenen kısıt tek grup geri alınır, omurga satırı silinmez (114).
 
 \set ON_ERROR_STOP on
 BEGIN;
@@ -633,6 +633,43 @@ BEGIN
   ASSERT r ->> 'failure_class' = 'not_deletable' AND (SELECT active FROM user_constraints WHERE id = con), 'T14b spine deleted: ' || r::text;
   ti := v2_turn_input(a, current_date);
   ASSERT jsonb_array_length(ti -> 'labs') = 0 AND jsonb_array_length(ti -> 'life_events') = 0, 'T14b deleted rows still in TurnInput';
+END $$;
+
+-- ─── T14c (114) yanlış eklenen sakatlık "geri al" ile tek grup geri alınır; omurga satırı silinmez ────
+DO $$
+DECLARE
+  a uuid := '00000000-0000-4000-8000-0000000000a1';
+  con uuid := gen_random_uuid();
+  he uuid := gen_random_uuid();
+  r jsonb;
+  wid text;
+BEGIN
+  -- adapter.ts constraintAdd'in yazdığı şekil: omurga active false→true (birincil) + açtığı health_events satırı.
+  INSERT INTO user_constraints (id, user_id, kind, subject, severity, body_parts, active) VALUES (con, a, 'injury', 'knee', 'moderate', ARRAY['knee'], true);
+  INSERT INTO health_events (id, user_id, event_type, description, is_ongoing) VALUES (he, a, 'injury', 'dizim ağrıyor', true);
+  r := v2_ledger_append(a, gen_random_uuid(), jsonb_build_array(
+         jsonb_build_object('op', 'constraint_add', 'table_name', 'user_constraints', 'row_id', con, 'field_set', jsonb_build_array('active'),
+                            'before', jsonb_build_object('active', false), 'after', jsonb_build_object('active', true),
+                            'undo_mode', 'restore_previous', 'group', 'c', 'is_primary', true, 'pipeline', 'v2'),
+         jsonb_build_object('op', 'constraint_add', 'table_name', 'health_events', 'row_id', he, 'field_set', jsonb_build_array('is_ongoing'),
+                            'before', NULL, 'after', jsonb_build_object('is_ongoing', true),
+                            'undo_mode', 'restore_previous', 'group', 'c', 'is_primary', false, 'pipeline', 'v2')));
+  ASSERT (r ->> 'ok')::boolean, 'T14c append: ' || r::text;
+  wid := r -> 'entries' -> 0 ->> 'write_id';
+  r := w_record_delete(a, gen_random_uuid(), jsonb_build_object('write_id', wid));
+  ASSERT (r ->> 'ok')::boolean, 'T14c undo: ' || r::text;
+  ASSERT (SELECT NOT active FROM user_constraints WHERE id = con), 'T14c spine row not deactivated';
+  ASSERT NOT EXISTS (SELECT 1 FROM health_events WHERE id = he), 'T14c health_events mirror not removed';
+  -- Geri getir: koruma geri gelir.
+  r := w_record_restore(a, gen_random_uuid(), jsonb_build_object('write_id', (SELECT id::text FROM turn_writes WHERE reverses = wid::uuid LIMIT 1)));
+  ASSERT (r ->> 'ok')::boolean AND (SELECT active FROM user_constraints WHERE id = con), 'T14c restore: ' || r::text;
+  -- Bir yazmanın açtığı omurga satırı bile defterden fiziksel silinmez (before NULL yanlış kurulsa da).
+  BEGIN
+    PERFORM _v2_delete_row('user_constraints', con);
+    RAISE EXCEPTION 'T14c spine row hard-deleted';
+  EXCEPTION WHEN raise_exception THEN
+    ASSERT SQLERRM LIKE 'v2: user_constraints rows are never hard-deleted%', 'T14c ' || SQLERRM;
+  END;
 END $$;
 
 -- ─── T15 7 günden eski kayıt kimlikle silinemez ─────────────────────────────────────────────────────

@@ -85,6 +85,73 @@ Deno.test('water in ml: "500 ml su içtim" → COMMIT 0,50 L; 1500 ml → 1,50 L
   assertEquals(one('writes', water({ quantity: -1, unit: 'litre' })).verdict, 'REJECT', 'a negative amount is still impossible');
 });
 
+Deno.test('trial 2026-10-11: "bugün 14 litre su içtim" (2 L logged) → ASK with a neutral, code-owned typo question — not a hard reject', () => {
+  const ctx = sampleContext({ user_message: 'bugün 14 litre su içtim', day_totals: { '2026-10-06': { water_liters: 2 } } });
+  const v = one('writes', water({ quantity: 14, unit: 'litre', mode: 'set_day_total', as_stated: '14 litre' }), ctx);
+  assertEquals(v.verdict, 'ASK', JSON.stringify(v.issues));
+  assertEquals(codes(v)[0], 'litre_yazim_suphesi');
+  assertEquals(v.question_tr, '14 L mi, yoksa 1,4 L mi?');
+  assertEquals(v.hold_op, 'water_log');
+  assertEquals(v.row, null);
+  assert(!/112|acil|tehlike|zehir/u.test(`${v.question_tr} ${v.issues.map((i) => i.tr).join(' ')}`), 'neutral wording, no alarm');
+  // An "add" in the band: the typo question is THE question (first ask), not the single-drink one.
+  const add = one('writes', water({ quantity: 25, unit: 'litre', as_stated: '25 litre' }), ctx);
+  assertEquals(add.verdict, 'ASK');
+  assertEquals(add.question_tr, '25 L mi, yoksa 2,5 L mi?');
+  assertEquals(one('writes', water({ quantity: 8500, unit: 'ml' }), ctx).question_tr, '8,5 L mi, yoksa 0,85 L mi?');
+});
+
+Deno.test('water band edges: 8 L stores, 30 L asks, above 30 L is still physically impossible (REJECT)', () => {
+  const total = (l: number) => one('writes', water({ quantity: l, unit: 'litre', mode: 'set_day_total', as_stated: `${l} litre` }), sampleContext({ day_totals: {} }));
+  assertEquals(total(8).verdict, 'COMMIT');
+  assertEquals(total(8.01).verdict, 'ASK');
+  assertEquals(total(30).verdict, 'ASK');
+  const over = total(31);
+  assertEquals(over.verdict, 'REJECT');
+  assertEquals(codes(over), ['litre_araligi']);
+  assertEquals(over.issues[0].failure_class, 'out_of_range');
+});
+
+Deno.test('water typo hold: a bare "evet" cannot store 14 L (beyond the 8 L per-write bound) — REJECT with the reason, never a FLAGged write', () => {
+  const ctx = sampleContext({ user_message: 'evet', day_totals: {} });
+  const held = freezeForHold('water_log', water({ quantity: 14, unit: 'litre', mode: 'set_day_total', as_stated: '14 litre' }), ctx.today);
+  const v = validateConfirmedHold('water_log', held, ctx)!;
+  assertEquals(v.verdict, 'REJECT');
+  const h = v.issues.find((i) => i.level === 'hard')!;
+  assertEquals(h.code, 'litre_yazim_suphesi');
+  assertEquals(h.failure_class, 'out_of_range');
+  assert(h.tr.includes('en fazla 8 L'), h.tr);
+  assertEquals(v.row, null);
+  // A confirmed ordinary hold still writes (its question became a FLAG note).
+  const ok = validateConfirmedHold('water_log', freezeForHold('water_log', water({ quantity: 2, unit: 'litre', as_stated: '2 litre' }), ctx.today), ctx)!;
+  assertEquals(ok.verdict, 'FLAG');
+});
+
+Deno.test('workout: strength set numbers are nullable — "dün squat yaptım" commits with sets/reps/weight null (no placeholder 1 × 1)', () => {
+  const v = one('writes', w('workout_log', {
+    raw: 'dün squat yaptım', duration_min: null, intensity: null, calories_burned: null, rpe: null, time_local: null,
+    strength_sets: [{ exercise: 'squat', as_stated: 'squat', sets: null, reps: null, weight_kg: null }],
+  }));
+  assertEquals(v.verdict, 'COMMIT', JSON.stringify(v.issues));
+  assertEquals((v.row?.strength_sets as Array<Record<string, unknown>>)[0], { exercise: 'squat', as_stated: 'squat', sets: null, reps: null, weight_kg: null });
+  assertEquals(one('writes', w('workout_log', { strength_sets: [{ exercise: 'squat', as_stated: '0 tekrar', sets: 3, reps: 0, weight_kg: null }] })).verdict, 'REJECT', 'a stated number is still range-checked');
+});
+
+Deno.test('constraint_add: does_not_have finds a LEGACY row through its canonical id; self+has on an active row is a restatement', () => {
+  // The loader renders a legacy 'yumurta' row with the canonical id (input.ts canonicalConstraintSubject).
+  const refs = { ...sampleContext().refs, c7: { kind: 'c' as const, target: 'constraint' as const, constraint: { kind: 'allergen', subject: 'egg', severity: 'severe', stored_subject: 'yumurta' } } };
+  const msg = 'yumurta alerjim yok';
+  const ctx = sampleContext({ user_message: msg, refs });
+  const no = one('writes', w('constraint_add', { subject_id: 'egg', display_tr: 'yumurta', polarity: 'does_not_have', severity: 'unknown', evidence_quote: msg }), ctx);
+  assertEquals(no.verdict, 'REJECT');
+  assertEquals(codes(no), ['kaldirma_ref_ile'], 'never a "yok" note beside the active severe allergy — retract the row');
+  const has = one('writes', w('constraint_add', { subject_id: 'egg', display_tr: 'yumurta', severity: 'unknown', evidence_quote: 'yumurta alerjim var' }), sampleContext({ user_message: 'yumurta alerjim var', refs }));
+  assertEquals(has.row?.effect, 'already_active');
+  assertEquals(has.row?.existing, { ref: 'c7', subject: 'yumurta', severity: 'severe', body_parts: [] }, 'the writer matches the row by its STORED subject');
+  // A different allergen beside it is a new protective row.
+  assertEquals(one('writes', w('constraint_add'), sampleContext({ user_message: 'Fındık alerjim var, ciddi.', refs })).row?.effect, 'activate');
+});
+
 Deno.test('water: unit=other without its ml → REJECT, repairable (one repair call), and the decision asks for repair', () => {
   const d = validateDecision(sampleDecision({ writes: [water({ unit: 'other', other_ml_each: null })] }), sampleContext());
   const v = d.verdicts[0];

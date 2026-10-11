@@ -7,15 +7,16 @@
  * never leak to the user ("aktivite düzeyi: hareketsiz", not "sedentary"; mem#13, final2#15).
  */
 import type { ActionReceipt } from '../contracts/turn-envelope.ts';
-import type { RenderedRefs } from './refs.ts';
+import type { RenderedRef, RenderedRefs } from './refs.ts';
 import type { WriteVerdict } from './validate.ts';
-import { getOp } from './registry.ts';
+import { findWireOp, getOp } from './registry.ts';
+import { restatedSeverity } from './ops/constraints.ts';
 import { PROFILE_FIELD_SPECS, profileFieldLabel } from './ops/profile.ts';
 import {
-  COMMITMENT_OUTCOMES, CONSTRAINT_KINDS, FOOD_PREFERENCE, GOAL_TYPES, PERIODIC_STATES, PLATEAU_STRATEGIES, SLEEP_QUALITY,
+  COMMITMENT_OUTCOMES, CONSTRAINT_KINDS, FOOD_PREFERENCE, GOAL_TYPES, PERIODIC_STATES, PLATEAU_STRATEGIES, SEVERITY, SLEEP_QUALITY,
   WORKOUT_TYPES,
 } from './vocab.ts';
-import { shiftDay, trInt, trNum } from './util.ts';
+import { isRecord, shiftDay, trInt, trNum } from './util.ts';
 
 /** Byte-identical to ai-chat MEAL_LOGGED_MARK (client + kcal-consistency net match this prefix). */
 export const MEAL_LOGGED_MARK = 'Öğün kaydedildi';
@@ -49,9 +50,118 @@ function dayNote(date: unknown, ctx?: ReceiptCtx): string {
   return date === shiftDay(ctx.today, -1) ? ' (dün)' : ` (${date})`;
 }
 
+function refOf(ref: unknown, ctx?: ReceiptCtx): RenderedRef | undefined {
+  return typeof ref === 'string' ? ctx?.refs?.[ref] : undefined;
+}
+
+/** The record as the USER may read it: never the model-facing provenance tag ("[model]"). */
 function refSummary(ref: unknown, ctx?: ReceiptCtx): string {
-  const r = typeof ref === 'string' ? ctx?.refs?.[ref] : undefined;
-  return r?.summary_tr ?? String(ref);
+  const r = refOf(ref, ctx);
+  return r?.user_summary_tr ?? r?.summary_tr ?? String(ref);
+}
+
+/**
+ * "X (plain)" — but a display name that already carries its owner in parentheses ("yumurta
+ * (kızının)") gets the note INSIDE them: one pair, never "yumurta (kızının) (başkası için; …)".
+ */
+function ownerNote(name: string, note: string, plain: string): string {
+  const m = /^(.*\S)\s*\(([^()]+)\)$/u.exec(name.trim());
+  return m ? `${m[1]} (${m[2]}; ${note})` : `${name} (${plain})`;
+}
+
+// ─── corrections: the receipt shows the STORED new record, old → new ─────────────────────────────
+
+const CORRECTED = 'Kayıt düzeltildi';
+const foldKey = (s: string) => s.trim().toLocaleLowerCase('tr');
+
+/** One meal item as stored: "lahmacun (tek dilim) ~250 kcal" (~ = model estimate). */
+function mealItemText(it: Row): string {
+  const est = it.data_source === 'ai_estimate' ? '~' : '';
+  const portion = str(it.as_stated) ? ` (${it.as_stated})` : '';
+  return `${String(it.name)}${portion} ${est}${num(it.kcal) ?? 0} kcal`;
+}
+
+function mealTotal(row: Row): number {
+  const items = Array.isArray(row.items) ? (row.items as Row[]) : [];
+  return num(row.total_kcal) ?? items.reduce((s, it) => s + (num(it.kcal) ?? 0), 0);
+}
+
+/**
+ * Item-level differences between the record as shown (snapshot) and the stored patch, matched by
+ * name: "lahmacun 2 dilim → tek dilim (500 → ~250 kcal)", "ayran (1 bardak) ~90 kcal (yeni)",
+ * "pilav çıkarıldı". Unchanged items are left out; [] = no item changed (day / meal type only).
+ */
+function mealDiff(before: NonNullable<RenderedRef['snapshot']>['items'], items: Row[]): string[] {
+  const old = [...(before ?? [])];
+  const used = new Set<number>();
+  const out: string[] = [];
+  for (const it of items) {
+    const name = String(it.name);
+    const i = old.findIndex((o, k) => !used.has(k) && foldKey(o.name) === foldKey(name));
+    if (i < 0) { out.push(`${mealItemText(it)} (yeni)`); continue; }
+    used.add(i);
+    const o = old[i];
+    const est = it.data_source === 'ai_estimate' ? '~' : '';
+    const kcal = num(it.kcal) ?? 0;
+    const portion = str(it.as_stated);
+    const portionChanged = portion !== null && foldKey(portion) !== foldKey(o.portion ?? '');
+    const kcalChanged = kcal !== o.kcal;
+    if (!portionChanged && !kcalChanged) continue;
+    const p = portionChanged ? ` ${o.portion ? `${o.portion} → ` : ''}${portion}` : '';
+    const k = kcalChanged ? (portionChanged ? ` (${trShort(o.kcal)} → ${est}${kcal} kcal)` : ` ${trShort(o.kcal)} → ${est}${kcal} kcal`) : '';
+    out.push(`${name}${p}${k}`);
+  }
+  old.forEach((o, k) => { if (!used.has(k)) out.push(`${o.name} çıkarıldı`); });
+  return out;
+}
+
+function mealCorrection(patch: Row, ref: RenderedRef | undefined, ctx?: ReceiptCtx): string {
+  const items = Array.isArray(patch.items) ? (patch.items as Row[]) : [];
+  const total = mealTotal(patch);
+  const snap = ref?.snapshot ?? null;
+  let parts = snap?.items ? mealDiff(snap.items, items) : [];
+  if (parts.length === 0) parts = items.slice(0, 6).map(mealItemText);
+  if (parts.length > 6) parts = [...parts.slice(0, 6), `+${parts.length - 6} değişiklik`];
+  const oldTotal = snap?.total_kcal;
+  const totalText = oldTotal !== undefined && oldTotal !== total ? `toplam ${trShort(oldTotal)} → ${total} kcal` : `toplam ${total} kcal`;
+  // Without a snapshot (a fixture ref) the old record is quoted as it was shown, so old → new stays visible.
+  const shown = ref?.user_summary_tr ?? ref?.summary_tr ?? null;
+  const was = !snap && shown ? `; önceki kayıt: ${shown}` : '';
+  return `${CORRECTED} — ${[...parts, totalText].join(' · ')}${dayNote(patch.date, ctx)}${was}`;
+}
+
+/** A day metric corrected to a comparable value: "tartı 78,2 → 81,6 kg". null = not comparable. */
+function metricCorrection(op: string, patch: Row, old: number | undefined): string | null {
+  if (old === undefined) return null;
+  switch (op) {
+    case 'body_weight': return num(patch.kg) !== null ? `tartı ${trShort(old)} → ${trShort(num(patch.kg)!)} kg` : null;
+    case 'sleep_log': return num(patch.hours) !== null ? `uyku ${trShort(old)} → ${trShort(num(patch.hours)!)} saat` : null;
+    case 'mood_log': return num(patch.score) !== null ? `ruh hali ${trShort(old)}/5 → ${num(patch.score)}/5` : null;
+    case 'step_log': return num(patch.steps) !== null ? `adım ${trInt(old)} → ${trInt(num(patch.steps)!)}` : null;
+    case 'water_log':
+      // An 'add' correction replaces one drink, not the day total the ref shows: not comparable.
+      return patch.mode === 'set_day_total' && num(patch.liters) !== null ? `su günün toplamı ${trNum(old, 2)} → ${trNum(num(patch.liters)!, 2)} L` : null;
+    default: return null;
+  }
+}
+
+/**
+ * record_update: built from the VALIDATED PATCH (row.patch — what the writer stored), never from the
+ * pre-turn summary of the record (trial 2026-10-11: the line quoted the old "2 dilim · 590 kcal", and
+ * the coach, reading it as the fact, told the user the correction had not happened).
+ */
+function correctionLine(row: Row, v: WriteVerdict, ctx?: ReceiptCtx): string {
+  const ref = refOf(row.ref, ctx);
+  const patch = isRecord(row.patch) ? row.patch : null;
+  const wire = isRecord(v.args.patch) && typeof v.args.patch.op === 'string' ? v.args.patch.op : null;
+  const op = wire ? findWireOp('writes', wire)?.type ?? null : null;
+  if (!patch || !op) return `${CORRECTED}: ${refSummary(row.ref, ctx)}`;
+  if (op === 'meal_log') return mealCorrection(patch, ref, ctx);
+  const metric = metricCorrection(op, patch, ref?.snapshot?.value);
+  if (metric) return `${CORRECTED} — ${metric}${dayNote(patch.date, ctx)}`;
+  const inner = BUILDERS[op]?.(patch, v, ctx);
+  const now = inner ? inner.replace(' kaydedildi', '') : getOp(op)?.title_tr ?? op;
+  return `${CORRECTED} — ${now}${ref ? `; önceki kayıt: ${refSummary(row.ref, ctx)}` : ''}`;
 }
 
 function profileValueText(row: Row): string {
@@ -89,14 +199,9 @@ const BUILDERS: Record<string, (row: Row, v: WriteVerdict, ctx?: ReceiptCtx) => 
   meal_log: (row, _v, ctx) => {
     const items = Array.isArray(row.items) ? (row.items as Row[]) : [];
     if (items.length === 0) return MEAL_LOGGED_MARK;
-    const detail = items.slice(0, 6).map((it) => {
-      const est = it.data_source === 'ai_estimate' ? '~' : '';
-      const portion = str(it.as_stated) ? ` (${it.as_stated})` : '';
-      return `${String(it.name)}${portion} ${est}${num(it.kcal) ?? 0} kcal`;
-    }).join(' · ');
+    const detail = items.slice(0, 6).map(mealItemText).join(' · ');
     const more = items.length > 6 ? ` (+${items.length - 6} kalem)` : '';
-    const total = num(row.total_kcal) ?? items.reduce((s, it) => s + (num(it.kcal) ?? 0), 0);
-    return `${MEAL_LOGGED_MARK} — ${detail}${more} · toplam ${total} kcal${dayNote(row.date, ctx)}`;
+    return `${MEAL_LOGGED_MARK} — ${detail}${more} · toplam ${mealTotal(row)} kcal${dayNote(row.date, ctx)}`;
   },
   water_log: (row, _v, ctx) => {
     const l = num(row.liters) ?? 0;
@@ -128,16 +233,23 @@ const BUILDERS: Record<string, (row: Row, v: WriteVerdict, ctx?: ReceiptCtx) => 
   },
   constraint_add: (row) => {
     const name = str(row.display_tr) ?? String(row.subject_id);
-    if (row.effect === 'coach_note') return `Not aldım: ${name} (başkası için; senin kısıtlarına eklenmedi)`;
+    if (row.effect === 'coach_note') return `Not aldım: ${ownerNote(name, 'senin kısıtlarına eklenmedi', 'başkası için; senin kısıtlarına eklenmedi')}`;
     if (row.effect === 'record_absence') return `Not edildi: ${name} yok`;
+    const kind = capitalize(label(CONSTRAINT_KINDS, row.kind));
+    if (isRecord(row.existing)) {
+      // A restatement of a stored row: confirmed or updated in place, never duplicated — say which.
+      const changed = restatedSeverity(row);
+      if (changed) return `${kind} güncellendi: ${name} (şiddet: ${label(SEVERITY, changed)})`;
+      if (row.effect === 'already_active') return `${kind} zaten kayıtlı: ${name}${row.existing.severity === 'severe' ? ' (ciddi)' : ''}`;
+    }
     const sev = row.severity === 'unknown' ? ' (şiddeti bilinmiyor — ciddi sayılıyor)' : row.severity === 'severe' ? ' (ciddi)' : '';
-    return `${capitalize(label(CONSTRAINT_KINDS, row.kind))} kaydedildi: ${name}${sev}`;
+    return `${kind} kaydedildi: ${name}${sev}`;
   },
   // The rendered summary is Turkish ("diz sakatlığı"); the spine subject is an id ("knee").
   constraint_retract: (row, _v, ctx) => `Kaldırıldı: ${refSummary(row.target, ctx)}`,
   constraint_confirm: (row, _v, ctx) => `Doğrulandı: ${refSummary(row.target, ctx)}`,
   food_pref: (row) => row.effect === 'coach_note'
-    ? `Not aldım: ${String(row.food)} (başkasının tercihi)`
+    ? `Not aldım: ${ownerNote(String(row.food), 'senin tercihlerine eklenmedi', 'başkasının tercihi')}`
     : `Tercih kaydedildi: ${String(row.food)} — ${label(FOOD_PREFERENCE, row.preference)}`,
   life_event: (row) => `Aklımda: ${String(row.title)} (${String(row.event_date)})`,
   lab_value: (row) => `${Array.isArray(row.items) ? row.items.length : 0} tahlil değeri kaydedildi`,
@@ -148,7 +260,7 @@ const BUILDERS: Record<string, (row: Row, v: WriteVerdict, ctx?: ReceiptCtx) => 
   target_change: (row) => (PROGRAM_LINES[String(row.program)] ?? (() => 'Kalori programı güncellendi'))(row),
   data_erase_request: () => null,
   record_delete: (row, _v, ctx) => `Kayıt geri alındı: ${refSummary(row.ref, ctx)}`,
-  record_update: (row, _v, ctx) => `Kayıt düzeltildi: ${refSummary(row.ref, ctx)}`,
+  record_update: (row, v, ctx) => correctionLine(row, v, ctx),
   record_restore_metric: (row, _v, ctx) => `Önceki değere dönüldü: ${refSummary(row.ref, ctx)}`,
   pending_confirm: () => 'Onaylandı',
   pending_discard: () => 'Vazgeçildi',

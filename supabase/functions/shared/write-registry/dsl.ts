@@ -255,7 +255,11 @@ export interface RuleDef<A, D> {
   path?: string;
   repairable?: boolean;
   failure_class?: string;
-  question_tr?: string;
+  /**
+   * ASK: the one question, code-owned. A function words it from the write's own numbers ("14 L mi,
+   * yoksa 1,4 L mi?") — still registry text, never the model's.
+   */
+  question_tr?: string | ((a: A, d: D, ctx: ValidationContext) => string);
   /**
    * The rule reads THIS turn's user message (verbatim evidence check). A confirmed hold is
    * re-validated in a later turn whose message is "evet": such rules were already decided when the
@@ -263,13 +267,22 @@ export interface RuleDef<A, D> {
    * the user just answered), so they are not re-run there. State rules (refs, ED tier) still are.
    */
   evidence?: boolean;
+  /**
+   * ASK only: a plain "evet" cannot settle this question — the value as held is beyond what may be
+   * stored (the question offers the likely intended value instead). On a CONFIRMED hold the rule is
+   * a REJECT with this reason (failure_class out_of_range), never a FLAG that writes the held value.
+   */
+  unconfirmable_tr?: string;
 }
 
 export function rule<A, D>(
   code: string,
   doc_tr: string,
   test: (a: A, d: D, ctx: ValidationContext) => boolean | string | null | undefined,
-  extra?: { path?: string; repairable?: boolean; failure_class?: string; question_tr?: string; evidence?: boolean },
+  extra?: {
+    path?: string; repairable?: boolean; failure_class?: string; question_tr?: string | ((a: A, d: D, ctx: ValidationContext) => string);
+    evidence?: boolean; unconfirmable_tr?: string;
+  },
 ): RuleDef<A, D> {
   return { code, doc_tr, test, ...(extra ?? {}) };
 }
@@ -405,13 +418,19 @@ function buildOp<F extends Fields, D extends object>(def: OpDef<F, D>, rs: RuleS
       if (opts.confirmed && r.evidence) continue;
       const hit = r.test(a, d, ctx);
       if (!hit) continue;
+      const tr = typeof hit === 'string' ? hit : r.doc_tr;
+      if (level === 'ask' && opts.confirmed && r.unconfirmable_tr) {
+        out.push({ code: r.code, level: 'hard', tr: `${tr} — ${r.unconfirmable_tr}`, ...(r.path ? { path: r.path } : {}), repairable: false, failure_class: 'out_of_range' });
+        continue;
+      }
+      const question = level === 'ask' && r.question_tr ? (typeof r.question_tr === 'function' ? r.question_tr(a, d, ctx) : r.question_tr) : null;
       out.push({
         code: r.code,
         level,
-        tr: typeof hit === 'string' ? hit : r.doc_tr,
+        tr,
         ...(r.path ? { path: r.path } : {}),
         ...(level === 'hard' ? { repairable: r.repairable === true, failure_class: r.failure_class ?? 'invalid_value' } : {}),
-        ...(level === 'ask' && r.question_tr ? { question_tr: r.question_tr } : {}),
+        ...(question ? { question_tr: question } : {}),
       });
     }
   };

@@ -12,9 +12,17 @@
  *
  * Ledger semantics: rows of soft-deletable tables (workout/supplement/life_event/lab) are
  * 'soft_delete' entries, so the ref-based undo engine (w_record_delete) can take them back; profile
- * columns are 'restore_previous' with before/after; tables the ledger does not cover (goals, the
- * spine, food prefs, commitments, recipes, memory) get an audit-only 'none' entry — visible in
- * turn_writes, honest about not being undoable by ref (spine removal has its own two-step op).
+ * columns are 'restore_previous' with before/after; tables the ledger does not cover (goals,
+ * commitments, recipes, memory) get an audit-only 'none' entry — visible in turn_writes, honest
+ * about not being undoable by ref.
+ *
+ * The spine (migration 114 lets the ledger name user_constraints, health_events, food_preferences):
+ * constraint_add is ONE undoable group — the registry's undo 'deactivate' is the user_constraints
+ * row's `active` restored to what it was (false for a new row: undo deactivates, never deletes a
+ * spine row), plus its mirrors (health_events row created → removed with its snapshot kept;
+ * food_preferences / profiles.dietary_restriction → previous values). So "geri al" can take back a
+ * wrongly added allergy or injury. constraint_retract is the mirror image (undo re-activates —
+ * protection comes back). Removal itself stays the two-step op it is.
  *
  * The ledger append is a separate statement (best effort, like v1's): a write whose ledger row
  * failed is still a real write (receipt ok) and the failure is logged loudly.
@@ -22,8 +30,8 @@
 import type { Constraint, ConstraintKind } from '../../shared/constraints.ts';
 import type { NoteSource } from '../../shared/coaching-notes.ts';
 import { isIFCompatible, type PeriodicState } from '../../shared/periodic-config.ts';
-import { type LedgerAppendEntry, type LedgerAppendOk, parseRpcReceipt, V2_RPC } from '../../shared/v2-db-types.ts';
-import { PROFILE_FIELD_SPECS } from '../../shared/write-registry/mod.ts';
+import { type LedgerAppendEntry, type LedgerAppendOk, type LedgerTable, parseRpcReceipt, V2_RPC } from '../../shared/v2-db-types.ts';
+import { PROFILE_FIELD_SPECS, restatedSeverity } from '../../shared/write-registry/mod.ts';
 import type { AdapterOutcome, AdapterPort, AdapterRequest, EraseConfirmOutcome } from './commit.ts';
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -109,8 +117,9 @@ async function ledger(d: AdapterDeps, req: AdapterRequest, entries: LedgerAppend
   }
 }
 
-const audit = (op: string, meta: Record<string, unknown>): LedgerAppendEntry =>
-  ({ op, table_name: 'profiles', row_id: null, undo_mode: 'none', is_primary: false, meta });
+/** Audit-only entry. Tables the ledger cannot name (goals, commitments…) are filed under 'profiles'. */
+const audit = (op: string, meta: Record<string, unknown>, table: LedgerTable = 'profiles', rowId: string | null = null): LedgerAppendEntry =>
+  ({ op, table_name: table, row_id: rowId, undo_mode: 'none', is_primary: false, meta });
 
 function firstId(r: DbRows): string | null {
   const row = r.data?.[0];
@@ -164,14 +173,21 @@ async function workoutLog(d: AdapterDeps, req: AdapterRequest): Promise<AdapterO
   }
   let note: string | null = null;
   const sets = Array.isArray(r.strength_sets) ? r.strength_sets.filter(isRec) : [];
-  if (sets.length > 0) {
-    const rows: Record<string, unknown>[] = [];
-    for (const s of sets) {
-      const count = Math.max(1, Math.round(num(s.sets) ?? 1));
-      for (let n = 1; n <= count; n++) {
-        rows.push({ workout_log_id: id, exercise_name: str(s.exercise) ?? 'egzersiz', set_number: n, reps: s.reps, weight_kg: num(s.weight_kg) ?? 0 });
-      }
+  // Set rows only for what the user stated: an exercise without its set AND rep count ("dün squat
+  // yaptım") is the workout alone — never an invented 1 × 1 × 0 kg row (strength_sets.reps is NOT
+  // NULL, so a missing number cannot be stored as unknown). An unstated weight is NULL, never 0.
+  const rows: Record<string, unknown>[] = [];
+  const unstated: string[] = [];
+  for (const s of sets) {
+    const count = num(s.sets);
+    const reps = num(s.reps);
+    const exercise = str(s.exercise) ?? 'egzersiz';
+    if (count === null || reps === null) { unstated.push(exercise); continue; }
+    for (let n = 1; n <= Math.max(1, Math.round(count)); n++) {
+      rows.push({ workout_log_id: id, exercise_name: exercise, set_number: n, reps, weight_kg: num(s.weight_kg) });
     }
+  }
+  if (rows.length > 0) {
     const setIns = await d.db.insert('strength_sets', rows);
     if (setIns.error) {
       d.log?.('[v2_adapter] strength_sets insert failed', { error: setIns.error.message });
@@ -180,7 +196,7 @@ async function workoutLog(d: AdapterDeps, req: AdapterRequest): Promise<AdapterO
   }
   const lg = await ledger(d, req, [{
     op: 'workout_log', table_name: 'workout_logs', row_id: id, for_date: String(r.date), undo_mode: 'soft_delete', group: 'w', is_primary: true,
-    meta: { as_stated: str(r.raw), sets: sets.length },
+    meta: { as_stated: str(r.raw), sets: sets.length, set_rows: rows.length, ...(unstated.length ? { exercises_without_numbers: unstated } : {}) },
   }]);
   return ok(1, lg, note);
 }
@@ -272,6 +288,43 @@ async function goalSet(d: AdapterDeps, req: AdapterRequest): Promise<AdapterOutc
 const SEVERITY_DB: Record<string, 'mild' | 'moderate' | 'severe' | null> = { mild: 'mild', moderate: 'moderate', severe: 'severe', unknown: null };
 const HEALTH_EVENT_KINDS: ReadonlySet<string> = new Set(['injury', 'surgery', 'condition', 'medication']);
 
+/** shared/constraints.ts syncConstraint's own subject key (the UNIQUE(user_id,kind,subject) value). */
+const spineSubjectKey = (s: string) => s.trim().toLocaleLowerCase('tr').slice(0, 80);
+const FP_FIELDS = ['preference', 'is_allergen', 'allergen_severity'] as const;
+
+/**
+ * A restatement of an ACTIVE spine row (derive `existing`; effect 'already_active', or 'activate'
+ * when it states a different severity): confirm the stored row — matched by its stored subject, so a
+ * legacy 'fıstık' row is the one confirmed when the model says 'peanut' — and give it the stated
+ * severity (registry restatedSeverity). Never a second row. null = the row is no longer active
+ * (changed since the turn loaded): the caller writes the declaration as new, so protection never drops.
+ */
+async function confirmRestated(d: AdapterDeps, req: AdapterRequest, kind: string): Promise<AdapterOutcome | null> {
+  const r = req.row;
+  const ex = isRec(r.existing) ? r.existing : null;
+  const stored = ex ? str(ex.subject) : null;
+  if (!stored) return null;
+  const cur = await d.db.selectOne('user_constraints', 'id, severity', { user_id: req.userId, kind, subject: stored, active: true });
+  const id = cur.data && typeof cur.data.id === 'string' ? cur.data.id : null;
+  if (cur.error || !id) return null;
+  const now = (d.now ?? (() => new Date()))().toISOString();
+  const changed = restatedSeverity(r);
+  const next = changed ? SEVERITY_DB[changed] : null;
+  const up = await d.db.update('user_constraints', {
+    confidence: 1, confirmed_at: now, source: 'confirmed', updated_at: now, ...(changed ? { severity: next } : {}),
+  }, { id, user_id: req.userId }, 'id');
+  if (up.error) return fail('write_failed');
+  if (!up.data?.length) return null;
+  const meta = { effect: r.effect, restated: true, kind, subject: r.subject_id, stored_subject: stored };
+  const lg = await ledger(d, req, [changed
+    ? {
+      op: 'constraint_add', table_name: 'user_constraints', row_id: id, field_set: ['severity'], before: { severity: cur.data?.severity ?? null },
+      after: { severity: next }, undo_mode: 'restore_previous', group: 'c', is_primary: true, meta,
+    }
+    : audit('constraint_add', meta, 'user_constraints', id)]);
+  return ok(1, lg);
+}
+
 async function constraintAdd(d: AdapterDeps, req: AdapterRequest): Promise<AdapterOutcome> {
   const r = req.row;
   const kind = String(r.kind) as ConstraintKind;
@@ -284,33 +337,85 @@ async function constraintAdd(d: AdapterDeps, req: AdapterRequest): Promise<Adapt
     const lg = await ledger(d, req, [audit('constraint_add', { effect: r.effect, kind, subject: r.subject_id })]);
     return ok(1, lg);
   }
+  let restateNote: string | null = null;
+  if (isRec(r.existing)) {
+    const done = await confirmRestated(d, req, kind);
+    if (done) return done;
+    restateNote = 'kayıt yeniden yazıldı';
+  }
   const severity = SEVERITY_DB[String(r.severity)] ?? null;
   const body = Array.isArray(r.body_parts) ? r.body_parts.filter((x): x is string => typeof x === 'string') : [];
+  const subjectKey = spineSubjectKey(String(r.subject_id));
+  const match = { user_id: req.userId, kind, subject: subjectKey };
+  // The spine row's state BEFORE the upsert: undo restores exactly that (a new row → inactive).
+  const prior = await d.db.selectOne('user_constraints', 'id, active', match);
   const synced = await d.helpers.syncConstraint(req.userId, {
     kind, subject: String(r.subject_id), severity, body_parts: body, source: 'user_stated', note: str(r.note) ?? name,
   });
   if (!synced) return fail('write_failed');
-  let note: string | null = null;
+  const spine = await d.db.selectOne('user_constraints', 'id', match);
+  // Undoable only when both the row AND its prior state are known: an unread prior state could make
+  // the undo deactivate a row that was already active before this write.
+  const spineId = !prior.error && spine.data && typeof spine.data.id === 'string' ? spine.data.id : null;
+  const entries: LedgerAppendEntry[] = [];
+  const meta = { kind, subject: r.subject_id, severity: r.severity, body_parts: body, undo: 'deactivate' };
+  entries.push(spineId
+    ? {
+      op: 'constraint_add', table_name: 'user_constraints', row_id: spineId, field_set: ['active'], before: { active: prior.data?.active === true },
+      after: { active: true }, undo_mode: 'restore_previous', group: 'c', is_primary: true, meta,
+    }
+    : audit('constraint_add', meta, 'user_constraints'));
+  let note: string | null = restateNote;
   // v1 readers (guardrails, plan scans) still union the legacy stores — keep them protected too.
   if (kind === 'allergen' || kind === 'intolerance') {
-    const fp = await d.db.upsert('food_preferences', {
-      user_id: req.userId, food_name: name.toLocaleLowerCase('tr'), preference: 'never', is_allergen: true, allergen_severity: severity ?? 'severe',
-    }, 'user_id,food_name');
+    const fpMatch = { user_id: req.userId, food_name: name.toLocaleLowerCase('tr') };
+    const before = await d.db.selectOne('food_preferences', `id, ${FP_FIELDS.join(', ')}`, fpMatch);
+    const after = { preference: 'never', is_allergen: true, allergen_severity: severity ?? 'severe' };
+    const fp = await d.db.upsert('food_preferences', { ...fpMatch, ...after }, 'user_id,food_name');
     if (fp.error) {
       d.log?.('[v2_adapter] legacy allergen mirror failed (spine row stands)', { error: fp.error.message });
-      note = 'eski uyumluluk kaydı yazılamadı';
+      note = [note, 'eski uyumluluk kaydı yazılamadı'].filter(Boolean).join(' · ');
+    } else if (!before.error) {
+      // (an unread prior state is not ledgered: a "created" guess would make the undo delete a row
+      // that existed before this write)
+      const row = before.data && typeof before.data.id === 'string' ? before.data : (await d.db.selectOne('food_preferences', 'id', fpMatch)).data;
+      const fpId = row && typeof row.id === 'string' ? row.id : null;
+      if (fpId) {
+        entries.push({
+          op: 'constraint_add', table_name: 'food_preferences', row_id: fpId, field_set: [...FP_FIELDS],
+          before: before.data ? Object.fromEntries(FP_FIELDS.map((f) => [f, before.data?.[f] ?? null])) : null,
+          after, undo_mode: 'restore_previous', group: 'c', is_primary: false,
+        });
+      }
     }
   } else if (kind === 'dietary') {
-    const up = await d.db.update('profiles', { dietary_restriction: String(r.subject_id) }, { id: req.userId });
+    const cur = await d.db.selectOne('profiles', 'dietary_restriction', { id: req.userId });
+    const up = await d.db.update('profiles', { dietary_restriction: String(r.subject_id) }, { id: req.userId }, 'id');
     if (up.error) d.log?.('[v2_adapter] dietary mirror failed (spine row stands)', { error: up.error.message });
+    else if (up.data?.length && !cur.error) {
+      entries.push({
+        op: 'constraint_add', table_name: 'profiles', row_id: req.userId, field_set: ['dietary_restriction'],
+        before: { dietary_restriction: cur.data?.dietary_restriction ?? null }, after: { dietary_restriction: String(r.subject_id) },
+        undo_mode: 'restore_previous', group: 'c', is_primary: false,
+      });
+    }
   } else if (HEALTH_EVENT_KINDS.has(kind)) {
     const he = await d.db.insert('health_events', {
       user_id: req.userId, event_type: kind, description: str(r.note) ?? name, event_date: str(r.event_date), is_ongoing: true,
-    });
+    }, 'id');
+    const heId = firstId(he);
     if (he.error) d.log?.('[v2_adapter] health_events mirror failed (spine row stands)', { error: he.error.message });
+    else if (heId) {
+      // before NULL = this write created the row: undo removes it (the ledger keeps its snapshot).
+      entries.push({
+        op: 'constraint_add', table_name: 'health_events', row_id: heId, field_set: ['is_ongoing'], before: null, after: { is_ongoing: true },
+        undo_mode: 'restore_previous', group: 'c', is_primary: false,
+      });
+    }
   }
-  const lg = await ledger(d, req, [audit('constraint_add', { kind, subject: r.subject_id, severity: r.severity, body_parts: body })]);
-  return ok(1, lg, note);
+  const lg = await ledger(d, req, entries);
+  // The spine row could not be read back: the write stands, but nothing points the undo at it.
+  return ok(1, spineId ? lg : { ...lg, missing: true }, note);
 }
 
 async function constraintTarget(d: AdapterDeps, req: AdapterRequest): Promise<{ id: string; kind: string; subject: string } | null> {
@@ -326,14 +431,33 @@ async function constraintRetract(d: AdapterDeps, req: AdapterRequest): Promise<A
   const now = (d.now ?? (() => new Date()))().toISOString();
   const up = await d.db.update('user_constraints', { active: false, updated_at: now }, { id: c.id, user_id: req.userId }, 'id');
   if (up.error || !up.data?.length) return fail(up.error ? 'write_failed' : 'already_undone');
+  // Undo of a removal re-activates the row: protection comes back (one group with its mirrors).
+  const entries: LedgerAppendEntry[] = [{
+    op: 'constraint_retract', table_name: 'user_constraints', row_id: c.id, field_set: ['active'], before: { active: true }, after: { active: false },
+    undo_mode: 'restore_previous', group: 'c', is_primary: true, meta: { constraint_id: c.id, kind: c.kind, subject: c.subject },
+  }];
   if (c.kind === 'allergen' || c.kind === 'intolerance') {
-    const fp = await d.db.update('food_preferences', { is_allergen: false }, { user_id: req.userId, food_name: c.subject.toLocaleLowerCase('tr'), is_allergen: true });
+    const fpMatch = { user_id: req.userId, food_name: c.subject.toLocaleLowerCase('tr'), is_allergen: true };
+    const fpRow = await d.db.selectOne('food_preferences', 'id', fpMatch);
+    const fp = await d.db.update('food_preferences', { is_allergen: false }, fpMatch, 'id');
     if (fp.error) d.log?.('[v2_adapter] legacy allergen unmirror failed', { error: fp.error.message });
+    else if (fp.data?.length && fpRow.data && typeof fpRow.data.id === 'string') {
+      entries.push({
+        op: 'constraint_retract', table_name: 'food_preferences', row_id: fpRow.data.id, field_set: ['is_allergen'], before: { is_allergen: true },
+        after: { is_allergen: false }, undo_mode: 'restore_previous', group: 'c', is_primary: false,
+      });
+    }
   } else if (c.kind === 'dietary') {
-    const pf = await d.db.update('profiles', { dietary_restriction: null }, { id: req.userId, dietary_restriction: c.subject });
+    const pf = await d.db.update('profiles', { dietary_restriction: null }, { id: req.userId, dietary_restriction: c.subject }, 'id');
     if (pf.error) d.log?.('[v2_adapter] dietary unmirror failed', { error: pf.error.message });
+    else if (pf.data?.length) {
+      entries.push({
+        op: 'constraint_retract', table_name: 'profiles', row_id: req.userId, field_set: ['dietary_restriction'], before: { dietary_restriction: c.subject },
+        after: { dietary_restriction: null }, undo_mode: 'restore_previous', group: 'c', is_primary: false,
+      });
+    }
   }
-  const lg = await ledger(d, req, [audit('constraint_retract', { constraint_id: c.id, kind: c.kind, subject: c.subject })]);
+  const lg = await ledger(d, req, entries);
   return ok(1, lg);
 }
 
@@ -343,7 +467,7 @@ async function constraintConfirm(d: AdapterDeps, req: AdapterRequest): Promise<A
   const now = (d.now ?? (() => new Date()))().toISOString();
   const up = await d.db.update('user_constraints', { confidence: 1, confirmed_at: now, source: 'confirmed', updated_at: now }, { id: c.id, user_id: req.userId }, 'id');
   if (up.error) return fail('write_failed');
-  const lg = await ledger(d, req, [audit('constraint_confirm', { constraint_id: c.id })]);
+  const lg = await ledger(d, req, [audit('constraint_confirm', { constraint_id: c.id }, 'user_constraints', c.id)]);
   return ok(up.data?.length ?? 0, lg);
 }
 

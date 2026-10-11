@@ -40,4 +40,6 @@ export {
   NOT_WRITTEN_REASONS, TRIPWIRE_READINGS, TRIPWIRE_READINGS_MAX,
 } from './envelope.ts';
 export { ERASE_HOLD_OP } from './ops/pending.ts';
+export { restatedSeverity, type ExistingConstraint } from './ops/constraints.ts';
+export { waterTypoQuestion, WATER_STORE_MAX_L, WATER_TYPO_MAX_L } from './ops/water.ts';
 export { PROFILE_FIELD_SPECS, profileFieldLabel } from './ops/profile.ts';

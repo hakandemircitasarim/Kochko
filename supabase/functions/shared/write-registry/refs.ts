@@ -93,14 +93,33 @@ export interface RenderedRef {
    * correction the user states themselves is still accepted.
    */
   suspicion_declined?: boolean;
-  /** One-line Turkish summary the model was shown (receipts quote it back). */
+  /** One-line Turkish summary the model was shown (may carry model-facing tags such as "[model]"). */
   summary_tr?: string | null;
+  /**
+   * The same record worded for the USER (no provenance tags): receipts ("Kayıt geri alındı: …") and
+   * code-authored replies quote this; falls back to summary_tr when absent.
+   */
+  user_summary_tr?: string | null;
+  /** What the record held when this turn was rendered — a correction's receipt shows old → new. */
+  snapshot?: {
+    /** m#: the meal's stored items (portion = as_stated, else portion_text). */
+    items?: ReadonlyArray<{ name: string; portion: string | null; kcal: number }>;
+    total_kcal?: number;
+    /** d#: the day metric's stored value (water day total L, sleep h, mood 1–5, steps, weight kg). */
+    value?: number;
+  } | null;
   /** c#: the spine row's safety facts. */
   constraint?: {
     kind: string;
+    /**
+     * The canonical id the validator compares with (a legacy v1 allergen subject 'fıstık' reads as
+     * 'peanut' — input.ts canonicalConstraintSubject, the allergen invariant's own dictionary).
+     */
     subject: string;
     severity: string | null;
     body_parts?: string[];
+    /** The subject exactly as stored (user_constraints.subject) when it differs from `subject`. */
+    stored_subject?: string;
   } | null;
   /** p#: the hold's facts. `replies_since` = coach replies stored after the hold was written. */
   pending?: {

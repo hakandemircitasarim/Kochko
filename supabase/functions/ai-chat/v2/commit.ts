@@ -140,7 +140,11 @@ export type CommitStep =
   | (StepBase & { kind: 'hold_open'; holdOp: string; payload: HoldPayloadV2; opts: HoldOpenOptions })
   | (StepBase & { kind: 'erase_hold'; scope: 'memory' | 'account' })
   | (StepBase & { kind: 'erase_confirm'; pendingId: string })
-  | (StepBase & { kind: 'hold_resolve'; pendingId: string; status: 'discarded' | 'failed'; note: string; receipt: boolean });
+  | (StepBase & {
+    kind: 'hold_resolve'; pendingId: string; status: 'discarded' | 'failed'; note: string; receipt: boolean;
+    /** A write of the held kind in the SAME turn replaces this discard: success is silent (the write's receipt speaks). */
+    superseded?: boolean;
+  });
 
 export interface CommitPlan {
   turnId: string;
@@ -531,8 +535,24 @@ export function planCommit(input: PlanCommitInput): CommitPlan {
   if (validation.not_written_reason) {
     plan.flags.push({ op: 'turn', code: `not_written:${validation.not_written_reason}`, note_tr: 'bildirilen şey bilinçli olarak yazılmadı (gerekçe karar içinde)' });
   }
+  markSupersededDiscards(plan, ti);
   plan.steps.push(...holdSteps);
   return plan;
+}
+
+/**
+ * The user answered a hold with the OTHER option ("ek olarak, 2 litrenin üstüne"): the turn
+ * discards the hold and writes the same kind of record. Only the write is shown — a "Vazgeçildi"
+ * chip beside "Su: +1,40 L" reads as "the water was cancelled" (trial 2026-10-11). The discard still
+ * runs (the old hold must not stay open for a stray "evet"); a FAILED discard still reports.
+ */
+function markSupersededDiscards(plan: CommitPlan, ti: TurnInput): void {
+  for (const s of plan.steps) {
+    if (s.kind !== 'hold_resolve' || s.status !== 'discarded' || !s.receipt) continue;
+    const held = ti.pending.find((p) => p.id === s.pendingId)?.op;
+    if (!held) continue;
+    if (plan.steps.some((w) => (w.kind === 'rpc' || w.kind === 'adapter' || w.kind === 'record_delete') && w.verdict.op === held)) s.superseded = true;
+  }
 }
 
 // ─── execution ports ─────────────────────────────────────────────────────────────────────────────
@@ -799,6 +819,7 @@ async function runStep(step: CommitStep, plan: CommitPlan, ports: CommitPorts, m
       }, ['hold_resolve']);
       if (!step.receipt) return { receipt: null };
       if (!r.ok) return failResult(v, r.failure_class);
+      if (step.superseded) return { receipt: null };
       return { receipt: okReceipt(v, plan, { rows_affected: 1, ref: null, write_id: null }) };
     }
   }

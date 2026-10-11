@@ -30,6 +30,7 @@
  * user text is only quoted back to the model.
  */
 import { getEffectiveDateForUser, getLocalParts, shiftDateString } from '../../shared/day-boundary.ts';
+import { canonicalAllergenId } from '../../shared/safety-invariants.ts';
 import {
   TURN_INPUT_KEYS, TURN_INPUT_SCHEMA,
   type TurnInputDay, type TurnInputMeal, type TurnInputMealItem, type TurnInputRow,
@@ -625,6 +626,21 @@ const METRIC_OP: Record<MetricDayRef['target'], string> = {
   water: 'water_log', sleep: 'sleep_log', mood: 'mood_log', steps: 'step_log', weight: 'body_weight',
 };
 
+const ALLERGEN_IDS: readonly string[] = Object.keys(vocab.ALLERGENS);
+
+/**
+ * The id a spine subject is compared by. v1 stored allergen subjects in Turkish ('fıstık',
+ * 'yumurta') while v2 writes vocabulary ids ('peanut', 'egg'); read through the allergen
+ * invariant's OWN dictionary (safety-invariants canonicalAllergenId — one source), a legacy row
+ * carries the id the model writes, so a re-statement is recognised (no duplicate row) and a "yok"
+ * finds the row to retract. Only allergen/intolerance subjects have a vocabulary; anything without
+ * exactly one matching id ('kabuklu', 'laktoz', an injury subject) stays as stored.
+ */
+export function canonicalConstraintSubject(kind: string, subject: string): string {
+  if (kind !== 'allergen' && kind !== 'intolerance') return subject;
+  return canonicalAllergenId(subject, ALLERGEN_IDS) ?? subject;
+}
+
 /** The refs rendered this turn, from the TurnInput alone (pure). */
 export function turnRefs(ti: TurnInput): TurnRefs {
   const rendered: Record<string, RenderedRef> = {};
@@ -634,17 +650,34 @@ export function turnRefs(ti: TurnInput): TurnRefs {
     refMap.set(ref, field ? { table, id, field } : { table, id });
   };
   const last = new Set(ti.last_turn_refs);
-  for (const m of ti.meals) add(m.ref, 'm', 'meal', 'meal_logs', m.id, { op: 'meal_log', day: m.day, last_turn: m.last_turn, summary_tr: mealSummary(m) });
+  for (const m of ti.meals) {
+    add(m.ref, 'm', 'meal', 'meal_logs', m.id, {
+      op: 'meal_log', day: m.day, last_turn: m.last_turn, summary_tr: mealSummary(m), user_summary_tr: mealSummary(m, false),
+      snapshot: {
+        items: m.items.map((it) => ({ name: it.name, portion: it.as_stated ?? (it.portion_text || null), kcal: it.kcal })),
+        total_kcal: m.total_kcal,
+      },
+    });
+  }
   for (const d of ti.metric_days) {
-    add(d.ref, 'd', d.target, 'daily_metrics', d.row_id, { op: METRIC_OP[d.target], day: d.day, last_turn: d.last_turn, summary_tr: metricSummary(d) }, d.field);
+    add(d.ref, 'd', d.target, 'daily_metrics', d.row_id, {
+      op: METRIC_OP[d.target], day: d.day, last_turn: d.last_turn, summary_tr: metricSummary(d), snapshot: { value: d.value },
+    }, d.field);
   }
   for (const w of ti.workouts) add(w.ref, 'w', 'workout', 'workout_logs', w.id, { op: 'workout_log', day: w.day, last_turn: last.has(w.ref) });
   for (const s of ti.supplements) add(s.ref, 's', 'supplement', 'supplement_logs', s.id, { op: 'supplement_log', day: s.day, last_turn: last.has(s.ref) });
   for (const l of ti.labs) add(l.ref, 'l', 'lab', 'lab_values', l.id, { op: 'lab_value', day: l.day });
   for (const e of ti.life_events) add(e.ref, 'e', 'life_event', 'life_events', e.id, { op: 'life_event', day: e.event_date });
   for (const c of ti.constraints) {
+    const subject = canonicalConstraintSubject(c.kind, c.subject);
     add(c.ref, 'c', 'constraint', 'user_constraints', c.id, {
-      constraint: { kind: c.kind, subject: c.subject, severity: c.severity, body_parts: c.body_parts },
+      // Worded from the STORED subject: a legacy row keeps the user's own word ("fıstık alerjisi"),
+      // a vocabulary id becomes its label ("yer fıstığı alerjisi").
+      user_summary_tr: constraintSummaryTr({ kind: c.kind, subject: c.subject, severity: c.severity, body_parts: c.body_parts }),
+      constraint: {
+        kind: c.kind, subject, severity: c.severity, body_parts: c.body_parts,
+        ...(subject !== c.subject ? { stored_subject: c.subject } : {}),
+      },
     });
   }
   const assistantTimes = ti.history.filter((h) => h.role === 'assistant').map((h) => h.created_at);
@@ -770,15 +803,48 @@ export function planTypeTr(planType: string): string {
   return planType === 'workout' ? 'antrenman' : 'beslenme';
 }
 
-function mealSummary(m: TurnInputMeal): string {
+/**
+ * One meal as a line. `withSource` appends the provenance tag ("[model]", "[tablo]") Stage A reads
+ * to judge a record; the user-facing form (receipts, code-authored replies) leaves it off — the tag
+ * is a model-facing marker, never something to show the user (trial 2026-10-11: "… [model]").
+ */
+function mealSummary(m: TurnInputMeal, withSource = true): string {
   const shown = m.items.slice(0, 6).map((it) => {
     const portion = it.as_stated ?? it.portion_text;
     const grams = it.grams !== null ? ` ~${fmtTr(it.grams)} g` : '';
     return `${it.name}${portion ? ` (${portion}${grams})` : grams} ${fmtTr(it.kcal)} kcal`;
   });
   if (m.items.length > 6) shown.push(`+${m.items.length - 6} kalem`);
+  const body = `${shown.join('; ') || 'kalem yok'} · toplam ${fmtTr(m.total_kcal)} kcal`;
+  if (!withSource) return body;
   const src = [...new Set(m.items.map((it) => SOURCE_TAG[it.data_source ?? ''] ?? 'model'))].join('/');
-  return `${shown.join('; ') || 'kalem yok'} · toplam ${fmtTr(m.total_kcal)} kcal [${src || 'model'}]`;
+  return `${body} [${src || 'model'}]`;
+}
+
+/**
+ * Turkish possessive of the constraint kinds whose subject is a thing ("yer fıstığı alerjisi", "diz
+ * sakatlığı"). Conditions and medications are named states ("hastalık: diyabet") — no possessive.
+ */
+const KIND_POSSESSIVE_TR: Record<string, string> = {
+  allergen: 'alerjisi', intolerance: 'intoleransı', injury: 'sakatlığı', surgery: 'ameliyatı', dietary: 'beslenme kısıtı',
+};
+
+/**
+ * A spine row worded for the user — what a retract/confirm receipt quotes ("Kaldırıldı: yer fıstığı
+ * alerjisi (ciddi)"). Vocabulary ids become their Turkish label; nothing English leaks.
+ */
+export function constraintSummaryTr(c: { kind: string; subject: string; severity: string | null; body_parts?: readonly string[] }): string {
+  const lbl = (map: Readonly<Record<string, string>>, id: string): string | null => (map[id] ? map[id].split(' (')[0] : null);
+  const custom = c.subject.startsWith('custom:') ? c.subject.slice('custom:'.length) : null;
+  const region = c.body_parts?.length ? c.body_parts.map((p) => lbl(vocab.BODY_PARTS, p) ?? p).join(', ') : null;
+  const name = custom
+    ?? ((c.kind === 'allergen' || c.kind === 'intolerance') ? lbl(vocab.ALLERGENS, c.subject) : null)
+    ?? (c.kind === 'dietary' ? lbl(vocab.DIETARY_SUBJECTS, c.subject) : null)
+    ?? ((c.kind === 'injury' || c.kind === 'surgery') ? region : null)
+    ?? c.subject.split('_').join(' ');
+  const sev = c.severity && SEVERITY_TR[c.severity] ? ` (${SEVERITY_TR[c.severity]})` : '';
+  const poss = KIND_POSSESSIVE_TR[c.kind];
+  return poss ? `${name} ${poss}${sev}` : `${KIND_TR[c.kind] ?? c.kind}: ${name}${sev}`;
 }
 
 function metricSummary(d: MetricDayRef): string {

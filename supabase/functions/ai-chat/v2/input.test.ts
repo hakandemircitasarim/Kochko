@@ -9,9 +9,9 @@
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import { TURN_INPUT_KEYS } from '../../shared/v2-db-types.ts';
-import { parseRef, REF_KINDS } from '../../shared/write-registry/mod.ts';
+import { parseRef, REF_KINDS, validateChannelItems } from '../../shared/write-registry/mod.ts';
 import {
-  buildValidationContext, constraintLine, dayLabelTr, edTierOf, fmtTr, loadTurnInput, PLAIN_TURN_INPUT_SCHEMA, profilePhrases, renderTurnInput,
+  buildValidationContext, canonicalConstraintSubject, constraintLine, constraintSummaryTr, dayLabelTr, edTierOf, fmtTr, loadTurnInput, PLAIN_TURN_INPUT_SCHEMA, profilePhrases, renderTurnInput,
   stageAView, supabaseTurnInputDb, turnInputKeyOrder, turnInputQueries, turnRefs, validationContext,
   type DbResult, type PgClientLike, type SelectQuery,
 } from './input.ts';
@@ -106,13 +106,60 @@ Deno.test('turnRefs: exactly the rendered set, registry grammar, targets the val
   }
   assertEquals(rendered.d5, {
     kind: 'd', target: 'water', undone: false, later_write_on_same_field: false, op: 'water_log', day: '2026-10-07',
-    last_turn: true, summary_tr: 'su: gün toplamı 1,60 L',
+    last_turn: true, summary_tr: 'su: gün toplamı 1,60 L', snapshot: { value: 1.6 },
   });
   assertEquals(rendered.w1.target, 'workout');
-  assertEquals(rendered.c1.constraint, { kind: 'allergen', subject: 'fıstık', severity: 'severe', body_parts: [] });
+  // A legacy Turkish allergen subject carries the canonical id the model writes; the stored one rides along.
+  assertEquals(rendered.c1.constraint, { kind: 'allergen', subject: 'peanut', severity: 'severe', body_parts: [], stored_subject: 'fıstık' });
+  assertEquals(rendered.c1.user_summary_tr, 'fıstık alerjisi (ciddi)', 'a legacy row keeps the user\'s own word');
+  assertEquals(constraintSummaryTr({ kind: 'allergen', subject: 'peanut', severity: null }), 'yer fıstığı alerjisi', 'an id becomes its Turkish label');
+  assertEquals(constraintSummaryTr({ kind: 'medication', subject: 'levotiroksin', severity: 'mild' }), 'ilaç: levotiroksin (hafif)');
+  assertEquals(constraintSummaryTr({ kind: 'dietary', subject: 'vegan', severity: null }), 'vegan beslenme kısıtı');
+  assertEquals(rendered.c2.constraint, { kind: 'injury', subject: 'sol_diz', severity: null, body_parts: ['knee'] }, 'only allergen subjects have a vocabulary');
+  assertEquals(rendered.c2.user_summary_tr, 'diz sakatlığı');
+  // m#: the model reads the provenance tag; the user-facing summary and the snapshot do not carry it.
+  assert(rendered.m1.summary_tr?.endsWith(']'), rendered.m1.summary_tr ?? '');
+  assert(!rendered.m1.user_summary_tr?.includes('['), rendered.m1.user_summary_tr ?? '');
+  assertEquals(rendered.m1.user_summary_tr, rendered.m1.summary_tr?.replace(/ \[[^\]]+\]$/u, ''));
+  assertEquals(rendered.m1.snapshot?.total_kcal, ti.meals[0].total_kcal);
+  assertEquals(rendered.m1.snapshot?.items?.length, ti.meals[0].items.length);
   assertEquals(rendered.p1.pending, { op: 'account_erase_request', expires_at: '2026-10-07T12:20:00Z', replies_since: 1 });
   assertEquals(refMap.get('m1'), { table: 'meal_logs', id: 'ml-1' });
   assertEquals(refMap.get('d5'), { table: 'daily_metrics', id: 'dm-7', field: 'water_liters' });
+});
+
+Deno.test('canonicalConstraintSubject: legacy Turkish allergen subjects read as the vocabulary id (the allergen invariant\'s own dictionary)', () => {
+  assertEquals(canonicalConstraintSubject('allergen', 'fıstık'), 'peanut');
+  assertEquals(canonicalConstraintSubject('allergen', 'yumurta'), 'egg');
+  assertEquals(canonicalConstraintSubject('intolerance', 'süt'), 'milk');
+  assertEquals(canonicalConstraintSubject('allergen', 'antep fıstığı'), 'pistachio');
+  assertEquals(canonicalConstraintSubject('allergen', 'peanut'), 'peanut', 'an id stays an id');
+  assertEquals(canonicalConstraintSubject('allergen', 'kabuklu'), 'kabuklu', 'two ids name it (crustacean, mollusc): kept as stored');
+  assertEquals(canonicalConstraintSubject('intolerance', 'laktoz'), 'laktoz', 'no id names it: kept as stored');
+  assertEquals(canonicalConstraintSubject('allergen', 'custom:çilek'), 'custom:çilek');
+  assertEquals(canonicalConstraintSubject('injury', 'yumurta'), 'yumurta', 'only allergen/intolerance subjects have a vocabulary');
+});
+
+Deno.test('legacy spine row (v1 "fıstık", severe) through the loader: "yok" is redirected to a retract of THAT row, a retract is two-step, a restatement is not a new row', async () => {
+  const { ti } = await load();
+  const yok = 'fıstık alerjim yok aslında';
+  const absent = validateChannelItems('writes', [{
+    op: 'constraint_add', kind: 'allergen', subject_id: 'peanut', display_tr: 'fıstık', whose: 'self', polarity: 'does_not_have', severity: 'unknown',
+    body_parts: [], event_date: null, note: null, evidence_quote: yok,
+  }], validationContext(ti, yok, NOW))[0];
+  assertEquals(absent.verdict, 'REJECT');
+  assertEquals(absent.issues.map((i) => i.code), ['kaldirma_ref_ile'], 'never a "yok" coach note beside the active severe legacy row');
+  const retract = validateChannelItems('writes', [{ op: 'constraint_retract', target: 'c1', evidence_quote: yok, note: null }], validationContext(ti, yok, NOW))[0];
+  assertEquals(retract.verdict, 'ASK');
+  assertEquals(retract.issues.map((i) => i.code), ['iki_adimli_kaldirma']);
+  assertEquals(turnRefs(ti).refMap.get('c1'), { table: 'user_constraints', id: 'uc-1' }, 'the retract acts on the stored legacy row');
+  const var_ = 'fıstık alerjim var';
+  const again = validateChannelItems('writes', [{
+    op: 'constraint_add', kind: 'allergen', subject_id: 'peanut', display_tr: 'fıstık', whose: 'self', polarity: 'has', severity: 'unknown',
+    body_parts: [], event_date: null, note: null, evidence_quote: var_,
+  }], validationContext(ti, var_, NOW))[0];
+  assertEquals(again.row?.effect, 'already_active');
+  assertEquals((again.row?.existing as Record<string, unknown>).subject, 'fıstık');
 });
 
 Deno.test('validationContext: today, totals, identity, last weigh-in in 14 days, ED tier', async () => {

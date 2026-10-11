@@ -1,4 +1,4 @@
-YAZILABİLİR KAYITLAR (şema kochko_understand_v4)
+YAZILABİLİR KAYITLAR (şema kochko_understand_v5)
 Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aralığı denetler, hiçbir sayını sessizce değiştirmez. Her yazma ayrı denetlenir.
 day: today | yesterday | YYYY-MM-DD; en fazla 7 gün geri, gelecek yok.
 Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. Kayıt düzeltmenin tek yolu record_ops update; yazmalardaki replaces hep null.
@@ -44,7 +44,7 @@ Attığı adım sayısı (süre yoksa antrenman değil). Değil: bir adım hedef
 ### workout_log
 Yaptığı egzersiz ya da spor. Değil: yalnız adım sayısı (step_log).
 - calories_burned: bilmiyorsan null
-- strength_sets[].exercise: snake_case (bench_press, squat…)
+- strength_sets[].exercise: snake_case (bench_press, squat…); söylenmeyen sayı null
 
 ### supplement_log
 Aldığı bir takviye (kreatin, whey, omega-3, vitamin…); alerjisiyle çakışsa da yazılır. Değil: "akşamları magnezyum kullanıyorum" gibi alışkanlık anlatısı.

@@ -54,8 +54,13 @@ import { memory_note } from './ops/memory.ts';
  * self_check.not_written_reason is a CLOSED enum (NOT_WRITTEN_REASONS) and only its ids turn a
  * reported-but-unwritten fact into a decision; the doc teaches record_ops update as THE correction
  * path (a log op's `replaces` stays null — still validated, no longer taught).
+ * v5 (2026-10-11, first live trial): workout_log strength_sets[].sets / reps are nullable and the doc
+ * says an unstated number is null ("dün squat yaptım" was stored as 1 × 1 × 0 kg because the schema
+ * demanded numbers). Validator-only changes in the same round (no bytes): water 8–30 L is a typo
+ * question, an active same-subject constraint_add is a restatement, record_update receipts show the
+ * patch.
  */
-export const SCHEMA_VERSION = 'v4';
+export const SCHEMA_VERSION = 'v5';
 
 export const REGISTRY: readonly RegOp[] = [
   // writes[] — what the user reported
