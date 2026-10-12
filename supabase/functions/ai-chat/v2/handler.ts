@@ -11,7 +11,9 @@
  *       that is still there.
  *   T2  safety tripwires (shared/safety-tripwires.ts): an explicit hit → today's canned reply at
  *       once; ambiguous hits → facts for Stage A, resolved by the §7.2 table after it.
- *   T3  loadTurnInput (input.ts) + the allergen-mention safety net (allergenMentionOf: the message
+ *   T3  loadTurnInput (input.ts), in parallel with T0's quota reservation (the read wave may see this
+ *       turn's reservation row; input.ts withoutTurnRow drops it by id; no model call starts before the
+ *       reservation answers) + the allergen-mention safety net (allergenMentionOf: the message
  *       names a food of the user's own active allergen — commit.ts exposuresOf's matcher, never a
  *       write, never a reading of meaning; it only picks the budget class and the fail-closed line).
  *   T4  Stage A (understand.ts, the ONE composer stage-a-request.ts) on the turn's §7.2 budget class
@@ -67,7 +69,7 @@ import type {
 import { navigateOf } from './envelope.ts';
 import { vocabLabel } from './facts.ts';
 import { applyGuarantees, exposureLine, safetyLines, type GuaranteedReply } from './guarantees.ts';
-import { canonicalConstraintSubject, turnRefs, validationContext, type TurnInput } from './input.ts';
+import { canonicalConstraintSubject, turnRefs, validationContext, type TurnInput, withoutTurnRow } from './input.ts';
 import { runStageB, type StageBRun } from './ports.ts';
 import { stageASafetyOutcome } from './shadow.ts';
 import { stageARepairWanted } from './stage-a-request.ts';
@@ -610,17 +612,32 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   const undo = UNDO_LITERALS[message.trim()];
   if (undo) return await undoTurn(tc, undo);
 
-  // ── T3 TurnInput (read BEFORE the reservation inserts this turn's user row) ──
+  // ── T3 TurnInput ∥ T0 quota reservation (inserts the user row; the record-parse ceiling caps cost) ──
+  // Integration 2026-10-12 (re-trial latency): the reservation (~450 ms, several round trips) ran after
+  // the read wave; now both run at once, and no model call starts before the reservation answers (a
+  // capped user still costs no Stage A). The read wave may see THIS turn's reservation row: it is dropped
+  // by id (withoutTurnRow). Its release is registered the moment it exists, even if the read wave fails.
   const now = deps.now();
   const clientTz = typeof body.client_timezone === 'string' && body.client_timezone ? body.client_timezone : null;
-  const ti = await deps.loadTurnInput(userId, now, clientTz);
+  const reserving = deps.quota.reserve(userId, message).then((r) => {
+    const id = r.allowed ? r.reservedMessageId : null;
+    if (id) {
+      state.cleanup.push(async () => {
+        if (!state.sideEffects) await deps.quota.release(id);
+      });
+    }
+    return r;
+  });
+  const [loaded, reserved] = await Promise.allSettled([deps.loadTurnInput(userId, now, clientTz), reserving]);
+  if (loaded.status === 'rejected') throw loaded.reason;
+  if (reserved.status === 'rejected') throw reserved.reason;
+  const reservation = reserved.value;
+  const ti = withoutTurnRow(loaded.value, reservation.reservedMessageId);
   deps.mark?.('turn_input');
   // §7.1/§7.2 safety net: the user's own allergens this message names (budget class + fail-closed line only).
   const allergenMention = allergenMentionOf(ti, message);
   const allergenLine = allergenMention.length > 0 ? allergenMentionLine(ti, allergenMention) : null;
 
-  // ── T0 quota reservation (inserts the user row; the record-parse ceiling caps cost) ──
-  const reservation = await deps.quota.reserve(userId, message);
   if (!reservation.allowed) {
     // §7.2 "belirsiz = varsayılan koruyucu": a live safety trigger is never answered with the
     // rate-limit text (v1 answers its safety early returns before its rate limit too). At the cap
@@ -635,11 +652,7 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     return { kind: 'response', response: deps.respond({ message: reservation.message, actions: [], task_mode: 'rate_limited', rate_limited: true, remaining: 0 }) };
   }
   const reservedId = reservation.reservedMessageId;
-  if (reservedId) {
-    state.cleanup.push(async () => {
-      if (!state.sideEffects) await deps.quota.release(reservedId);
-    });
-  }
+  // Kept for the timing header's shape; the reservation overlapped the read wave above (≈0 ms here).
   deps.mark?.('reserve');
 
   // ── T4 Stage A, on the turn's §7.2 budget class (stage-a-request.ts owns the numbers) ──
@@ -984,7 +997,8 @@ async function salvageFacts(tc: TurnCtx, scan: TripwireScan): Promise<void> {
   const { deps } = tc;
   try {
     const now = deps.now();
-    const ti = await deps.loadTurnInput(tc.userId, now, typeof tc.body.client_timezone === 'string' ? tc.body.client_timezone : null);
+    // The live loader reads TURN_ROW_SLACK extra history rows (input.ts): trimmed back to the window here too.
+    const ti = withoutTurnRow(await deps.loadTurnInput(tc.userId, now, typeof tc.body.client_timezone === 'string' ? tc.body.client_timezone : null), null);
     const outcome = await deps.understand(buildUnderstandRequest({ turnInput: ti, message: tc.message, scan, timeoutMs: STAGE_A_SALVAGE_TIMEOUT_MS }));
     if (outcome.status !== 'parsed') return;
     const refs = turnRefs(ti);

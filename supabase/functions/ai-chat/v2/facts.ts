@@ -295,14 +295,19 @@ const HOLD_OP_TR: Record<string, string> = {
  * The local day of the newest recent coach reply that carries a specialist referral — the code-owned
  * ED line or the coach's own words, judged by the SAME text check the guarantees use for that line
  * (shared/safety-tripwires.ts hasRequiredSafetyLine 'ed'; a waved-away mention does not count). Reads
- * only the coach's replies in the loaded history window (TurnInput.history, Stage B's own window): an
- * older referral is not a fact here, so the coach may refer once more after that many turns.
+ * the coach's replies in the loaded history window (TurnInput.history, Stage B's own window) and,
+ * beyond it, its newest replies of the last 7 days (TurnInput.coach_replies_recent, input.ts
+ * COACH_REPLIES_RECENT — integration 2026-10-12: with the window alone the coach would refer again
+ * after four quiet turns). An older referral is not a fact here.
  */
 export function lastReferralDay(ti: TurnInput): string | null {
-  for (let i = ti.history.length - 1; i >= 0; i--) {
-    const h = ti.history[i];
+  const replies = [
+    ...ti.history.filter((h) => h.role === 'assistant').map((h) => ({ created_at: h.created_at, content: h.content })),
+    ...(ti.coach_replies_recent ?? []),
+  ].sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
+  for (const h of replies) {
     // The visible text only: the hidden "Neden?" block is not something the person was told.
-    if (h.role !== 'assistant' || !hasRequiredSafetyLine(stripMachineMarkers(h.content ?? ''), 'ed')) continue;
+    if (!hasRequiredSafetyLine(stripMachineMarkers(h.content ?? ''), 'ed')) continue;
     const at = Date.parse(h.created_at);
     return Number.isFinite(at) ? getLocalParts(ti.local.tz, new Date(at)).dateStr : ti.local.date;
   }

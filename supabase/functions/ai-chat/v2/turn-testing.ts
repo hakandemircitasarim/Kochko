@@ -9,6 +9,7 @@
 import type { AdapterDb, AdapterHelpers, DbRows } from './adapter.ts';
 import type { AdapterOutcome, AdapterPort, AdapterRequest, CommitPorts, ResolvedTarget, RpcResult, TargetSpec } from './commit.ts';
 import type { CoachInput, CoachReply, PostcheckPort } from './contracts.ts';
+import type { JudgeScope } from './postcheck.ts';
 import type { ClaimResult, LastTurnLedgerRow, PersistTurnInput, V2Deps } from './handler.ts';
 import { loadTurnInput, type TurnInput } from './input.ts';
 import { stageBPorts } from './ports.ts';
@@ -307,6 +308,11 @@ export interface FakeDepsOptions {
   judge?: (n: number) => { violation: boolean; items: unknown[] } | Response;
   /** Replace the T7 port (tests proving the code-owned lines survive ANY port). */
   postcheck?: PostcheckPort;
+  /** The prose judge's scope (default 'always'; live.ts runs LIVE_JUDGE_SCOPE — seam tests pass it). */
+  judgeScope?: JudgeScope;
+  /** Replace the quota reservation / the TurnInput read (concurrency tests: they may hold or reject). */
+  reserve?: V2Deps['quota']['reserve'];
+  loadTurnInput?: V2Deps['loadTurnInput'];
   commit?: FakeCommitPorts;
   userId?: string;
   claim?: ClaimResult;
@@ -336,7 +342,7 @@ export function fakeDeps(o: FakeDepsOptions = {}): { deps: V2Deps; rec: Recorder
     const a = o.coach ? o.coach(rec.coachCalls.length, rec.coachInputs[rec.coachInputs.length - 1]) : coachReply(DEFAULT_COACH_TEXT);
     return a instanceof Response ? a : responsesBody(a);
   });
-  const ports = stageBPorts({ transport: stageB.transport });
+  const ports = stageBPorts({ transport: stageB.transport, judgeScope: o.judgeScope });
   let ids = 0;
   const deps: V2Deps = {
     now: () => NOW,
@@ -353,8 +359,9 @@ export function fakeDeps(o: FakeDepsOptions = {}): { deps: V2Deps; rec: Recorder
       claimSideEffects: (_u, key) => { rec.journal.push({ kind: 'side_effects', key }); return Promise.resolve(o.sideEffectsClaim ?? true); },
     },
     quota: {
-      reserve: (_u, msg) => {
+      reserve: (u, msg) => {
         rec.reserved.push(msg);
+        if (o.reserve) return o.reserve(u, msg);
         return Promise.resolve(o.reserveAllowed === false
           ? { allowed: false, remaining: 0, message: 'Bugünlük kayıt limitine ulaştın.', reservedMessageId: null }
           : { allowed: true, remaining: -1, reservedMessageId: 'res-1' });
@@ -364,7 +371,7 @@ export function fakeDeps(o: FakeDepsOptions = {}): { deps: V2Deps; rec: Recorder
         ? { allowed: false, remaining: 0, message: 'Bugünlük 50 ücretsiz mesaj hakkını kullandın.' }
         : { allowed: true, remaining: 41 }),
     },
-    loadTurnInput: () => (o.turnInput ? Promise.resolve(o.turnInput) : seededTurnInput()),
+    loadTurnInput: (u, now, tz) => (o.loadTurnInput ? o.loadTurnInput(u, now, tz) : o.turnInput ? Promise.resolve(o.turnInput) : seededTurnInput()),
     understand: (req) => {
       rec.understandReqs.push(req);
       return Promise.resolve(o.stageA ? o.stageA(req, rec.understandReqs.length) : failedOutcome(req));

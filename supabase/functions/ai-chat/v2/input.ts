@@ -134,6 +134,14 @@ export interface HistoryMessage {
   created_at: string;
   /** chat_messages.actions_executed types (v1 stores [{type}]). */
   action_types: string[];
+  /** chat_messages.id — lets the handler drop THIS turn's reservation row (withoutTurnRow). */
+  id?: string;
+}
+
+/** A recent coach reply (chat_messages role 'assistant'), read only for what the coach already said. */
+export interface CoachReplyRow {
+  created_at: string;
+  content: string;
 }
 
 export interface TurnInputLoadError {
@@ -195,6 +203,12 @@ export type TurnInput = Omit<TurnInputRow, 'schema'> & {
   ledger_recent?: LedgerRecentRow[];
   /** Persistent refs that confirmed holds produced (pending_writes.result.ref, last 8 days). */
   hold_confirmed_refs?: string[];
+  /**
+   * The coach's newest replies beyond the history window (COACH_REPLIES_RECENT, last 7 days), newest
+   * first — read only so facts.ts lastReferralDay sees a specialist referral older than Stage B's
+   * eight-message window (absent: an older producer / fixture — the history window alone).
+   */
+  coach_replies_recent?: CoachReplyRow[];
 };
 
 export interface LoadTurnInputOptions {
@@ -321,8 +335,17 @@ export function turnInputQueries(userId: string, now: Date, historyLimit = TURN_
       filters: [own(), { op: 'in', column: 'status', values: ['draft', 'active'] }], order: [{ column: 'generated_at', ascending: true }],
     },
     {
-      section: 'history', table: 'chat_messages', columns: 'role, content, created_at, actions_executed',
+      // `id`: the live turn reserves its quota slot (inserts THIS message's row) while this wave reads,
+      // so the handler drops that row by id and keeps the newest TURN_INPUT_HISTORY_MESSAGES (withoutTurnRow).
+      section: 'history', table: 'chat_messages', columns: 'id, role, content, created_at, actions_executed',
       filters: [own(), { op: 'in', column: 'role', values: ['user', 'assistant'] }], order: [{ column: 'created_at', ascending: false }], limit: historyLimit,
+    },
+    {
+      // Integration 2026-10-12 (re-trial): a referral older than the history window was no fact, so the
+      // coach referred again after four quiet turns. Only the coach's own replies, newest first.
+      section: 'coach_replies', table: 'chat_messages', columns: 'created_at, content',
+      filters: [own(), { op: 'eq', column: 'role', value: 'assistant' }, { op: 'gte', column: 'created_at', value: `${shiftDateString(utcDay, -7)}T00:00:00Z` }],
+      order: [{ column: 'created_at', ascending: false }], limit: COACH_REPLIES_RECENT,
     },
     { section: 'active_intent', table: 'chat_sessions', columns: 'active_intent', filters: [own(), { op: 'eq', column: 'is_active', value: true }], limit: 1 },
     { section: 'portion_calibration', table: 'ai_summary', columns: 'portion_calibration', filters: [own()], limit: 1 },
@@ -343,6 +366,27 @@ export function turnInputQueries(userId: string, now: Date, historyLimit = TURN_
 
 /** How many of the user's newest ledger rows the loader reads (a turn writes a handful; 3 groups ≪ 80). */
 export const LEDGER_RECENT_ROWS = 80;
+
+/** How many of the coach's newest replies (last 7 days) the referral fact looks back over. */
+export const COACH_REPLIES_RECENT = 20;
+
+/**
+ * Extra history rows the LIVE loader reads (live.ts): the quota reservation inserts this turn's user row
+ * while the read wave runs, so the newest row may be the current message itself; withoutTurnRow drops
+ * it by id and trims back to TURN_INPUT_HISTORY_MESSAGES, so the window never shrinks.
+ */
+export const TURN_ROW_SLACK = 1;
+
+/**
+ * The TurnInput without THIS turn's reservation row (if the read wave saw it), history trimmed to the
+ * newest `limit` messages. The derived "son tur" fields are unaffected: they hang on the last coach
+ * reply, and the reservation row is a user row after it.
+ */
+export function withoutTurnRow(ti: TurnInput, rowId: string | null, limit = TURN_INPUT_HISTORY_MESSAGES): TurnInput {
+  const history = ti.history.filter((h) => !(rowId && h.id === rowId));
+  if (history.length === ti.history.length && history.length <= limit) return ti;
+  return { ...ti, history: history.slice(-limit) };
+}
 
 /**
  * Load the TurnInput. Every read is issued before the first await (one wave), so callers that start
@@ -394,6 +438,7 @@ export function assembleTurnInput(
       action_types: Array.isArray(m.actions_executed)
         ? (m.actions_executed as unknown[]).map((a) => (isRec(a) && typeof a.type === 'string' ? a.type : '')).filter(Boolean)
         : [],
+      ...(typeof m.id === 'string' && m.id ? { id: m.id } : {}),
     }))
     .sort((a, b) => cmp(a.created_at, b.created_at));
   let last_assistant: HistoryMessage | null = null;
@@ -612,6 +657,10 @@ export function assembleTurnInput(
   const hold_confirmed_refs = rows('holds_confirmed')
     .map((p) => (isRec(p.result) ? str(p.result.ref) : null))
     .filter((r): r is string => r !== null);
+  const coach_replies_recent: CoachReplyRow[] = rows('coach_replies')
+    .map((m) => ({ created_at: str(m.created_at) ?? '', content: typeof m.content === 'string' ? m.content : '' }))
+    .filter((m) => m.created_at !== '' && m.content !== '')
+    .sort((a, b) => cmp(b.created_at, a.created_at));
 
   const safetyRow = rows('safety')[0] ?? null;
   const tier = str(safetyRow?.ed_tier);
@@ -676,6 +725,7 @@ export function assembleTurnInput(
     load_errors,
     ledger_recent,
     hold_confirmed_refs,
+    coach_replies_recent,
   };
   return ti;
 }

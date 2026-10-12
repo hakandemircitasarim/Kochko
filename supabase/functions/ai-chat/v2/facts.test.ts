@@ -15,7 +15,6 @@ import {
 } from './facts.ts';
 import { REQUIRED_SAFETY_LINE } from '../../shared/safety-tripwires.ts';
 import type { CoachInput, V2Undo } from './contracts.ts';
-import { USER } from './testing.ts';
 import { validationContext } from './input.ts';
 import { validateDecision } from '../../shared/write-registry/mod.ts';
 import { asciiTurkishHits, pileWords, shoutedWords, SHOUT_WORDS } from '../../shared/prompt-lint.ts';

@@ -97,6 +97,12 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * burada)", +37 doc chars) — without that line Stage A sends a just-added allergy's "geri al" to
  * constraint_retract and the add's ledger group is never undone. Measured prefix ≈13919 (+31):
  * stageAPrefix 13895 → 13925 (+30, within the brief's +60 allowance). Rules and few-shots unchanged.
+ * 2026-10-12 (integration of the re-trial lanes S + U, one SCHEMA v7): each lane measured its own bytes
+ * (S ≈13971, U ≈13919); together they land at the measured merged prefix ≈14001 (rules ≈2113,
+ * few-shots ≈3339, schema ≈5189 — S's acute_evidence_quote + U's record_delete evidence_quote and its
+ * not_when line), so stageAPrefix 13975 → 14005 (U's +30 on top of S's +80; +110 over v9's 13895 in
+ * all). The prefix is ~99 % cached: ≈ $0,00002 per turn at terra's cached-input price. No prompt
+ * bytes were changed by the integration itself.
  */
 export const PROMPT_BUDGETS = {
   // 2026-10-12 (constitution v3, re-trial lane C): the coach owns its own mistakes, does not re-word a
@@ -109,5 +115,5 @@ export const PROMPT_BUDGETS = {
   understandRules: [900, 2115],
   understandFewShots: [1500, 3350],
   exemplars: [1100, 2400],
-  stageAPrefix: [9000, 13975],
+  stageAPrefix: [9000, 14005],
 } as const satisfies Record<string, readonly [number, number]>;

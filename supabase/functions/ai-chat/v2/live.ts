@@ -26,7 +26,7 @@ import type { CodeNote, QuotaClass } from '../../shared/v2-db-types.ts';
 import { createAdapter, type AdapterDb, type DbError } from './adapter.ts';
 import type { CommitPorts, ResolvedTarget, TargetSpec } from './commit.ts';
 import type { AppliedWrite, ClaimResult, V2Deps } from './handler.ts';
-import { loadTurnInput, supabaseTurnInputDb, type PgClientLike, type TurnInput } from './input.ts';
+import { loadTurnInput, supabaseTurnInputDb, TURN_INPUT_HISTORY_MESSAGES, TURN_ROW_SLACK, type PgClientLike, type TurnInput } from './input.ts';
 import { stageBPorts } from './ports.ts';
 import { LIVE_JUDGE_SCOPE } from './postcheck.ts';
 import { scheduleBackground } from './shadow.ts';
@@ -211,7 +211,9 @@ export function buildLiveV2Deps(h: IndexHelpers): V2Deps {
         return { allowed: r.allowed, remaining: r.remaining, message: r.message };
       },
     },
-    loadTurnInput: (userId, now, tz) => loadTurnInput(turnInputDb, { userId, now, clientTimezone: tz }),
+    // One history row of slack: the quota reservation runs alongside this read wave and its row (THIS
+    // message) is dropped by id in the handler (input.ts withoutTurnRow), keeping the full window.
+    loadTurnInput: (userId, now, tz) => loadTurnInput(turnInputDb, { userId, now, clientTimezone: tz, historyLimit: TURN_INPUT_HISTORY_MESSAGES + TURN_ROW_SLACK }),
     understand: (req) => understand(req),
     commitPorts,
     adapter,
