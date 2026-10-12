@@ -1,0 +1,174 @@
+{
+  "key": "40b4909a650e03756470a6909f8b9abcea5851086d3c1f8bbc1ea99f79ea83d5",
+  "recorded_at": "2026-10-12T07:57:34.650Z",
+  "fixture_ids": [
+    "ho-merdivende-nefes-darligi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":true,\"acute_evidence_quote\":\"merdiven çıkarken nefesim daraldı, 10 dakikadır geçmiyor, başım da dönüyor\",\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Merdiven çıkarken başlayan nefes darlığı 10 dakikadır sürüyor ve baş dönmesi eşlik ediyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"emergency\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"emergency_turn\"}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": true,
+          "acute_evidence_quote": "merdiven çıkarken nefesim daraldı, 10 dakikadır geçmiyor, başım da dönüyor",
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Merdiven çıkarken başlayan nefes darlığı 10 dakikadır sürüyor ve baş dönmesi eşlik ediyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "emergency",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "emergency_turn"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12799,
+        "output_tokens": 264,
+        "cached_tokens": 0,
+        "reasoning_tokens": 55
+      },
+      "latency_ms": 3738,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":true,\"acute_evidence_quote\":\"merdiven çıkarken nefesim daraldı, 10 dakikadır geçmiyor, başım da dönüyor\",\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Merdiven çıkarken başlayan nefes darlığı 10 dakikadır sürüyor ve baş dönmesi eşlik ediyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"emergency\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"emergency_turn\"}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": true,
+          "acute_evidence_quote": "merdiven çıkarken nefesim daraldı, 10 dakikadır geçmiyor, başım da dönüyor",
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Merdiven çıkarken başlayan nefes darlığı 10 dakikadır sürüyor ve baş dönmesi eşlik ediyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "emergency",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "emergency_turn"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12799,
+        "output_tokens": 248,
+        "cached_tokens": 12796,
+        "reasoning_tokens": 39
+      },
+      "latency_ms": 3457,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":true,\"acute_evidence_quote\":\"10 dakikadır geçmiyor, başım da dönüyor\",\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Merdiven çıkarken başlayan nefes darlığı 10 dakikadır sürüyor ve baş dönmesi eşlik ediyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"emergency\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"emergency_turn\"}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": true,
+          "acute_evidence_quote": "10 dakikadır geçmiyor, başım da dönüyor",
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Merdiven çıkarken başlayan nefes darlığı 10 dakikadır sürüyor ve baş dönmesi eşlik ediyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "emergency",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "emergency_turn"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12799,
+        "output_tokens": 243,
+        "cached_tokens": 12796,
+        "reasoning_tokens": 47
+      },
+      "latency_ms": 3672,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

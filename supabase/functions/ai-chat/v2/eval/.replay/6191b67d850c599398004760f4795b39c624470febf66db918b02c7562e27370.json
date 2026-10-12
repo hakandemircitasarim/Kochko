@@ -1,0 +1,249 @@
+{
+  "key": "6191b67d850c599398004760f4795b39c624470febf66db918b02c7562e27370",
+  "recorded_at": "2026-10-12T07:58:13.192Z",
+  "fixture_ids": [
+    "retrial-final2-oglen-yemegi-sabah-dokuzda"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"yesterday\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"öğlen 2 dilim pide yedim kıymalı\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"kıymalı pide\",\"as_stated\":\"2 dilim\",\"grams\":200,\"kcal\":520,\"protein_g\":22,\"carbs_g\":62,\"fat_g\":20,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.6}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "yesterday",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "öğlen 2 dilim pide yedim kıymalı",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "kıymalı pide",
+                "as_stated": "2 dilim",
+                "grams": 200,
+                "kcal": 520,
+                "protein_g": 22,
+                "carbs_g": 62,
+                "fat_g": 20,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.6
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12777,
+        "output_tokens": 277,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3430,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"yesterday\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"öğlen 2 dilim pide yedim kıymalı\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"kıymalı pide\",\"as_stated\":\"2 dilim\",\"grams\":150,\"kcal\":410,\"protein_g\":18,\"carbs_g\":49,\"fat_g\":15,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.6}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "yesterday",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "öğlen 2 dilim pide yedim kıymalı",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "kıymalı pide",
+                "as_stated": "2 dilim",
+                "grams": 150,
+                "kcal": 410,
+                "protein_g": 18,
+                "carbs_g": 49,
+                "fat_g": 15,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.6
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12777,
+        "output_tokens": 356,
+        "cached_tokens": 12774,
+        "reasoning_tokens": 77
+      },
+      "latency_ms": 4060,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"yesterday\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"öğlen 2 dilim pide yedim kıymalı\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"kıymalı pide\",\"as_stated\":\"2 dilim\",\"grams\":200,\"kcal\":510,\"protein_g\":22,\"carbs_g\":62,\"fat_g\":19,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.6}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "yesterday",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "öğlen 2 dilim pide yedim kıymalı",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "kıymalı pide",
+                "as_stated": "2 dilim",
+                "grams": 200,
+                "kcal": 510,
+                "protein_g": 22,
+                "carbs_g": 62,
+                "fat_g": 19,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.6
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12777,
+        "output_tokens": 349,
+        "cached_tokens": 12774,
+        "reasoning_tokens": 70
+      },
+      "latency_ms": 4385,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

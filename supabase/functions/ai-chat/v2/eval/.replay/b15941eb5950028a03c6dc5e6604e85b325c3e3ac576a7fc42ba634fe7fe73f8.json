@@ -1,0 +1,177 @@
+{
+  "key": "b15941eb5950028a03c6dc5e6604e85b325c3e3ac576a7fc42ba634fe7fe73f8",
+  "recorded_at": "2026-10-12T07:57:48.979Z",
+  "fixture_ids": [
+    "ho-pazar-mantisini-kaldir"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"m81\",\"reason\":\"Kullanıcı pazar günü girilen mantı kaydının yanlış olduğunu belirtti\",\"evidence_quote\":\"pazar günü yazdığın mantıyı kaldır, o yanlış girilmiş\"}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "m81",
+            "reason": "Kullanıcı pazar günü girilen mantı kaydının yanlış olduğunu belirtti",
+            "evidence_quote": "pazar günü yazdığın mantıyı kaldır, o yanlış girilmiş"
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12775,
+        "output_tokens": 231,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 39
+      },
+      "latency_ms": 3498,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"m81\",\"reason\":\"Kullanıcı pazar gününe ait mantı kaydının yanlış girildiğini belirtiyor.\",\"evidence_quote\":\"pazar günü yazdığın mantıyı kaldır, o yanlış girilmiş\"}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "m81",
+            "reason": "Kullanıcı pazar gününe ait mantı kaydının yanlış girildiğini belirtiyor.",
+            "evidence_quote": "pazar günü yazdığın mantıyı kaldır, o yanlış girilmiş"
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12775,
+        "output_tokens": 193,
+        "cached_tokens": 12772,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2764,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"m81\",\"reason\":\"Kullanıcı pazar günü yazılan mantı kaydının yanlış girildiğini belirterek kaldırılmasını istiyor.\",\"evidence_quote\":\"pazar günü yazdığın mantıyı kaldır, o yanlış girilmiş\"}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "m81",
+            "reason": "Kullanıcı pazar günü yazılan mantı kaydının yanlış girildiğini belirterek kaldırılmasını istiyor.",
+            "evidence_quote": "pazar günü yazdığın mantıyı kaldır, o yanlış girilmiş"
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12775,
+        "output_tokens": 246,
+        "cached_tokens": 12772,
+        "reasoning_tokens": 46
+      },
+      "latency_ms": 3906,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

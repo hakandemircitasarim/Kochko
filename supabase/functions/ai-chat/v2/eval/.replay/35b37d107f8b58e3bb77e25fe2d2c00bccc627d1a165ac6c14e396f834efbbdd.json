@@ -1,0 +1,231 @@
+{
+  "key": "35b37d107f8b58e3bb77e25fe2d2c00bccc627d1a165ac6c14e396f834efbbdd",
+  "recorded_at": "2026-10-12T07:58:04.338Z",
+  "fixture_ids": [
+    "retrial-mem-siddet-dusurme-ilk-soylenis"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için fıstık alerjisi bildiriyor ve şiddetini hafif olarak düzeltiyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"mild\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fıstık alerjim var ama hafif aslında\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"Fıstık derken yer fıstığını mı, Antep fıstığını mı kastediyorsun?\",\"candidate_refs\":[\"c3\",\"c6\"]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için fıstık alerjisi bildiriyor ve şiddetini hafif olarak düzeltiyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "mild",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fıstık alerjim var ama hafif aslında"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "Fıstık derken yer fıstığını mı, Antep fıstığını mı kastediyorsun?",
+          "candidate_refs": [
+            "c3",
+            "c6"
+          ]
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13015,
+        "output_tokens": 577,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 287
+      },
+      "latency_ms": 6750,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için fıstık alerjisi olduğunu ve şiddetinin hafif olduğunu bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"mild\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fıstık alerjim var ama hafif aslında\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"Fıstık derken yer fıstığını mı, Antep fıstığını mı kastediyorsun?\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için fıstık alerjisi olduğunu ve şiddetinin hafif olduğunu bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "mild",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fıstık alerjim var ama hafif aslında"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "Fıstık derken yer fıstığını mı, Antep fıstığını mı kastediyorsun?",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13015,
+        "output_tokens": 550,
+        "cached_tokens": 13012,
+        "reasoning_tokens": 268
+      },
+      "latency_ms": 6468,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için fıstık alerjisi olduğunu ve şiddetinin hafif olduğunu bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"mild\",\"body_parts\":[],\"event_date\":null,\"note\":\"Fıstığın yer fıstığı mı Antep fıstığı mı olduğu belirsiz.\",\"evidence_quote\":\"fıstık alerjim var ama hafif aslında\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"Fıstık derken yer fıstığını mı, Antep fıstığını mı kastediyorsun?\",\"candidate_refs\":[\"c3\",\"c6\"]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için fıstık alerjisi olduğunu ve şiddetinin hafif olduğunu bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "mild",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Fıstığın yer fıstığı mı Antep fıstığı mı olduğu belirsiz.",
+            "evidence_quote": "fıstık alerjim var ama hafif aslında"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "Fıstık derken yer fıstığını mı, Antep fıstığını mı kastediyorsun?",
+          "candidate_refs": [
+            "c3",
+            "c6"
+          ]
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13015,
+        "output_tokens": 634,
+        "cached_tokens": 13012,
+        "reasoning_tokens": 327
+      },
+      "latency_ms": 7291,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

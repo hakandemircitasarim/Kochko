@@ -1,0 +1,216 @@
+{
+  "key": "0a11c2ab4c3a16ddf8e1a611cc86da23da913faaa9a86eae505a6737f473196c",
+  "recorded_at": "2026-10-12T07:58:41.233Z",
+  "fixture_ids": [
+    "r3-mem-8a-sut-alerjisi-hic-olmadi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için süt alerjisi olmadığını açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"milk\",\"display_tr\":\"süt\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":\"Süt ve yoğurdu rahat tükettiğini belirtiyor.\",\"evidence_quote\":\"sut alerjim yok aslinda hic olmadi, yanlis yazmisim. sut ve yogurt rahat tuketiyorum\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için süt alerjisi olmadığını açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "milk",
+            "display_tr": "süt",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Süt ve yoğurdu rahat tükettiğini belirtiyor.",
+            "evidence_quote": "sut alerjim yok aslinda hic olmadi, yanlis yazmisim. sut ve yogurt rahat tuketiyorum"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13093,
+        "output_tokens": 396,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 131
+      },
+      "latency_ms": 4882,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için süt alerjisi olmadığını açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"milk\",\"display_tr\":\"süt\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":\"Süt ve yoğurdu rahat tükettiğini belirtiyor.\",\"evidence_quote\":\"sut alerjim yok aslinda hic olmadi, yanlis yazmisim. sut ve yogurt rahat tuketiyorum\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için süt alerjisi olmadığını açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "milk",
+            "display_tr": "süt",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Süt ve yoğurdu rahat tükettiğini belirtiyor.",
+            "evidence_quote": "sut alerjim yok aslinda hic olmadi, yanlis yazmisim. sut ve yogurt rahat tuketiyorum"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13093,
+        "output_tokens": 371,
+        "cached_tokens": 13090,
+        "reasoning_tokens": 106
+      },
+      "latency_ms": 4504,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için süt alerjisi olmadığını açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"milk\",\"display_tr\":\"süt\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":\"Süt ve yoğurdu rahat tükettiğini belirtiyor.\",\"evidence_quote\":\"sut alerjim yok aslinda hic olmadi, yanlis yazmisim. sut ve yogurt rahat tuketiyorum\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için süt alerjisi olmadığını açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "milk",
+            "display_tr": "süt",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Süt ve yoğurdu rahat tükettiğini belirtiyor.",
+            "evidence_quote": "sut alerjim yok aslinda hic olmadi, yanlis yazmisim. sut ve yogurt rahat tuketiyorum"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13093,
+        "output_tokens": 355,
+        "cached_tokens": 13090,
+        "reasoning_tokens": 90
+      },
+      "latency_ms": 4211,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

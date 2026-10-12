@@ -1,0 +1,177 @@
+{
+  "key": "3c4494dd1d33befa42ebe529a08bb8a123fd8ac3d54cd7ca4cd9e7c026bdabe5",
+  "recorded_at": "2026-10-12T07:58:13.980Z",
+  "fixture_ids": [
+    "r3-diff-11-silinen-ogun-baglamda-kalmaz"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"m22\",\"reason\":\"Kullanıcı öğle yemeği kaydının yanlış olduğunu ve silinmesini istedi\",\"evidence_quote\":\"yanlış oldu, o öğle yemeğini sil\"}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "m22",
+            "reason": "Kullanıcı öğle yemeği kaydının yanlış olduğunu ve silinmesini istedi",
+            "evidence_quote": "yanlış oldu, o öğle yemeğini sil"
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12725,
+        "output_tokens": 224,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 35
+      },
+      "latency_ms": 3286,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"m22\",\"reason\":\"Kullanıcı öğle yemeği kaydının yanlış olduğunu ve silinmesini istedi\",\"evidence_quote\":\"yanlış oldu, o öğle yemeğini sil\"}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "m22",
+            "reason": "Kullanıcı öğle yemeği kaydının yanlış olduğunu ve silinmesini istedi",
+            "evidence_quote": "yanlış oldu, o öğle yemeğini sil"
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12725,
+        "output_tokens": 187,
+        "cached_tokens": 12722,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3142,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"m22\",\"reason\":\"Kullanıcı bu öğle yemeği kaydının yanlış olduğunu ve silinmesini istiyor.\",\"evidence_quote\":\"yanlış oldu, o öğle yemeğini sil\"}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "m22",
+            "reason": "Kullanıcı bu öğle yemeği kaydının yanlış olduğunu ve silinmesini istiyor.",
+            "evidence_quote": "yanlış oldu, o öğle yemeğini sil"
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12725,
+        "output_tokens": 220,
+        "cached_tokens": 12722,
+        "reasoning_tokens": 29
+      },
+      "latency_ms": 3113,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

@@ -1,0 +1,195 @@
+{
+  "key": "d8422e4cba43b33364f0c5c057e8d85cb878b9f338f3a80493545dee37549dd1",
+  "recorded_at": "2026-10-12T08:00:12.050Z",
+  "fixture_ids": [
+    "trial-mem-yumurta-alerjisi-yanlis-yazilmis"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisi kaydının yanlış olduğunu ve alerjisi olmadığını açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"yumurta alerjisi yanlış, yumurta alerjim yok\",\"note\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisi kaydının yanlış olduğunu ve alerjisi olmadığını açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "yumurta alerjisi yanlış, yumurta alerjim yok",
+            "note": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13079,
+        "output_tokens": 314,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 93
+      },
+      "latency_ms": 5275,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisi kaydının yanlış olduğunu ve alerjisi olmadığını açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"yumurta alerjim yok\",\"note\":\"Kullanıcı önceki yumurta alerjisi bilgisinin yanlış olduğunu belirtiyor.\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisi kaydının yanlış olduğunu ve alerjisi olmadığını açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "yumurta alerjim yok",
+            "note": "Kullanıcı önceki yumurta alerjisi bilgisinin yanlış olduğunu belirtiyor."
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13079,
+        "output_tokens": 270,
+        "cached_tokens": 13076,
+        "reasoning_tokens": 39
+      },
+      "latency_ms": 4300,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisi kaydının yanlış olduğunu ve alerjisi olmadığını açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"yumurta alerjim yok\",\"note\":\"Kullanıcı önceki yumurta alerjisi kaydının yanlış olduğunu belirtiyor.\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisi kaydının yanlış olduğunu ve alerjisi olmadığını açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "yumurta alerjim yok",
+            "note": "Kullanıcı önceki yumurta alerjisi kaydının yanlış olduğunu belirtiyor."
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13079,
+        "output_tokens": 340,
+        "cached_tokens": 13076,
+        "reasoning_tokens": 108
+      },
+      "latency_ms": 6675,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

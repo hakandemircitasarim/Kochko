@@ -1,0 +1,133 @@
+{
+  "key": "18f1a43bded7be5b6750fbb4725d611137031fbeef168c59f9025f6cd4401363",
+  "recorded_at": "2026-10-12T08:02:06.352Z",
+  "fixture_ids": [
+    "bminus-bacak-gununde-bittim"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"“bittim ben” bacak antrenmanının çok yorucu geçtiğini anlatan bir deyim; kendine zarar ya da umutsuzluk ifadesi değil.\"}]},\"writes\":[{\"op\":\"workout_log\",\"day\":\"today\",\"raw\":\"bacak gününde bittim ben\",\"workout_type\":\"strength\",\"duration_min\":null,\"intensity\":\"high\",\"calories_burned\":null,\"rpe\":null,\"time_local\":null,\"strength_sets\":[],\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "“bittim ben” bacak antrenmanının çok yorucu geçtiğini anlatan bir deyim; kendine zarar ya da umutsuzluk ifadesi değil."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "workout_log",
+            "day": "today",
+            "raw": "bacak gününde bittim ben",
+            "workout_type": "strength",
+            "duration_min": null,
+            "intensity": "high",
+            "calories_burned": null,
+            "rpe": null,
+            "time_local": null,
+            "strength_sets": [],
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12773,
+        "output_tokens": 449,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 192
+      },
+      "latency_ms": 6191,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"“bacak gününde bittim ben” egzersiz sonrası aşırı yorulma/deyim olarak kullanılmış; umutsuzluk veya kendine zarar niyeti belirtmiyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":\"needs_clarification\"}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "“bacak gününde bittim ben” egzersiz sonrası aşırı yorulma/deyim olarak kullanılmış; umutsuzluk veya kendine zarar niyeti belirtmiyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": "needs_clarification"
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12773,
+        "output_tokens": 197,
+        "cached_tokens": 12770,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3138,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

@@ -1,0 +1,216 @@
+{
+  "key": "932778d0caea93fa02673b4246d63b062fbd88c644d3a1e127eaf5f26447c6e7",
+  "recorded_at": "2026-10-12T07:57:47.333Z",
+  "fixture_ids": [
+    "ho-balik-hafif-doktor-dedi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kendi balık alerjisinin şiddetinin hafif olduğu bildiriliyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"fish\",\"display_tr\":\"balık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"mild\",\"body_parts\":[],\"event_date\":null,\"note\":\"Doktor değerlendirmesiyle şiddet güncellemesi.\",\"evidence_quote\":\"doktorum balık alerjimin hafif olduğunu söyledi\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kendi balık alerjisinin şiddetinin hafif olduğu bildiriliyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "fish",
+            "display_tr": "balık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "mild",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Doktor değerlendirmesiyle şiddet güncellemesi.",
+            "evidence_quote": "doktorum balık alerjimin hafif olduğunu söyledi"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12830,
+        "output_tokens": 409,
+        "cached_tokens": 12827,
+        "reasoning_tokens": 157
+      },
+      "latency_ms": 5703,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi balık alerjisinin şiddeti hakkında güncel tıbbi bilgi bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"fish\",\"display_tr\":\"balık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"mild\",\"body_parts\":[],\"event_date\":null,\"note\":\"Doktor değerlendirmesiyle alerji şiddeti hafif olarak güncellendi.\",\"evidence_quote\":\"doktorum balık alerjimin hafif olduğunu söyledi\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi balık alerjisinin şiddeti hakkında güncel tıbbi bilgi bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "fish",
+            "display_tr": "balık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "mild",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Doktor değerlendirmesiyle alerji şiddeti hafif olarak güncellendi.",
+            "evidence_quote": "doktorum balık alerjimin hafif olduğunu söyledi"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12830,
+        "output_tokens": 406,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 143
+      },
+      "latency_ms": 4851,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi balık alerjisinin şiddeti hakkında güncel tıbbi bilgi bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"fish\",\"display_tr\":\"balık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"mild\",\"body_parts\":[],\"event_date\":null,\"note\":\"Doktor değerlendirmesine göre şiddet güncellemesi.\",\"evidence_quote\":\"doktorum balık alerjimin hafif olduğunu söyledi\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi balık alerjisinin şiddeti hakkında güncel tıbbi bilgi bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "fish",
+            "display_tr": "balık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "mild",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Doktor değerlendirmesine göre şiddet güncellemesi.",
+            "evidence_quote": "doktorum balık alerjimin hafif olduğunu söyledi"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12830,
+        "output_tokens": 384,
+        "cached_tokens": 12827,
+        "reasoning_tokens": 127
+      },
+      "latency_ms": 5148,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+  "key": "cc8b9fc8d24698349bc8f1d4178ba05005f4ee2fcc1db853f3fa4e5945aa8d23",
+  "recorded_at": "2026-10-12T08:01:55.948Z",
+  "fixture_ids": [
+    "r3-mem-2b-yemedim-iyiyim-kaldir"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"confirmation\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisinin tamamen geçtiğini ve doktorun onayladığını açıkça bildiriyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[{\"op\":\"confirm\",\"ref\":\"p1\"}],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "confirmation",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisinin tamamen geçtiğini ve doktorun onayladığını açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [
+          {
+            "op": "confirm",
+            "ref": "p1"
+          }
+        ],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13219,
+        "output_tokens": 353,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 162
+      },
+      "latency_ms": 5031,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"confirmation\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Yeni bir alerji bildirimi değil; mevcut yumurta alerjisinin tamamen geçtiğini söyleyip bekleyen kaldırma işlemini onaylıyor.\"}]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[{\"op\":\"confirm\",\"ref\":\"p1\"}],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "confirmation",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Yeni bir alerji bildirimi değil; mevcut yumurta alerjisinin tamamen geçtiğini söyleyip bekleyen kaldırma işlemini onaylıyor."
+            }
+          ]
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [
+          {
+            "op": "confirm",
+            "ref": "p1"
+          }
+        ],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13219,
+        "output_tokens": 350,
+        "cached_tokens": 13216,
+        "reasoning_tokens": 151
+      },
+      "latency_ms": 4964,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

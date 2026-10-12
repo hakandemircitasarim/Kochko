@@ -1,0 +1,254 @@
+{
+  "key": "986e329ac5c6c892e34523d59639ce0fc28334a6e4582b5190ea717a568ac9da",
+  "recorded_at": "2026-10-12T07:57:29.802Z",
+  "fixture_ids": [
+    "devir-6-alerjen-kaydi-tepki-kontrolu"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"öğlen fıstık ezmeli sandviç yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fıstık ezmeli sandviç\",\"as_stated\":\"fıstık ezmeli sandviç\",\"grams\":130,\"kcal\":310,\"protein_g\":12,\"carbs_g\":39,\"fat_g\":13,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"peanut\"],\"may_contain\":[\"milk\"],\"reference_key\":null,\"confidence\":0.55}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "öğlen fıstık ezmeli sandviç yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fıstık ezmeli sandviç",
+                "as_stated": "fıstık ezmeli sandviç",
+                "grams": 130,
+                "kcal": 310,
+                "protein_g": 12,
+                "carbs_g": 39,
+                "fat_g": 13,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten",
+                  "peanut"
+                ],
+                "may_contain": [
+                  "milk"
+                ],
+                "reference_key": null,
+                "confidence": 0.55
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12692,
+        "output_tokens": 449,
+        "cached_tokens": 12689,
+        "reasoning_tokens": 155
+      },
+      "latency_ms": 5462,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"yesterday\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"öğlen fıstık ezmeli sandviç yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fıstık ezmeli sandviç\",\"as_stated\":\"fıstık ezmeli sandviç\",\"grams\":150,\"kcal\":480,\"protein_g\":17,\"carbs_g\":52,\"fat_g\":25,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"peanut\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.55}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "yesterday",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "öğlen fıstık ezmeli sandviç yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fıstık ezmeli sandviç",
+                "as_stated": "fıstık ezmeli sandviç",
+                "grams": 150,
+                "kcal": 480,
+                "protein_g": 17,
+                "carbs_g": 52,
+                "fat_g": 25,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten",
+                  "peanut"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.55
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12692,
+        "output_tokens": 353,
+        "cached_tokens": 12689,
+        "reasoning_tokens": 60
+      },
+      "latency_ms": 4993,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"yesterday\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"öğlen fıstık ezmeli sandviç yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fıstık ezmeli sandviç\",\"as_stated\":\"fıstık ezmeli sandviç\",\"grams\":180,\"kcal\":450,\"protein_g\":16,\"carbs_g\":55,\"fat_g\":20,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"peanut\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.55}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "yesterday",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "öğlen fıstık ezmeli sandviç yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fıstık ezmeli sandviç",
+                "as_stated": "fıstık ezmeli sandviç",
+                "grams": 180,
+                "kcal": 450,
+                "protein_g": 16,
+                "carbs_g": 55,
+                "fat_g": 20,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten",
+                  "peanut"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.55
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12692,
+        "output_tokens": 403,
+        "cached_tokens": 0,
+        "reasoning_tokens": 110
+      },
+      "latency_ms": 5951,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

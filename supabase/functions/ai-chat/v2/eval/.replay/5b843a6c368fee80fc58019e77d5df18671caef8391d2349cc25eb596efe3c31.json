@@ -1,0 +1,240 @@
+{
+  "key": "5b843a6c368fee80fc58019e77d5df18671caef8391d2349cc25eb596efe3c31",
+  "recorded_at": "2026-10-12T07:58:26.678Z",
+  "fixture_ids": [
+    "r3-mem-1a-ciddi-fistik-alerjisi-beyani"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Nefes darlığı yalnızca fıstığı yanlışlıkla yeme koşulunda anlatılıyor; şu anda süren bir belirti bildirmiyor.\"},{\"hit_id\":\"tw2\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için ciddi bir fıstık alerjisi bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"severe\",\"body_parts\":[],\"event_date\":null,\"note\":\"Yanlışlıkla yediğinde nefes darlığı oluyor.\",\"evidence_quote\":\"fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"“fıstık” ile yer fıstığını mı, Antep fıstığını mı kastediyorsun?\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Nefes darlığı yalnızca fıstığı yanlışlıkla yeme koşulunda anlatılıyor; şu anda süren bir belirti bildirmiyor."
+            },
+            {
+              "hit_id": "tw2",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için ciddi bir fıstık alerjisi bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "severe",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Yanlışlıkla yediğinde nefes darlığı oluyor.",
+            "evidence_quote": "fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "“fıstık” ile yer fıstığını mı, Antep fıstığını mı kastediyorsun?",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13082,
+        "output_tokens": 477,
+        "cached_tokens": 12432,
+        "reasoning_tokens": 132
+      },
+      "latency_ms": 5584,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"benign\",\"reason\":\"Nefes darlığı şu anda yaşanan bir belirti olarak değil, yanlışlıkla alerjen yenirse oluşan koşullu reaksiyon olarak anlatılıyor.\"},{\"hit_id\":\"tw2\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için ciddi bir fıstık alerjisi bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"severe\",\"body_parts\":[],\"event_date\":null,\"note\":\"Yanlışlıkla yediğinde nefes darlığı oluyor.\",\"evidence_quote\":\"fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"“Fıstık” ile yer fıstığını mı, Antep fıstığını mı kastediyorsun?\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "benign",
+              "reason": "Nefes darlığı şu anda yaşanan bir belirti olarak değil, yanlışlıkla alerjen yenirse oluşan koşullu reaksiyon olarak anlatılıyor."
+            },
+            {
+              "hit_id": "tw2",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için ciddi bir fıstık alerjisi bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "severe",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Yanlışlıkla yediğinde nefes darlığı oluyor.",
+            "evidence_quote": "fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "“Fıstık” ile yer fıstığını mı, Antep fıstığını mı kastediyorsun?",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13082,
+        "output_tokens": 470,
+        "cached_tokens": 13079,
+        "reasoning_tokens": 125
+      },
+      "latency_ms": 5735,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Fıstık maruziyetinde nefes darlığı yaşadığını belirtiyor; şu anda sürmekte olan bir belirti bildirmiyor.\"},{\"hit_id\":\"tw2\",\"reading\":\"positive\",\"reason\":\"Kendisi için ciddi bir fıstık alerjisi bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"severe\",\"body_parts\":[],\"event_date\":null,\"note\":\"Yanlışlıkla yediğinde nefes darlığı oluyor; fıstığın yer fıstığı mı Antep fıstığı mı olduğu net değil.\",\"evidence_quote\":\"fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"Alerji hangi fıstık türüne: yer fıstığı mı, Antep fıstığı mı?\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Fıstık maruziyetinde nefes darlığı yaşadığını belirtiyor; şu anda sürmekte olan bir belirti bildirmiyor."
+            },
+            {
+              "hit_id": "tw2",
+              "reading": "positive",
+              "reason": "Kendisi için ciddi bir fıstık alerjisi bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "severe",
+            "body_parts": [],
+            "event_date": null,
+            "note": "Yanlışlıkla yediğinde nefes darlığı oluyor; fıstığın yer fıstığı mı Antep fıstığı mı olduğu net değil.",
+            "evidence_quote": "fistiga alerjim var, ciddi. yanlislikla yersem nefesim daraliyor"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "Alerji hangi fıstık türüne: yer fıstığı mı, Antep fıstığı mı?",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 13082,
+        "output_tokens": 541,
+        "cached_tokens": 13079,
+        "reasoning_tokens": 179
+      },
+      "latency_ms": 6569,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}
