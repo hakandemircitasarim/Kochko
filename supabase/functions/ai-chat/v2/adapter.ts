@@ -308,8 +308,11 @@ async function confirmRestated(d: AdapterDeps, req: AdapterRequest, kind: string
   const stored = ex ? str(ex.subject) : null;
   if (!stored) return null;
   const cur = await d.db.selectOne('user_constraints', 'id, severity', { user_id: req.userId, kind, subject: stored, active: true });
+  // A failed read is a failed write, never "row gone": falling through would upsert the stated
+  // (possibly lower) severity onto a v2-subject row with no hold.
+  if (cur.error) return fail('write_failed');
   const id = cur.data && typeof cur.data.id === 'string' ? cur.data.id : null;
-  if (cur.error || !id) return null;
+  if (!id) return null;
   const now = (d.now ?? (() => new Date()))().toISOString();
   // Only an INCREASE lands without the user's explicit "evet" (registry iki_adimli_siddet_dusurme
   // holds a downgrade; its confirmed re-validation carries the rule as a FLAG). A downgrade reaching

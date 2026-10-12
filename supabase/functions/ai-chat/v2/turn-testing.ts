@@ -141,7 +141,7 @@ export interface FakeAdapterDb extends AdapterDb {
   rows: Record<string, Record<string, unknown>[]>;
 }
 
-/** In-memory tables; inserts get ids; `fail[table]` makes that table's writes error out. */
+/** In-memory tables; inserts get ids; `fail[table]` makes that table's writes error out, `fail['select:<table>']` its reads. */
 export function fakeAdapterDb(seed: Record<string, Record<string, unknown>[]> = {}, opts: {
   fail?: Record<string, string>;
   rpc?: (name: string, args: Record<string, unknown>) => { data: unknown; error: { message: string } | null } | undefined;
@@ -179,7 +179,8 @@ export function fakeAdapterDb(seed: Record<string, Record<string, unknown>[]> = 
     },
     selectOne(table, _columns, match) {
       db.calls.push({ kind: 'selectOne', table, match });
-      const r = (rows[table] ?? []).find((x) => matches(x, match)) ?? null;
+      if (err(`select:${table}`)) return Promise.resolve({ data: null, error: err(`select:${table}`) });
+      const r =(rows[table] ?? []).find((x) => matches(x, match)) ?? null;
       return Promise.resolve({ data: r ? { ...r } : null, error: null });
     },
     rpc(name, args) {

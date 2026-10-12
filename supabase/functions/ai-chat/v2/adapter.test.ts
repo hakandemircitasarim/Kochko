@@ -222,6 +222,23 @@ Deno.test('constraint_add: an UNCONFIRMED downgrade reaching the writer (row wen
   assertEquals((led.meta as Record<string, unknown>).severity_kept, true);
 });
 
+Deno.test('constraint_add restatement whose stored-row READ fails → write_failed, the stored severity is never lowered', async () => {
+  const db = fakeAdapterDb({ user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'peanut', severity: 'severe', active: true }] }, { fail: { 'select:user_constraints': 'boom' } });
+  const ti = await seededTurnInput((t) => {
+    const row = t.user_constraints.find((c) => c.id === 'uc-1');
+    if (row) Object.assign(row, { subject: 'peanut', severity: 'moderate' });
+  });
+  const refs = turnRefs(ti);
+  const msg = 'fıstık alerjim var ama hafif';
+  const v = validateChannelItems('writes', [{ ...w('constraint_add'), subject_id: 'peanut', display_tr: 'fıstık', severity: 'mild', evidence_quote: msg }], validationContext(ti, msg, NOW, refs))[0];
+  assert(v.row, JSON.stringify(v.issues));
+  const h = fakeHelpers({ db });
+  const out = await createAdapter({ db, helpers: h }).apply({ userId: USER, turnId: 'turn-1', today: '2026-10-07', op: v.op, row: v.row!, verdict: v, replaces: null, refRow: null });
+  assertEquals(out.ok, false);
+  assertEquals(db.rows.user_constraints[0].severity, 'severe');
+  assertEquals(h.synced.length, 0, 'no fall-through upsert');
+});
+
 Deno.test('constraint_add: a severity INCREASE still lands in one step (mild → severe)', async () => {
   const db = fakeAdapterDb({ user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', severity: 'mild', active: true }] });
   const ti = await seededTurnInput((t) => {
