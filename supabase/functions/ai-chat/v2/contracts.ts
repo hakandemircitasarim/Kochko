@@ -84,6 +84,31 @@ export interface V2Flag {
   note_tr: string;
 }
 
+/**
+ * A record op that LANDED (record_delete / record_restore_metric), with its result from the writer's
+ * reversed[] rows: Stage B states the removal and the value that is left (facts.ts SİLİNDİ / GERİ
+ * GETİRİLDİ), and KULLANICI DURUMU marks the numbers it touched as pre-turn. Code arithmetic on the
+ * writer's own rows — never a guess (re-trial 2026-10-12: "tartı kaydın yeniden 88 kg" after an undo
+ * that left no weight).
+ */
+export interface V2Undo {
+  op: string;
+  /** The turn token the model named (KAYITLAR / KISITLAR ref). */
+  ref: string | null;
+  /** The receipt line (what was removed, what is left). */
+  line: string | null;
+  /** The record's day (the ref's), for "bugün/dün için … kalmadı". */
+  day: string | null;
+  /** Day metrics the undo changed: first value touched → value left (null = nothing left). */
+  metrics: Array<{ field: string; before: number | null; after: number | null }>;
+  /** profiles.weight_kg after the undo when it changed (115 re-derives it from the latest weigh-in). */
+  profile_weight_after?: number | null;
+  /** Something came back (a corrected record's previous value / row). */
+  restored: boolean;
+  /** Spine rows switched off (a just-added constraint's ledger group). */
+  constraints_removed: number;
+}
+
 export interface CommitResult {
   turnId: string;
   receipts: V2Receipt[];
@@ -92,6 +117,8 @@ export interface CommitResult {
   flags: V2Flag[];
   writtenRefs: string[];
   exposures: { allergens: string[]; source: 'meal' | 'supplement'; ref: string }[];
+  /** Record ops that landed this turn, with their result (absent = none / an older producer). */
+  undos?: V2Undo[];
 }
 
 // ─── T6: Stage B ─────────────────────────────────────────────────────────────────────────────────

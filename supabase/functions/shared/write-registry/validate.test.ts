@@ -5,7 +5,9 @@
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
 import { ACUTE_EVIDENCE_CODE, collectRefs, freezeForHold, validateChannelItems, validateConfirmedHold, validateDecision, type WriteVerdict } from './validate.ts';
-import { SAMPLE_WRITES, sampleContext, sampleDecision, sampleMeal } from './samples.ts';
+import { SAMPLE_REFS, SAMPLE_TODAY, SAMPLE_WRITES, sampleContext, sampleDecision, sampleMeal } from './samples.ts';
+import type { RenderedRef } from './refs.ts';
+import { undoQuestionTr } from './ops/records.ts';
 import type { ValidationContext } from './dsl.ts';
 import { SCHEMA_VERSION } from './registry.ts';
 import { NOT_WRITTEN_REASONS } from './envelope.ts';
@@ -310,7 +312,7 @@ Deno.test('meal: "1 muz daha" 10 minutes after a banana is a NEW write — no na
 // ─── refs: only what was rendered this turn ──────────────────────────────────
 
 Deno.test('ref not in the rendered set → REJECT (never guessed): delete m99, replaces d9, retract c9', () => {
-  const del = one('record_ops', { op: 'delete', ref: 'm99', reason: 'sil' });
+  const del = one('record_ops', { op: 'delete', ref: 'm99', reason: 'sil', evidence_quote: null });
   assertEquals(del.verdict, 'REJECT');
   assertEquals(del.issues[0].code, 'ref_listede_yok');
   assertEquals(del.issues[0].failure_class, 'invalid_ref');
@@ -322,19 +324,101 @@ Deno.test('ref not in the rendered set → REJECT (never guessed): delete m99, r
 Deno.test('refs: wrong kind / wrong record type / already undone / later write on the same field → REJECT', () => {
   assertEquals(one('writes', water({ replaces: 'm12' })).issues[0].code, 'ref_turu');
   assertEquals(one('writes', water({ replaces: 'd4' })).issues[0].code, 'ref_hedefi', 'd4 is sleep, not water');
-  assertEquals(one('record_ops', { op: 'delete', ref: 'd5', reason: 'x' }).issues[0].code, 'zaten_geri_alindi');
-  const later = one('record_ops', { op: 'delete', ref: 'd6', reason: 'x' });
+  assertEquals(one('record_ops', { op: 'delete', ref: 'd5', reason: 'x', evidence_quote: null }).issues[0].code, 'zaten_geri_alindi');
+  const later = one('record_ops', { op: 'delete', ref: 'd6', reason: 'x', evidence_quote: null });
   assertEquals(later.verdict, 'REJECT');
   assert(codes(later).includes('sonraki_yazma_var'));
-  assertEquals(one('record_ops', { op: 'delete', ref: 'c1', reason: 'x' }).issues[0].code, 'ref_turu', 'safety rows are not deletable');
+  // A stored constraint is not undone by record_delete: only the user's newest constraint_add is
+  // (RenderedRef.undo_add) — an older one stays constraint_retract's, with its own two-step bar.
+  const spine = one('record_ops', { op: 'delete', ref: 'c1', reason: 'x', evidence_quote: null });
+  assertEquals(spine.verdict, 'REJECT');
+  assertEquals(spine.issues[0].code, 'kisit_yalniz_son_ekleme', 'an older safety row is not deletable here');
+  assertEquals(spine.issues[0].failure_class, 'not_deletable');
+  assertEquals(spine.repairable, true, 'one repair call may turn it into constraint_retract');
 });
 
 Deno.test('final2#2: "geri al" after a water log deletes exactly d3 — the dinner is untouched', () => {
-  const d = validateDecision(sampleDecision({ intent: { primary: 'correction', is_hypothetical: false, about_other_person: false }, record_ops: [{ op: 'delete', ref: 'd3', reason: 'yanlış' }] }), sampleContext({ user_message: 'yok o yanlış geri al' }));
+  const d = validateDecision(sampleDecision({ intent: { primary: 'correction', is_hypothetical: false, about_other_person: false }, record_ops: [{ op: 'delete', ref: 'd3', reason: 'yanlış', evidence_quote: null }] }), sampleContext({ user_message: 'yok o yanlış geri al' }));
   assertEquals(d.verdicts.length, 1);
   assertEquals(d.verdicts[0].verdict, 'COMMIT');
   assertEquals(d.verdicts[0].target_ref, 'd3');
   assertEquals(d.verdicts[0].envelope, 'undo');
+});
+
+// ─── re-trial 2026-10-12: record_delete evidence + the remote-delete question (lane U) ───────
+
+const YESTERDAY_W: RenderedRef = { kind: 'd', target: 'weight', op: 'body_weight', day: '2026-10-05', summary_tr: 'tartı: 81,6 kg', snapshot: { value: 81.6 } };
+const TODAY_W = (extra: Partial<RenderedRef> = {}): RenderedRef =>
+  ({ kind: 'd', target: 'weight', op: 'body_weight', day: SAMPLE_TODAY, summary_tr: 'tartı: 88 kg', snapshot: { value: 88 }, ...extra });
+const del = (ref: string, evidence_quote: string | null = null) => ({ op: 'delete', ref, reason: 'geri al', evidence_quote });
+const delCtx = (msg: string, refs: Record<string, RenderedRef>) => sampleContext({ user_message: msg, refs: { ...SAMPLE_REFS, ...refs } });
+
+Deno.test('record_delete: a message about "bu sabah" deleting YESTERDAY\'s weigh-in is held with a question naming it (final2 collateral)', () => {
+  const v = one('record_ops', del('d9', 'düzeltmeyi geri al'), delCtx('ama ben düzeltmeyi geri al dedim, bu sabah 82 kiloydum', { d9: YESTERDAY_W }));
+  assertEquals(v.verdict, 'ASK', JSON.stringify(v.issues));
+  assertEquals(v.issues.map((i) => i.code), ['uzak_kayit_silme']);
+  assertEquals(v.question_tr, 'Dünkü 81,6 kg tartını silmemi istiyor musun?');
+  assertEquals(v.hold_op, 'record_delete');
+  assertEquals(v.row, null, 'nothing is deleted on this turn');
+});
+
+Deno.test('record_delete: the last turn\'s own write of today is the one-step undo; any other record is asked first', () => {
+  const msg = 'vazgeçtim geri al';
+  assertEquals(one('record_ops', del('d9'), delCtx(msg, { d9: TODAY_W({ last_turn: true }) })).verdict, 'COMMIT', 'last turn + today = one step');
+  assertEquals(one('record_ops', del('d9', 'geri al'), delCtx(msg, { d9: TODAY_W({ last_turn: true }) })).verdict, 'COMMIT', 'a verbatim quote');
+  const older = one('record_ops', del('d9'), delCtx(msg, { d9: TODAY_W() }));
+  assertEquals([older.verdict, older.issues[0]?.code], ['ASK', 'uzak_kayit_silme'], 'today but an older turn');
+  assertEquals(older.question_tr, 'Bugünkü 88 kg tartını silmemi istiyor musun?');
+  // A record the user had confirmed through a hold is asked even right after (and a correction says what comes back).
+  const held = one('record_ops', del('d9'), delCtx(msg, { d9: TODAY_W({ last_turn: true, confirmed_hold: true, correction: true }) }));
+  assertEquals(held.verdict, 'ASK');
+  assertStringIncludes(held.issues[0].tr, 'onayıyla yazılmış');
+  assertEquals(held.question_tr, 'Bugünkü tartı düzeltmesini (88 kg) geri almamı istiyor musun? Düzeltmeden önceki kayıt geri gelir.');
+  // A quote the user never wrote is not a deletion request: asked, never committed.
+  const fake = one('record_ops', del('d9', 'dünkü kaydı da sil'), delCtx(msg, { d9: TODAY_W({ last_turn: true }) }));
+  assertEquals([fake.verdict, fake.issues[0]?.code], ['ASK', 'silme_alintisi']);
+});
+
+Deno.test('record_restore_metric takes a write back through the same writer: the same remote-record bar', () => {
+  const v = one('record_ops', { op: 'restore_metric', ref: 'd9', reason: 'eski değer' }, delCtx('eski değerine döndür', { d9: YESTERDAY_W }));
+  assertEquals([v.verdict, v.hold_op, v.issues[0]?.code], ['ASK', 'record_restore_metric', 'uzak_kayit_silme']);
+  assertEquals(one('record_ops', { op: 'restore_metric', ref: 'd9', reason: 'x' }, delCtx('geri al', { d9: TODAY_W({ last_turn: true }) })).verdict, 'COMMIT');
+});
+
+Deno.test('record_delete: a confirmed hold commits (its question was answered) — the asks become notes', () => {
+  const ctx = delCtx('evet', { d9: YESTERDAY_W });
+  const v = validateConfirmedHold('record_delete', del('d9', 'düzeltmeyi geri al'), ctx);
+  assert(v);
+  assertEquals(v.verdict, 'FLAG', JSON.stringify(v.issues));
+  assert(v.row, 'a confirmed delete is written');
+  assert(v.issues.every((i) => i.level === 'flag' && i.tr.startsWith('kullanıcı onayladı — ')), JSON.stringify(v.issues));
+});
+
+Deno.test('record_delete on a c#: only the just-added constraint, always behind one safety question naming it', () => {
+  const fresh: RenderedRef = {
+    kind: 'c', target: 'constraint', undo_add: true, user_summary_tr: 'susam alerjisi',
+    constraint: { kind: 'allergen', subject: 'sesame', severity: null },
+  };
+  const v = one('record_ops', del('c7', 'geri al'), delCtx('geri al', { c7: fresh }));
+  assertEquals(v.verdict, 'ASK', JSON.stringify(v.issues));
+  assertEquals(v.issues.map((i) => i.code), ['son_eklenen_kisit']);
+  assertEquals(v.question_tr, 'Az önce eklenen susam alerjisi kaydını geri almamı istiyor musun? Güvenlik filtrelerin buna göre değişecek.');
+  const confirmed = validateConfirmedHold('record_delete', del('c7'), delCtx('evet', { c7: fresh }));
+  assertEquals(confirmed?.verdict, 'FLAG', 'the confirmation turn writes it');
+  // Something was written after the add (it is no longer the newest write): constraint_retract's job.
+  const stale = validateConfirmedHold('record_delete', del('c7'), delCtx('evet', { c7: { ...fresh, undo_add: false } }));
+  assertEquals(stale?.verdict, 'REJECT');
+});
+
+Deno.test('undoQuestionTr words each record kind for the user (no ids, Turkish numbers)', () => {
+  const t = SAMPLE_TODAY;
+  assertEquals(undoQuestionTr({ kind: 'd', target: 'water', day: t, snapshot: { value: 1.4 } }, t), 'Bugünkü son su kaydını geri almamı istiyor musun? (gün toplamı şu an 1,4 L)');
+  assertEquals(undoQuestionTr({ kind: 'd', target: 'sleep', day: '2026-10-02', snapshot: { value: 7 } }, t), '2 Eki tarihli uyku kaydını (7 saat) silmemi istiyor musun?');
+  assertEquals(undoQuestionTr({ kind: 'd', target: 'steps', day: t, snapshot: { value: 12000 } }, t), 'Bugünkü adım kaydını (12.000 adım) silmemi istiyor musun?');
+  assertEquals(undoQuestionTr({ kind: 'm', target: 'meal', day: '2026-10-05', summary_tr: 'x [model]', user_summary_tr: 'lahmacun 2 dilim · toplam 500 kcal' }, t),
+    'Dünkü öğün kaydını (lahmacun 2 dilim · toplam 500 kcal) silmemi istiyor musun?');
+  assertEquals(undoQuestionTr({ kind: 'l', target: 'lab', summary_tr: 'D vitamini 12 ng/mL' }, t), 'Tahlil kaydını (D vitamini 12 ng/mL) silmemi istiyor musun?');
+  assertEquals(undoQuestionTr(undefined, t), 'Bu kaydı silmemi istiyor musun?');
 });
 
 // ─── suspicious past record (owner decision 2026-10-06) ──────────────────────

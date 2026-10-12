@@ -11,7 +11,7 @@ import { SCHEMA_VERSION, validateDecision } from '../../shared/write-registry/mo
 import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleDecision, sampleMeal } from '../../shared/write-registry/samples.ts';
 import {
   executeCommit, exposuresOf, holdClassOf, holdPayloadOf, isHoldPayloadV2, isSafetyHold, LEDGER_MISSING_NOTE, mealPayload, metricPayload, pathKeys, planCommit,
-  setAtPath, targetOf, thawHoldArgs, type CommitPlan,
+  setAtPath, targetOf, thawHoldArgs, undoReason, type CommitPlan,
 } from './commit.ts';
 import { turnRefs, validationContext, type TurnInput } from './input.ts';
 import { NOW, USER } from './testing.ts';
@@ -130,11 +130,119 @@ Deno.test('severe allergen removal → SAFETY hold; the payload holds the row id
 Deno.test('record_delete: a meal by row ref, a water value by its metric target', async () => {
   const ti = await seededTurnInput();
   const d = tokenOf(ti, (x) => x.target === 'water' && x.day === '2026-10-07');
-  const { plan } = planFor(ti, sampleDecision({ record_ops: [{ op: 'delete', ref: 'm2', reason: 'yanlış' }, { op: 'delete', ref: d, reason: 'yanlış' }] }), 'yok o yanlış geri al');
+  // m3 and today's water are the last turn's own writes: the one-step undo.
+  const { plan } = planFor(ti, sampleDecision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış', evidence_quote: null }, { op: 'delete', ref: d, reason: 'yanlış', evidence_quote: null }] }), 'yok o yanlış geri al');
   assertEquals(plan.steps.map((s) => s.kind), ['record_delete', 'record_delete']);
   const [a, b] = plan.steps;
   if (a.kind === 'record_delete') assertEquals(a.target.kind, 'row');
   if (b.kind === 'record_delete') assertEquals(b.target.kind, 'metric');
+});
+
+// ─── re-trial 2026-10-12 (lane U): remote deletes are held; a just-added constraint is one confirmation ───
+
+Deno.test('record_delete of an OLDER turn\'s record → a record_delete hold naming it (row id, never the token); nothing deleted', async () => {
+  const ti = await seededTurnInput();
+  const yesterdayWeight = tokenOf(ti, (x) => x.target === 'weight' && x.day === '2026-10-06');
+  const { plan } = planFor(ti, sampleDecision({ record_ops: [{ op: 'delete', ref: yesterdayWeight, reason: 'geri al', evidence_quote: null }] }), 'geri al');
+  assertEquals(plan.steps.map((s) => s.kind), ['hold_open']);
+  const s = plan.steps[0];
+  if (s.kind !== 'hold_open') return;
+  assertEquals(s.holdOp, 'record_delete');
+  assertEquals(s.opts.hold_class, 'ask');
+  assertEquals(s.opts.reason_code, 'uzak_kayit_silme');
+  assertEquals(s.opts.subject_key, 'record_delete:dm-6:weight_kg');
+  assertEquals(s.payload.refs, [{ path: 'ref', table: 'daily_metrics', id: 'dm-6', field: 'weight_kg' }]);
+  assertEquals(s.verdict.question_tr, 'Dünkü 70,4 kg tartını silmemi istiyor musun?');
+  const { result, ports } = await run(plan);
+  assertEquals(ports.rpcCalls.map((c) => c.name), ['v2_hold_open'], 'no w_record_delete on the asking turn');
+  assertEquals(result.holds[0].question_tr, 'Dünkü 70,4 kg tartını silmemi istiyor musun?');
+});
+
+Deno.test('a CONFIRMED record_delete hold runs the delete and closes its hold; the receipt and undos carry the result', async () => {
+  const ti = await seededTurnInput((t) => {
+    t.pending_writes = [{
+      id: 'pw-del', user_id: USER, op: 'record_delete', status: 'pending', expires_at: '2026-10-08T12:00:00Z', created_at: '2026-10-07T09:58:15Z',
+      hold_class: 'ask', reason_code: 'uzak_kayit_silme', schema_version: SCHEMA_VERSION, turn_id: 'turn-0',
+      payload: { v: 2, op: 'record_delete', schema_version: SCHEMA_VERSION, args: { op: 'delete', ref: null, reason: 'geri al', evidence_quote: null }, refs: [{ path: 'ref', table: 'daily_metrics', id: 'dm-6', field: 'weight_kg' }] },
+    }];
+  });
+  const p = ti.pending.find((x) => x.id === 'pw-del')!;
+  const { plan } = planFor(ti, sampleDecision({ pending_ops: [{ op: 'confirm', ref: p.ref }] }), 'evet');
+  assertEquals(plan.steps.map((s) => s.kind), ['record_delete']);
+  const s = plan.steps[0];
+  if (s.kind !== 'record_delete') return;
+  assertEquals(s.pendingId, 'pw-del');
+  const reversed = [
+    { write_id: 'r1', table: 'profiles', row_id: USER, ref: null, field_set: ['weight_kg'], before: { weight_kg: 70.4 }, after: { weight_kg: 69.8 } },
+    { write_id: 'r2', table: 'daily_metrics', row_id: 'dm-6', ref: 'w3', field_set: ['weight_kg'], before: { weight_kg: 70.4 }, after: { weight_kg: null } },
+  ];
+  const ports = fakeCommitPorts({ rpc: (name, args) => name === 'w_record_delete'
+    ? { ok: true, op: 'record_delete', turn_id: args.p_turn_id, group_id: 'g4', scope: 'record', target: {}, reversed, needs_review: false }
+    : undefined });
+  const { result } = await run(plan, ports);
+  assertEquals(ports.rpcCalls.map((c) => c.name), ['w_record_delete', 'v2_hold_resolve']);
+  assertEquals(ports.rpcCalls[1].args.p_status, 'confirmed');
+  assertEquals(result.receipts[0].user_line, 'Kayıt geri alındı — tartı 70,4 kg kaldırıldı; dün için tartı kaydı kalmadı · profildeki kilo 69,8 kg');
+  assertEquals(result.undos, [{
+    op: 'record_delete', ref: s.verdict.args.ref as string, line: result.receipts[0].user_line, day: '2026-10-06',
+    metrics: [{ field: 'weight_kg', before: 70.4, after: null }], profile_weight_after: 69.8, restored: false, constraints_removed: 0,
+  }]);
+  // A refused delete still closes the hold (a stray second "evet" must not re-run it).
+  const refused = fakeCommitPorts({ rpc: (name) => (name === 'w_record_delete' ? { ok: false, op: 'record_delete', failure_class: 'later_write', detail: {} } : undefined) });
+  await run(plan, refused);
+  assertEquals(refused.rpcCalls.map((c) => [c.name, c.args.p_status ?? null]), [['w_record_delete', null], ['v2_hold_resolve', 'failed']]);
+});
+
+Deno.test('a just-added constraint: record_delete c# → SAFETY hold; confirmed → its constraint_add GROUP undone by write id', async () => {
+  const ti = await seededTurnInput((t) => {
+    t.user_constraints.push({ id: 'uc-new', user_id: USER, kind: 'allergen', subject: 'sesame', severity: null, body_parts: [], active: true, source: 'user_stated', stated_at: '2026-10-07T09:58:12Z' });
+    t.turn_writes = [{
+      id: 'tw-add', seq: 50, ref: null, op: 'constraint_add', table_name: 'user_constraints', row_id: 'uc-new', for_date: null, field_set: ['active'],
+      before: { active: false }, is_primary: true, group_id: 'g-add', turn_id: 'turn-prev', reverses: null, undone_at: null,
+      created_at: '2026-10-07T09:58:12Z', meta: {}, user_id: USER,
+    }];
+  });
+  const refs = turnRefs(ti);
+  const c = Object.entries(refs.rendered).find(([, r]) => r.kind === 'c' && r.constraint?.subject === 'sesame')![0];
+  assertEquals(refs.rendered[c].undo_add, true);
+  const { plan } = planFor(ti, sampleDecision({ record_ops: [{ op: 'delete', ref: c, reason: 'yeni eklenen susamı geri al', evidence_quote: 'geri al' }] }), 'geri al');
+  const s = plan.steps[0];
+  assertEquals(s.kind, 'hold_open');
+  if (s.kind !== 'hold_open') return;
+  assertEquals([s.holdOp, s.opts.hold_class, s.opts.reason_code], ['record_delete', 'safety', 'son_eklenen_kisit']);
+  assertEquals(s.payload.refs, [{ path: 'ref', table: 'user_constraints', id: 'uc-new' }]);
+  assertEquals(targetOf(c, refs), { kind: 'ledger_group', table: 'user_constraints', id: 'uc-new', op: 'constraint_add', token: c });
+  // The confirmation turn: the delete runs as the add's group (write id), never by the c# ref (108: not_deletable).
+  const confirmTi = await seededTurnInput((t) => {
+    t.user_constraints.push({ id: 'uc-new', user_id: USER, kind: 'allergen', subject: 'sesame', severity: null, body_parts: [], active: true, source: 'user_stated', stated_at: '2026-10-07T09:58:12Z' });
+    t.turn_writes = [{
+      id: 'tw-add', seq: 50, ref: null, op: 'constraint_add', table_name: 'user_constraints', row_id: 'uc-new', for_date: null, field_set: ['active'],
+      before: { active: false }, is_primary: true, group_id: 'g-add', turn_id: 'turn-prev', reverses: null, undone_at: null,
+      created_at: '2026-10-07T09:58:12Z', meta: {}, user_id: USER,
+    }];
+    t.pending_writes = [{
+      id: 'pw-c', user_id: USER, op: 'record_delete', status: 'pending', expires_at: '2026-10-08T12:00:00Z', created_at: '2026-10-07T09:58:16Z',
+      hold_class: 'safety', reason_code: 'son_eklenen_kisit', schema_version: SCHEMA_VERSION, turn_id: 'turn-ask', payload: s.payload,
+    }];
+  });
+  const p = confirmTi.pending.find((x) => x.id === 'pw-c')!;
+  const confirmed = planFor(confirmTi, sampleDecision({ pending_ops: [{ op: 'confirm', ref: p.ref }] }), 'evet').plan;
+  assertEquals(confirmed.steps.map((x) => x.kind), ['record_delete']);
+  const reversed = [{ write_id: 'r1', table: 'user_constraints', row_id: 'uc-new', ref: null, field_set: ['active'], before: { active: true }, after: { active: false } }];
+  const ports = fakeCommitPorts({ rpc: (name, args) => name === 'w_record_delete'
+    ? { ok: true, op: 'record_delete', turn_id: args.p_turn_id, group_id: 'g5', scope: 'group', target: {}, reversed, needs_review: false }
+    : undefined });
+  const { result } = await run(confirmed, ports);
+  assertEquals(ports.rpcCalls[0].args.p_target, { write_id: 'wid-constraint-add' });
+  assertEquals(result.receipts[0].ok, true);
+  assertStringIncludes(result.receipts[0].user_line ?? '', 'artık kısıtlarında yok');
+  assertEquals(result.undos?.[0].constraints_removed, 1);
+});
+
+Deno.test('undoReason: a model reason reading exactly "replaced" never switches a user undo onto the supersede path (115)', () => {
+  assertEquals(undoReason('replaced'), 'replaced (kullanıcı)');
+  assertEquals(undoReason('yanlış kayıt'), 'yanlış kayıt');
+  assertEquals(undoReason(''), null);
 });
 
 Deno.test('record_update of a meal → the patch through w_meal_apply with replaces = that record (one transaction)', async () => {
@@ -393,7 +501,7 @@ Deno.test('an adapter write whose ledger row did not land → receipt says it ca
 Deno.test('execute record_delete: resolves the target, calls w_record_delete by persistent ref → "Kayıt geri alındı"', async () => {
   const ti = await seededTurnInput();
   const d = tokenOf(ti, (x) => x.target === 'water' && x.day === '2026-10-07');
-  const { plan } = planFor(ti, sampleDecision({ record_ops: [{ op: 'delete', ref: d, reason: 'yanlış' }] }), 'yok o yanlış geri al');
+  const { plan } = planFor(ti, sampleDecision({ record_ops: [{ op: 'delete', ref: d, reason: 'yanlış', evidence_quote: null }] }), 'yok o yanlış geri al');
   const { result, ports } = await run(plan);
   assertEquals(ports.resolved[0].kind, 'metric');
   assertEquals(ports.rpcCalls[0].name, 'w_record_delete');

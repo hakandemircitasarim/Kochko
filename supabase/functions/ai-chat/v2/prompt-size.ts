@@ -91,6 +91,12 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * hiçbir kaydı silmez" (duzeltme_sorusu teaches it), rule 9/10/13 wording. Measured: rules ≈2113,
  * few-shots ≈3339, schema ≈5170, prefix ≈13971. Unavoidable raise inside the brief's +80: rules
  * 2085 → 2115 (+30), stageAPrefix 13895 → 13975 (+80); few-shots unchanged.
+ * 2026-10-12 (SCHEMA_VERSION v7, re-trial lane U — undo / record ops): record_delete's strict shape
+ * gains evidence_quote (`["string","null"]` + its `required` entry, +61 schema chars) and its not_when
+ * line names the one constraint it may undo ("eski kısıt (constraint_retract; son turda eklenen kısıt
+ * burada)", +37 doc chars) — without that line Stage A sends a just-added allergy's "geri al" to
+ * constraint_retract and the add's ledger group is never undone. Measured prefix ≈13919 (+31):
+ * stageAPrefix 13895 → 13925 (+30, within the brief's +60 allowance). Rules and few-shots unchanged.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],

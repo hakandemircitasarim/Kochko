@@ -118,6 +118,7 @@ export function fakeCommitPorts(opts: {
       if (opts.resolve) return Promise.resolve(opts.resolve(t));
       if (t.kind === 'row') return Promise.resolve({ ok: true, ref: 'm7', write_id: null });
       if (t.kind === 'metric') return Promise.resolve({ ok: true, ref: 'd7', write_id: 'wid-old' });
+      if (t.kind === 'ledger_group') return Promise.resolve({ ok: true, ref: null, write_id: 'wid-constraint-add' });
       return Promise.resolve({ ok: false, failure_class: t.reason });
     },
     onWrite() { ports.writes++; },

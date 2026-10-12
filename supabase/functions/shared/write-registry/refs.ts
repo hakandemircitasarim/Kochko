@@ -93,6 +93,25 @@ export interface RenderedRef {
    * correction the user states themselves is still accepted.
    */
   suspicion_declined?: boolean;
+  /**
+   * The record's live write was itself confirmed through a hold (the user said "evet" to a question
+   * about it). Removing it is asked first, even right after (record_delete uzak_kayit_silme).
+   */
+  confirmed_hold?: boolean;
+  /** The record's live write is a correction (its group replaced an older record): undoing it brings that one back. */
+  correction?: boolean;
+  /**
+   * 1 = written by the user's newest live write group, 2 / 3 = the two before (the ledger, newest
+   * first). "geri al" with nothing in the last turn names these as candidates.
+   */
+  recent_rank?: number;
+  /**
+   * c#: this constraint was switched on by a constraint_add that is still live AND belongs to the user's
+   * newest write turn (nothing written in another turn since) — the one case a constraint may be undone
+   * as its ledger group (record_delete, always behind one safety confirmation). Any older constraint is
+   * removed with constraint_retract only.
+   */
+  undo_add?: boolean;
   /** One-line Turkish summary the model was shown (may carry model-facing tags such as "[model]"). */
   summary_tr?: string | null;
   /**
@@ -133,6 +152,12 @@ export type RenderedRefs = Readonly<Record<string, RenderedRef>>;
 
 /** Which ref kinds a record_ops delete may target (safety rows and holds have their own ops). */
 export const DELETABLE_KINDS: readonly RefKind[] = ['m', 'd', 'w', 's', 't', 'e', 'l', 'f'];
+
+/**
+ * record_delete's ref kinds: the records above plus c# — but a constraint only when its add is the user's
+ * newest write turn (RenderedRef.undo_add; records.ts rejects any other c# and asks for every one).
+ */
+export const UNDO_REF_KINDS: readonly RefKind[] = [...DELETABLE_KINDS, 'c'];
 
 /** A correction (record_ops.update) must use the op that owns the record type. */
 export const PATCH_OPS_BY_TARGET: Readonly<Partial<Record<RefTarget, readonly string[]>>> = {

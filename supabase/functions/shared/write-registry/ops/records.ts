@@ -12,10 +12,21 @@
  * with a reason — that is ASK by default ("bu kayıt yanlış görünüyor, düzelteyim mi?") and is
  * committed only after the user agrees (pending confirm). A user-stated correction commits
  * directly, but only when its evidence quote is really in the user's message.
+ *
+ * Deleting (re-trial 2026-10-12, final2): "ama ben düzeltmeyi geri al dedim, bu sabah 82 kiloydum"
+ * deleted YESTERDAY's confirmed 81,6 kg weigh-in — record_delete had no evidence and no hold, so any
+ * rendered ref Stage A guessed was committed. Now: a one-step undo is the last turn's own write of
+ * today (the "vazgeçtim, geri al" case). Anything else — an older turn's record, another day's, or a
+ * record the user had confirmed through a hold — is held with ONE code question naming the record
+ * ("Dünkü 81,6 kg tartını silmemi istiyor musun?"). evidence_quote (the user's words asking for it)
+ * is checked verbatim when given; a quote that is not in the message is asked the same way.
+ * A constraint (c#) is undone here only when it is the user's newest write (a just-added allergy:
+ * one safety confirmation, its whole ledger group); any older constraint stays constraint_retract's,
+ * with its own two-step bar.
  */
 import { f, op, rule, MAX_BACK_DAYS, type ValidationContext } from '../dsl.ts';
-import { DELETABLE_KINDS, PATCH_OPS_BY_TARGET } from '../refs.ts';
-import { daysBetween, isVerbatimQuote } from '../util.ts';
+import { PATCH_OPS_BY_TARGET, type RenderedRef, UNDO_REF_KINDS } from '../refs.ts';
+import { daysBetween, isVerbatimQuote, shiftDay, trInt, trNum } from '../util.ts';
 
 function tooOld(ref: string, ctx: ValidationContext): boolean {
   const day = ctx.refs[ref]?.day;
@@ -31,6 +42,88 @@ const laterWriteRule = <A extends { ref: string }>() =>
   rule<A, Record<string, never>>('sonraki_yazma_var', 'aynı alana daha sonra yazılmış; geri almak sonrakini ezer', (a, _d, ctx) =>
     ctx.refs[a.ref]?.later_write_on_same_field === true, { failure_class: 'conflict' });
 
+// ─── record_delete: the code-owned question that names the record ─────────────────────────────────
+
+const MONTHS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+
+/** "Bugünkü" / "Dünkü" / "5 Eki tarihli"; '' when the record carries no day. */
+function dayAdjTr(day: string | null | undefined, today: string): string {
+  if (typeof day !== 'string' || day.length < 10) return '';
+  if (day === today) return 'Bugünkü';
+  if (day === shiftDay(today, -1)) return 'Dünkü';
+  const [, m, d] = day.split('-').map(Number);
+  return `${d} ${MONTHS_TR[(m ?? 1) - 1] ?? ''} tarihli`;
+}
+
+/** "81,6" / "82" / "0,25" — Turkish comma, no trailing zeros (decimals ≥ 1, so a comma is always there to strip after). */
+function shortNum(n: number, decimals = 2): string {
+  return trNum(n, Math.max(1, decimals)).replace(/,?0+$/u, '');
+}
+
+const capFirst = (s: string) => (s ? s[0].toLocaleUpperCase('tr') + s.slice(1) : s);
+const capLen = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+const TARGET_TR: Readonly<Record<string, string>> = {
+  weight: 'tartı', water: 'su', sleep: 'uyku', mood: 'ruh hali', steps: 'adım', meal: 'öğün', workout: 'antrenman',
+  supplement: 'takviye', lab: 'tahlil', life_event: 'olay', food_pref: 'tercih',
+};
+
+/** What the record holds, worded for the user ("81,6 kg", "gün toplamı 1,4 L", the meal's summary). */
+function valueTr(r: RenderedRef): string | null {
+  const v = r.snapshot?.value;
+  if (typeof v === 'number') {
+    switch (r.target) {
+      case 'weight': return `${shortNum(v)} kg`;
+      case 'water': return `gün toplamı şu an ${shortNum(v)} L`;
+      case 'sleep': return `${shortNum(v, 1)} saat`;
+      case 'mood': return `${Math.round(v)}/5`;
+      case 'steps': return `${trInt(v)} adım`;
+    }
+  }
+  const s = r.user_summary_tr ?? r.summary_tr;
+  return s ? capLen(s, 80) : null;
+}
+
+/**
+ * The ONE question a held record_delete asks, naming the record: "Dünkü 81,6 kg tartını silmemi istiyor
+ * musun?" — a correction says what comes back. Registry text (code-owned), from the rendered ref only.
+ */
+export function undoQuestionTr(r: RenderedRef | undefined, today: string): string {
+  if (!r) return 'Bu kaydı silmemi istiyor musun?';
+  const adj = dayAdjTr(r.day, today);
+  const lead = (rest: string) => (adj ? `${adj} ${rest}` : capFirst(rest));
+  const label = TARGET_TR[r.target] ?? 'kayıt';
+  const value = valueTr(r);
+  if (r.kind === 'c') {
+    const s = r.user_summary_tr ?? r.summary_tr ?? 'kısıt';
+    return `Az önce eklenen ${s} kaydını geri almamı istiyor musun? Güvenlik filtrelerin buna göre değişecek.`;
+  }
+  if (r.correction) {
+    return `${lead(`${label} düzeltmesini${value ? ` (${value})` : ''}`)} geri almamı istiyor musun? Düzeltmeden önceki kayıt geri gelir.`;
+  }
+  // A water ref is the day's value; the undo takes back its latest write, not the whole day.
+  if (r.target === 'water') return `${lead('son su kaydını')} geri almamı istiyor musun?${value ? ` (${value})` : ''}`;
+  if (r.target === 'weight' && typeof r.snapshot?.value === 'number') return `${lead(`${shortNum(r.snapshot.value)} kg tartını`)} silmemi istiyor musun?`;
+  return `${lead(`${label} kaydını${value ? ` (${value})` : ''}`)} silmemi istiyor musun?`;
+}
+
+/** The one-step undo: the previous turn's own write, of today, that the user had not confirmed through a hold. */
+function isLocalUndo(r: RenderedRef | undefined, today: string): boolean {
+  return r?.last_turn === true && r.day === today && r.confirmed_hold !== true;
+}
+
+/**
+ * re-trial 2026-10-12: a message about "bu sabah" deleted yesterday's confirmed weigh-in in one step.
+ * Every op that takes a record back by ref (delete, restore_metric) asks first unless it is the local undo.
+ */
+const remoteUndoRule = <A extends { ref: string }>() =>
+  rule<A, Record<string, never>>('uzak_kayit_silme', 'son turun bugünkü kendi yazması değilse (eski tur, başka gün ya da onayla yazılmış kayıt) silmeden önce sorulur', (a, _d, ctx) => {
+    const r = ctx.refs[a.ref];
+    if (!r || r.kind === 'c' || isLocalUndo(r, ctx.today)) return false;
+    const why = r.confirmed_hold === true ? 'kullanıcının onayıyla yazılmış kayıt' : r.day !== ctx.today ? 'başka güne ait kayıt' : 'son turun yazması değil';
+    return `${a.ref}: ${why}`;
+  }, { question_tr: (a, _d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today) });
+
 export const record_delete = op({
   type: 'record_delete',
   op: 'delete',
@@ -38,16 +131,38 @@ export const record_delete = op({
   envelope: 'undo',
   title_tr: 'Kaydı geri al/sil',
   when_tr: 'KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i).',
-  not_when_tr: 'kısıt (constraint_retract), bekleyen (pending_ops), plan taslağı (plan_action).',
+  not_when_tr: 'eski kısıt (constraint_retract; son turda eklenen kısıt burada), bekleyen (pending_ops), plan taslağı (plan_action).',
   fields: {
-    ref: f.ref(DELETABLE_KINDS),
+    ref: f.ref(UNDO_REF_KINDS),
     reason: f.text({ max: 120 }),
+    evidence_quote: f.text({ nullable: true, max: 160 }),
   },
   capability_tr: 'Gösterilen belirli bir kaydı geri almak (yalnızca son 7 gün).',
-  writes: { rpc: 'w_record_undo', tables: ['turn_writes'], undo: 'none' },
-  invariants: ['soft_delete_only', 'group_side_effects_undone'],
+  writes: { rpc: 'w_record_undo', tables: ['turn_writes'], undo: 'none', hold_op: 'record_delete' },
+  invariants: ['soft_delete_only', 'group_side_effects_undone', 'remote_delete_asked', 'undo_restores_replaced'],
 }).rules({
-  hard: [tooOldRule(), laterWriteRule()],
+  hard: [
+    tooOldRule(),
+    laterWriteRule(),
+    // A constraint is a safety record: only the just-added one may be undone as its ledger group here;
+    // every older one is removed with constraint_retract (evidence + its own two-step hold).
+    rule('kisit_yalniz_son_ekleme', 'kısıt yalnız en son eklenmişse geri alınır; eski kısıt constraint_retract ile kaldırılır', (a, _d, ctx) => {
+      const r = ctx.refs[a.ref];
+      return r?.kind === 'c' && r.undo_add !== true && `${a.ref} en son eklenen kısıt değil; kısıt kaldırma constraint_retract ile yapılır`;
+    }, { repairable: true, failure_class: 'not_deletable' }),
+  ],
+  ask: [
+    remoteUndoRule(),
+    // A sanctioned verbatim check (AI_MIMARI_V2 §5): a quote the model attributes to the user must be in
+    // the message. null = no quote claimed — the one-step local undo still stands on its own.
+    rule('silme_alintisi', 'evidence_quote verildiyse kullanıcının mesajında aynen geçmeli', (a, _d, ctx) =>
+      isLocalUndo(ctx.refs[a.ref], ctx.today) && a.evidence_quote !== null && !isVerbatimQuote(a.evidence_quote, ctx.user_message),
+    { question_tr: (a, _d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today), evidence: true }),
+    // Undoing a just-added allergy/injury changes the safety filters: always one safety confirmation.
+    rule('son_eklenen_kisit', 'en son eklenen kısıtın geri alınması her zaman bir güvenlik onayıyla yapılır', (a, _d, ctx) =>
+      ctx.refs[a.ref]?.kind === 'c' && `${a.ref}: az önce eklenen kısıtın geri alınması`,
+    { question_tr: (a, _d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today) }),
+  ],
 });
 
 export const record_update = op({
@@ -117,7 +232,9 @@ export const record_restore_metric = op({
   },
   tier: 'rare',
   capability_tr: 'Bir günlük metriği belirli bir yazmadan önceki değerine döndürmek.',
-  writes: { rpc: 'w_record_undo', tables: ['daily_metrics', 'turn_writes'], undo: 'none' },
+  writes: { rpc: 'w_record_undo', tables: ['daily_metrics', 'turn_writes'], undo: 'none', hold_op: 'record_restore_metric' },
 }).rules({
   hard: [tooOldRule(), laterWriteRule()],
+  // The same bar as record_delete: it takes a write back through the same writer.
+  ask: [remoteUndoRule()],
 });

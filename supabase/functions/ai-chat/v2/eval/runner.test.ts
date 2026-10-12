@@ -90,15 +90,15 @@ Deno.test('golden final2#4: nugget ~300 kcal passes; v1 900 g / 1708 kcal tavuk 
 
 Deno.test('golden final2#2: undo targets d3; v1 deleting the 45-minute-old dinner fails', async () => {
   const id = 'r3-final2-2-su-sonrasi-geri-al';
-  assertEquals((await run(id, d({ intent: intent('correction'), record_ops: [{ op: 'delete', ref: 'd3', reason: 'kullanıcı su kaydını geri aldı' }] }))).status, 'pass');
+  assertEquals((await run(id, d({ intent: intent('correction'), record_ops: [{ op: 'delete', ref: 'd3', reason: 'kullanıcı su kaydını geri aldı', evidence_quote: null }] }))).status, 'pass');
   assertEquals((await run(id, d({ intent: intent('correction'), record_ops: [{ op: 'restore_metric', ref: 'd3', reason: 'geri al' }] }))).status, 'pass');
-  assertEquals((await run(id, d({ intent: intent('correction'), record_ops: [{ op: 'delete', ref: 'm30', reason: 'son öğün' }] }))).status, 'fail');
+  assertEquals((await run(id, d({ intent: intent('correction'), record_ops: [{ op: 'delete', ref: 'm30', reason: 'son öğün', evidence_quote: null }] }))).status, 'fail');
 });
 
 Deno.test('golden final2#1: a "nasıl düzeltebilirim" question writes nothing; v1 revert fails', async () => {
   const id = 'r3-final2-1b-nasil-duzeltebilirim-kayit-silmez';
   assertEquals((await run(id, d({ intent: intent('question') }))).status, 'pass');
-  assertEquals((await run(id, d({ record_ops: [{ op: 'delete', ref: 'm32', reason: 'düzelt' }] }))).status, 'fail');
+  assertEquals((await run(id, d({ record_ops: [{ op: 'delete', ref: 'm32', reason: 'düzelt', evidence_quote: null }] }))).status, 'fail');
 });
 
 Deno.test('golden final2#6: correction by ref passes; an extra unlinked meal (double count) fails', async () => {
@@ -120,7 +120,7 @@ Deno.test('golden diff#2: a stated day total is set_day_total (commit 2,0 L); v1
 Deno.test('golden §6.2: two last-turn writes + "sonuncuyu sil" → clarify; guessing m14 fails', async () => {
   const id = 'spec-a-sonuncuyu-sil-iki-aday';
   assertEquals((await run(id, d({ clarify: { topic: 'hangi kayıt silinsin', candidate_refs: ['d3', 'm14'] } }))).status, 'pass');
-  assertEquals((await run(id, d({ record_ops: [{ op: 'delete', ref: 'm14', reason: 'sonuncu' }] }))).status, 'fail');
+  assertEquals((await run(id, d({ record_ops: [{ op: 'delete', ref: 'm14', reason: 'sonuncu', evidence_quote: null }] }))).status, 'fail');
 });
 
 Deno.test('golden mem#2: severe allergy retraction targets c1 and validateDecision HOLDS it (ASK); v1 alarm path fails', async () => {
@@ -180,7 +180,7 @@ Deno.test('golden owner decision: a suspicious old record is surfaced for one qu
   // A silent fix stays a failure: a correction the user never asked for, a delete, or another ref.
   const silent = d({ record_ops: [{ op: 'update', ref: 'm12', basis: 'user_correction', reason: 'şüpheli', evidence_quote: 'iyi gidiyor muyum', patch }] });
   assertEquals((await run(id, silent)).status, 'fail');
-  assertEquals((await run(id, d({ record_ops: [{ op: 'delete', ref: 'm12', reason: 'şüpheli' }] }))).status, 'fail');
+  assertEquals((await run(id, d({ record_ops: [{ op: 'delete', ref: 'm12', reason: 'şüpheli', evidence_quote: null }] }))).status, 'fail');
   const otherRef = d({ record_ops: [{ op: 'update', ref: 'm30', basis: 'suspicious', reason: 'şüpheli', evidence_quote: null, patch }] });
   assertEquals((await run(id, otherRef)).status, 'fail');
   // Without Stage B the "ask in the reply" branch is unknown → that check is skipped, not failed.
@@ -402,7 +402,7 @@ Deno.test('identical request bodies share ONE call per rep (review LOW: two fixt
 
 Deno.test('judge port: verdicts override the lint for judged items; a broken judge fails closed', async () => {
   const f = byId('r3-final2-2-su-sonrasi-geri-al');
-  const undo = d({ intent: intent('correction'), record_ops: [{ op: 'delete', ref: 'd3', reason: 'x' }] });
+  const undo = d({ intent: intent('correction'), record_ops: [{ op: 'delete', ref: 'd3', reason: 'x', evidence_quote: null }] });
   const isJudge = (b: Record<string, unknown>) => (b.schema as { name: string }).name === 'kochko_eval_judge_v1';
   const reply = (text: string) => () => ({ reply: { reply: text } });
   const t = fakeDecideTransport((b) => (isJudge(b) ? { decision: { verdicts: [{ rubric: 'claims_subset_of_receipts', pass: false, reason: 'Silme makbuzu yok ama cevap sildim diyor.' }] } } : { decision: undo }));

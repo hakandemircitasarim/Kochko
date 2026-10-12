@@ -147,12 +147,19 @@
        },
        "reason": {
         "type": "string"
+       },
+       "evidence_quote": {
+        "type": [
+         "string",
+         "null"
+        ]
        }
       },
       "required": [
        "op",
        "ref",
-       "reason"
+       "reason",
+       "evidence_quote"
       ],
       "additionalProperties": false
      },

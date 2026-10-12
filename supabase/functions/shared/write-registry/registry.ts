@@ -64,11 +64,19 @@ import { memory_note } from './ops/memory.ts';
  * (iki_adimli_siddet_dusurme) — so the coach's capability line for it gains "Gerekirse önce
  * kullanıcıya sorulur." Schema bytes and the Stage A doc are unchanged apart from the version name.
  * (v5 was never deployed: live holds are v4 either way and come back as stale_hold.)
- * v7 (2026-10-12, retrial): safety.acute_evidence_quote (nullable text) right after acute_medical —
- * an acute claim carries the user's own verbatim words for the symptom or event, like ed_signal's
- * evidence_quote ("bugün 14 litre su içtim", no symptom, went to the emergency contract). The
- * validator accepts the claim only with that quote (validate.ts safety.acute); resolveTripwires
- * does not protect on an unevidenced claim alone. Open v6 holds come back as stale_hold.
+ * v7 (2026-10-12, the re-trial; lanes S and U merged into one version bump):
+ *   - safety.acute_evidence_quote (nullable text) right after acute_medical — an acute claim carries
+ *     the user's own verbatim words for the symptom or event, like ed_signal's evidence_quote ("bugün
+ *     14 litre su içtim", no symptom, went to the emergency contract). The validator accepts the claim
+ *     only with that quote (validate.ts safety.acute); resolveTripwires does not protect on an
+ *     unevidenced claim alone.
+ *   - record_delete gains evidence_quote (nullable, checked verbatim when given) and its first ASK
+ *     rules — a record that is not the last turn's own write of today, or that the user confirmed
+ *     through a hold, is held with ONE code question naming it ("Dünkü 81,6 kg tartını silmemi istiyor
+ *     musun?"); a c# is accepted only for the user's newest constraint_add (always behind a safety
+ *     confirmation), so its not_when line reads "eski kısıt (constraint_retract; son turda eklenen
+ *     kısıt burada)". record_delete holds are pending_writes.op 'record_delete'.
+ *   Open v6 holds come back as stale_hold.
  */
 export const SCHEMA_VERSION = 'v7';
 

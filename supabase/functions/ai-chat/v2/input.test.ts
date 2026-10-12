@@ -333,3 +333,91 @@ Deno.test('supabaseTurnInputDb translates the query and sends it on select(), no
   ]);
   assertEquals(await p, { data: [{ id: 1 }], error: null });
 });
+
+// ─── re-trial 2026-10-12 (lane U): what only the ledger knows about the rendered records ───────────
+
+const tw = (o: Record<string, unknown>) => ({
+  user_id: USER, ref: null, op: 'meal_log', for_date: '2026-10-07', field_set: [], before: null, is_primary: true, reverses: null,
+  undone_at: null, meta: {}, turn_id: 't-old', created_at: '2026-10-07T06:00:00Z', ...o,
+});
+
+function ledgerSeed() {
+  const t = seedTables();
+  t.turn_writes = [
+    // Newest: a meal CORRECTION (the old meal's replaced delete + the new meal, one group) — m2.
+    tw({ id: 'w-c2', seq: 21, op: 'meal_log', table_name: 'meal_logs', row_id: 'ml-2', field_set: [], group_id: 'g-corr', ref: 'm7', turn_id: 't-corr', created_at: '2026-10-07T07:00:00Z' }),
+    tw({ id: 'w-c1', seq: 20, op: 'record_delete', table_name: 'meal_logs', row_id: 'ml-old-x', field_set: ['is_deleted', 'deleted_at'], group_id: 'g-corr', reverses: 'w-0', meta: { reason: 'replaced' }, turn_id: 't-corr', created_at: '2026-10-07T07:00:00Z' }),
+    // Today's water add.
+    tw({ id: 'w-w', seq: 12, op: 'water_log', table_name: 'daily_metrics', row_id: 'dm-7', field_set: ['water_liters'], group_id: 'g-water', ref: 'd4', created_at: '2026-10-07T06:30:00Z' }),
+    // Yesterday's weigh-in, written by a CONFIRMED hold (the writer claimed it: meta.pending_id).
+    tw({ id: 'w-y', seq: 5, op: 'body_weight', table_name: 'daily_metrics', row_id: 'dm-6', for_date: '2026-10-06', field_set: ['weight_kg'], group_id: 'g-y', ref: 'w1', meta: { pending_id: 'pw-old' }, created_at: '2026-10-06T08:00:00Z' }),
+    // An undone write is never a candidate; another user's row is never read.
+    tw({ id: 'w-u', seq: 30, op: 'step_log', table_name: 'daily_metrics', row_id: 'dm-6', field_set: ['steps'], group_id: 'g-u', undone_at: '2026-10-07T09:00:00Z' }),
+    tw({ id: 'w-x', seq: 40, op: 'meal_log', table_name: 'meal_logs', row_id: 'ml-x', group_id: 'g-x', user_id: OTHER }),
+  ];
+  return t;
+}
+
+Deno.test('ledger facts on rendered refs: correction, confirmed through a hold, recent write rank (lane U)', async () => {
+  const { ti } = await load(ledgerSeed());
+  assertEquals(ti.ledger_recent?.map((w) => w.id), ['w-u', 'w-c2', 'w-c1', 'w-w', 'w-y'], 'own rows only, newest first');
+  const r = turnRefs(ti).rendered;
+  const water = ti.metric_days.find((d) => d.target === 'water' && d.day === '2026-10-07')!.ref;
+  const weight = ti.metric_days.find((d) => d.target === 'weight')!.ref;
+  const steps = ti.metric_days.find((d) => d.target === 'steps')!.ref;
+  assertEquals([r.m2.correction, r.m2.recent_rank], [true, 1]);
+  assertEquals([r[water].recent_rank, r[water].correction], [2, undefined]);
+  assertEquals([r[weight].confirmed_hold, r[weight].recent_rank], [true, 3]);
+  assertEquals(r[steps].recent_rank, undefined, 'an undone write is not a candidate');
+  assertEquals(r.m3.recent_rank, undefined, 'no ledger row → no ledger fact');
+  // A confirmed hold's result ref marks the write too (a held correction is closed after its writer ran).
+  const t2 = ledgerSeed();
+  (t2.turn_writes[3] as Record<string, unknown>).meta = {};
+  t2.pending_writes.push({ id: 'pw-ok', user_id: USER, op: 'record_update', status: 'confirmed', resolved_at: '2026-10-06T08:00:01Z', result: { ok: true, ref: 'w1' } });
+  const again = await load(t2);
+  assertEquals(turnRefs(again.ti).rendered[weight].confirmed_hold, true);
+  const t3 = ledgerSeed();
+  (t3.turn_writes[3] as Record<string, unknown>).meta = {};
+  assertEquals(turnRefs((await load(t3)).ti).rendered[weight].confirmed_hold, undefined, 'an ordinary write is not "confirmed through a hold"');
+});
+
+Deno.test('Stage A view: with nothing written last turn, the newest writes are marked so "geri al" can name them', async () => {
+  const { ti } = await load(ledgerSeed());
+  const block = renderTurnInput(ti);
+  assertStringIncludes(block, '→ haşlanmış yumurta (2 adet) 155 kcal · toplam 155 kcal [model] (en son yazılan)');
+  assertStringIncludes(block, 'tartı: 70,4 kg (sondan 3. yazılan)');
+  // A last-turn record keeps its "(son tur)" and gets no recency mark on top.
+  assert(!block.includes('(sondan 2. yazılan) (son tur)') && !block.includes('su: gün toplamı 1,60 L (sondan'), block);
+  // Without ledger rows nothing changes (older producers, eval fixtures).
+  assert(!renderTurnInput((await load()).ti).includes('yazılan)'));
+});
+
+Deno.test('a constraint added last turn is "(son tur)" in KISITLAR and the one c# record_delete may undo; a later write in another turn closes that door', async () => {
+  const t = seedTables();
+  t.user_constraints.push({ id: 'uc-new', user_id: USER, kind: 'allergen', subject: 'sesame', severity: null, body_parts: [], active: true, source: 'user_stated', stated_at: '2026-10-07T09:58:12Z' });
+  t.turn_writes = [tw({ id: 'w-add', seq: 50, op: 'constraint_add', table_name: 'user_constraints', row_id: 'uc-new', for_date: null, field_set: ['active'], before: { active: false }, group_id: 'g-add', turn_id: 't-prev', created_at: '2026-10-07T09:58:12Z' })];
+  const { ti } = await load(t);
+  const c = ti.constraints.find((x) => x.id === 'uc-new')!.ref;
+  const r = turnRefs(ti).rendered[c];
+  assertEquals([r.undo_add, r.last_turn], [true, true]);
+  assertStringIncludes(renderTurnInput(ti), `${c} · alerji · sesame · şiddeti belirtilmemiş (son tur)`);
+  const del = [{ op: 'delete', ref: c, reason: 'geri al', evidence_quote: 'geri al' }];
+  assertEquals(validateChannelItems('record_ops', del, validationContext(ti, 'geri al', NOW)).map((v) => v.verdict), ['ASK']);
+  // A meal written in a LATER turn: the add is no longer the newest write turn → constraint_retract's job.
+  t.turn_writes.unshift(tw({ id: 'w-meal', seq: 60, op: 'meal_log', table_name: 'meal_logs', row_id: 'ml-3', group_id: 'g-m', turn_id: 't-next', created_at: '2026-10-07T10:30:00Z' }));
+  const later = await load(t);
+  assertEquals(turnRefs(later.ti).rendered[c].undo_add, undefined);
+  assertEquals(validateChannelItems('record_ops', del, validationContext(later.ti, 'geri al', NOW)).map((v) => v.verdict), ['REJECT']);
+  // A restatement of an already-active row (before.active true) is not undone here either.
+  t.turn_writes = [tw({ id: 'w-re', seq: 70, op: 'constraint_add', table_name: 'user_constraints', row_id: 'uc-new', for_date: null, field_set: ['active'], before: { active: true }, group_id: 'g-re', turn_id: 't-re' })];
+  assertEquals(turnRefs((await load(t)).ti).rendered[c].undo_add, undefined);
+});
+
+Deno.test('the ledger reads are in the one wave, user-scoped and bounded', () => {
+  const qs = turnInputQueries(USER, NOW);
+  const ledger = qs.find((q) => q.section === 'ledger_recent')!;
+  assertEquals([ledger.table, ledger.limit, ledger.order?.[0]], ['turn_writes', 80, { column: 'seq', ascending: false }]);
+  const holds = qs.find((q) => q.section === 'holds_confirmed')!;
+  assertEquals(holds.table, 'pending_writes');
+  assert(holds.filters.some((f) => f.op === 'eq' && f.column === 'status' && f.value === 'confirmed'));
+});

@@ -10,10 +10,11 @@
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import {
-  budgetFacts, buildStageBFacts, holdNumbers, MISSED_WRITE_ALSO_LINE, MISSED_WRITE_LINE, missedWrite, renderBudgetLine, renderStageBFacts,
+  budgetFacts, buildStageBFacts, holdNumbers, MISSED_WRITE_ALSO_LINE, MISSED_WRITE_LINE, missedWrite, postTurnState, renderBudgetLine, renderStageBFacts,
   renderTripwireFacts, renderTurnEvents, renderUserState, turnIntakeDelta, unanchoredQuestionForbidden,
 } from './facts.ts';
-import type { CoachInput } from './contracts.ts';
+import type { CoachInput, V2Undo } from './contracts.ts';
+import { USER } from './testing.ts';
 import { validationContext } from './input.ts';
 import { validateDecision } from '../../shared/write-registry/mod.ts';
 import { asciiTurkishHits, pileWords, shoutedWords, SHOUT_WORDS } from '../../shared/prompt-lint.ts';
@@ -78,7 +79,7 @@ Deno.test('budget: an outcome code cannot total exactly gives NO remaining numbe
   assertStringIncludes(line, '675 kcal (az önceki değişiklikten önceki toplam; yeni toplam hesaplanamadı, toplam ya da kalan sayısı verme)');
   assert(!line.includes('alt sınıra'), line);
   // A delete of one of today's meals: uncertain too.
-  const del = turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış' }] }), commit());
+  const del = turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış', evidence_quote: null }] }), commit());
   assertEquals(del.certain, false);
 });
 
@@ -325,8 +326,73 @@ Deno.test('a held value shows its numbers (old → new) and is asked about what 
 Deno.test('the facts speak without the pipeline words the coach echoed in the trial ("bu turdaki kayıtlar", "koda göre", "makbuz")', async () => {
   const ti = await seededTurnInput();
   const certain = renderBudgetLine(budgetFacts(ti, turnIntakeDelta(ti, decision({ writes: [mealWrite([['ızgara tavuk', 400, 45]])] }), commit({ receipts: [MEAL_OK] }))));
-  const uncertain = renderBudgetLine(budgetFacts(ti, turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış' }] }), commit())));
+  const uncertain = renderBudgetLine(budgetFacts(ti, turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış', evidence_quote: null }] }), commit())));
   for (const text of [certain, uncertain, MISSED_WRITE_LINE, MISSED_WRITE_ALSO_LINE]) {
     for (const w of ['bu turdaki kayıtlar', 'koda göre', 'makbuz', 'sistem']) assert(!text.includes(w), `${w} in: ${text}`);
   }
+});
+
+// ─── re-trial 2026-10-12 (lane U): removals are facts the reply states; touched numbers are pre-turn ───
+
+const UNDO_OK = { action_type: 'record_delete', legacy_type: 'undo', ok: true, rows_affected: 6, failure_class: null, user_line: 'Kayıt geri alındı — tartı 88 → 82 kg', ref: 'w2' };
+const CORRECTION_UNDO: V2Undo = {
+  op: 'record_delete', ref: 'd5', line: UNDO_OK.user_line, day: '2026-10-07', metrics: [{ field: 'weight_kg', before: 88, after: 82 }],
+  profile_weight_after: 82, restored: true, constraints_removed: 0,
+};
+
+Deno.test('a landed record op is SİLİNDİ (never "KAYDEDİLDİ"), and what it brought back is GERİ GETİRİLDİ with the value left', async () => {
+  const ti = await seededTurnInput();
+  const lines = renderTurnEvents(ti, decision(), commit({ receipts: [UNDO_OK], undos: [CORRECTION_UNDO] }));
+  assertEquals(lines, [
+    '- SİLİNDİ: Kayıt geri alındı — tartı 88 → 82 kg; bunu cevabında açıkça söyle, silinen kayıt hâlâ duruyormuş gibi konuşma',
+    '- GERİ GETİRİLDİ: düzeltmeden önceki kayıt yeniden geçerli (tartı şimdi 82,0 kg); bunu da cevabında söyle',
+  ]);
+  // A plain undo brings nothing back: one SİLİNDİ line; a confirmed delete's flag is not a second "kayıt yazıldı" line.
+  const plain = renderTurnEvents(ti, decision(), commit({
+    receipts: [{ ...UNDO_OK, user_line: 'Kayıt geri alındı — tartı 81,6 kg kaldırıldı; dün için tartı kaydı kalmadı' }],
+    undos: [{ ...CORRECTION_UNDO, metrics: [{ field: 'weight_kg', before: 81.6, after: null }], restored: false }],
+    flags: [{ op: 'record_delete', code: 'uzak_kayit_silme', note_tr: 'kullanıcı onayladı — d5: başka güne ait kayıt' }],
+  }));
+  assertEquals(plain, ['- SİLİNDİ: Kayıt geri alındı — tartı 81,6 kg kaldırıldı; dün için tartı kaydı kalmadı; bunu cevabında açıkça söyle, silinen kayıt hâlâ duruyormuş gibi konuşma']);
+});
+
+Deno.test('KULLANICI DURUMU: a number a record op changed is marked pre-turn with the writer\'s post-commit value (profile weight, water, a just-removed constraint)', async () => {
+  const ti = await seededTurnInput();
+  const f = buildStageBFacts(coachInput(ti, {
+    commit: commit({
+      receipts: [UNDO_OK],
+      undos: [
+        CORRECTION_UNDO,
+        { op: 'record_delete', ref: 'd1', line: 'x', day: '2026-10-07', metrics: [{ field: 'water_liters', before: 1.6, after: 1.4 }], restored: false, constraints_removed: 0 },
+        { op: 'record_delete', ref: 'c1', line: 'y', day: null, metrics: [], restored: false, constraints_removed: 1 },
+      ],
+    }),
+  }));
+  const state = f.state.join('\n');
+  assertStringIncludes(state, 'kilo 70,0 kg (geri almadan önceki değer; şimdi 82,0 kg)');
+  assertStringIncludes(state, 'su 1,60 L (geri almadan önceki değer; şimdi 1,40 L) / hedef 2,5 L');
+  assertStringIncludes(state, '- c1 alerji · fıstık · ciddi (az önce geri alındı, artık geçerli değil)');
+  assertEquals(postTurnState(ti, commit()), { removedConstraintRefs: [] }, 'no record op → nothing marked');
+  assertStringIncludes(renderBudgetLine(budgetFacts(ti), null), 'su 1,60 L (geri almadan önceki değer; şimdi kayıt kalmadı)');
+  const text = renderStageBFacts(f);
+  const LABELS = ['KULLANICI DURUMU', 'BU TURDA OLANLAR', 'SİLİNDİ', 'GERİ GETİRİLDİ', 'KAYDEDİLDİ'];
+  assertEquals(shoutedWords(text, LABELS), []);
+  assertEquals(pileWords(text), []);
+  for (const w of ['bu turdaki kayıtlar', 'koda göre', 'makbuz', 'sistem']) assert(!text.includes(w), w);
+});
+
+Deno.test('"geri al" with nothing written last turn: a correction clarify without candidates offers the newest writes by name', async () => {
+  const ti = await seededTurnInput((t) => {
+    t.turn_writes = [
+      { id: 'w-1', seq: 9, user_id: USER, ref: 'w4', op: 'body_weight', table_name: 'daily_metrics', row_id: 'dm-6', for_date: '2026-10-06', field_set: ['weight_kg'], before: null, is_primary: true, group_id: 'g1', turn_id: 't1', reverses: null, undone_at: null, created_at: '2026-10-06T08:00:00Z', meta: {} },
+      { id: 'w-2', seq: 12, user_id: USER, ref: 'm9', op: 'meal_log', table_name: 'meal_logs', row_id: 'ml-2', for_date: '2026-10-07', field_set: [], before: null, is_primary: true, group_id: 'g2', turn_id: 't2', reverses: null, undone_at: null, created_at: '2026-10-07T05:00:00Z', meta: {} },
+    ];
+  });
+  const open = decision({ intent: { primary: 'correction', is_hypothetical: false, about_other_person: false }, clarify: { topic: 'hangi kaydın geri alınacağı', candidate_refs: [] } });
+  const line = renderTurnEvents(ti, open, commit()).find((l) => l.startsWith('- NETLEŞTİRME'))!;
+  const weight = ti.metric_days.find((d) => d.target === 'weight')!.ref;
+  assertStringIncludes(line, `son yazılan kayıtlar (seçenek olarak adlarıyla sun): m2 (bugün · haşlanmış yumurta (2 adet) 155 kcal · toplam 155 kcal), ${weight} (dün · tartı: 70,4 kg)`);
+  // Named candidates from Stage A win; a question that is not a correction gets no list.
+  assert(!renderTurnEvents(ti, decision({ intent: { primary: 'correction', is_hypothetical: false, about_other_person: false }, clarify: { topic: 'x', candidate_refs: ['m3'] } }), commit()).join('\n').includes('son yazılan'));
+  assert(!renderTurnEvents(ti, decision({ clarify: { topic: 'x', candidate_refs: [] } }), commit()).join('\n').includes('son yazılan'));
 });
