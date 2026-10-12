@@ -24,6 +24,142 @@ export const MEAL_LOGGED_MARK = 'Öğün kaydedildi';
 export interface ReceiptCtx {
   today: string;
   refs?: RenderedRefs;
+  /**
+   * record_delete / record_restore_metric: the writer's reversed[] rows (w_record_delete). The undo
+   * receipt is built from them — what was removed AND the value that is left — never from the
+   * pre-turn summary alone (re-trial 2026-10-12: "Kayıt geri alındı: tartı: 88,0 kg" read as "88 is
+   * there again" while the day had no weight left).
+   */
+  reversed?: readonly UndoRow[];
+}
+
+// ─── undo: the result, from the writer's reversed[] rows ──────────────────────────────────────────
+
+/** One reversed[] row of w_record_delete (108/115), structurally: only what the receipt reads. */
+export interface UndoRow {
+  table?: unknown;
+  row_id?: unknown;
+  ref?: unknown;
+  field_set?: unknown;
+  before?: unknown;
+  after?: unknown;
+  /** 115: profiles.weight_kg re-derived from the latest weigh-in. */
+  derived?: unknown;
+}
+
+/** A day metric an undo changed: the first value it touched → the value left (null = nothing left). */
+export interface UndoMetricChange {
+  field: 'weight_kg' | 'water_liters' | 'sleep_hours' | 'mood_score' | 'steps';
+  before: number | null;
+  after: number | null;
+}
+
+export interface UndoSummary {
+  metrics: UndoMetricChange[];
+  /** profiles.weight_kg after the undo, when the undo changed it (undefined = untouched). */
+  profile_weight_after?: number | null;
+  /** Something came BACK: a replaced record un-deleted, a metric value re-written (the correction's old value). */
+  restored: boolean;
+  /** Records the undo soft-deleted / brought back (meal, workout, supplement, event, lab rows). */
+  records_removed: number;
+  records_restored: number;
+  /** Spine rows the undo switched off (a just-added constraint's ledger group). */
+  constraints_removed: number;
+}
+
+const UNDO_METRICS: Readonly<Record<UndoMetricChange['field'], { label: string; unit: string; decimals: number }>> = {
+  weight_kg: { label: 'tartı', unit: ' kg', decimals: 2 },
+  water_liters: { label: 'su (gün toplamı)', unit: ' L', decimals: 2 },
+  sleep_hours: { label: 'uyku', unit: ' saat', decimals: 1 },
+  mood_score: { label: 'ruh hali', unit: '/5', decimals: 0 },
+  steps: { label: 'adım', unit: '', decimals: 0 },
+};
+const RECORD_TABLES: ReadonlySet<string> = new Set(['meal_logs', 'workout_logs', 'supplement_logs', 'life_events', 'lab_values']);
+
+const fieldVal = (o: unknown, f: string): number | null | undefined => {
+  if (!isRecord(o) || !(f in o)) return undefined;
+  const v = o[f];
+  if (v === null) return null;
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return Number.isFinite(n) ? n : undefined;
+};
+const fieldsOf = (r: UndoRow): string[] => (Array.isArray(r.field_set) ? r.field_set.filter((x): x is string => typeof x === 'string') : []);
+
+/** What an undo changed, from the writer's reversed[] rows (pure; rows in the order the writer reversed them). */
+export function summarizeUndo(rows: readonly UndoRow[] | null | undefined): UndoSummary {
+  const out: UndoSummary = { metrics: [], restored: false, records_removed: 0, records_restored: 0, constraints_removed: 0 };
+  const byKey = new Map<string, UndoMetricChange>();
+  for (const r of rows ?? []) {
+    const table = typeof r.table === 'string' ? r.table : '';
+    const fs = fieldsOf(r);
+    if (table === 'daily_metrics') {
+      for (const f of fs) {
+        if (!(f in UNDO_METRICS)) continue;
+        const b = fieldVal(r.before, f);
+        const a = fieldVal(r.after, f);
+        if (a === undefined) continue;
+        const key = `${String(r.row_id)}:${f}`;
+        const cur = byKey.get(key);
+        if (cur) cur.after = a;
+        else {
+          const m: UndoMetricChange = { field: f as UndoMetricChange['field'], before: b ?? null, after: a };
+          byKey.set(key, m);
+          out.metrics.push(m);
+        }
+        if ((b === null || b === undefined) && a !== null) out.restored = true;
+      }
+    } else if (table === 'profiles' && fs.includes('weight_kg')) {
+      const a = fieldVal(r.after, 'weight_kg');
+      if (a !== undefined) out.profile_weight_after = a;
+    } else if (table === 'weight_history') {
+      if (r.before === null && isRecord(r.after)) out.restored = true;
+    } else if (table === 'user_constraints' && fs.includes('active')) {
+      if (isRecord(r.after) && r.after.active === false && isRecord(r.before) && r.before.active === true) out.constraints_removed++;
+    } else if (RECORD_TABLES.has(table) && fs.includes('is_deleted') && isRecord(r.after)) {
+      if (r.after.is_deleted === true) out.records_removed++;
+      else if (r.after.is_deleted === false) {
+        out.records_restored++;
+        out.restored = true;
+      }
+    }
+  }
+  // A value that came back to where it was (88 → null → 88) is no change worth stating.
+  out.metrics = out.metrics.filter((m) => m.before !== m.after);
+  return out;
+}
+
+function metricNum(field: UndoMetricChange['field'], n: number): string {
+  const spec = UNDO_METRICS[field];
+  return spec.decimals === 0 ? trInt(n) : trShort(n);
+}
+
+/** "tartı 88 → 82 kg" / "tartı 88 kg kaldırıldı; bugün için tartı kaydı kalmadı" / "tartı 82 kg geri geldi". */
+export function undoChangeTr(m: UndoMetricChange, day: string | null | undefined, today: string): string {
+  const s = UNDO_METRICS[m.field];
+  if (m.before !== null && m.after !== null) return `${s.label} ${metricNum(m.field, m.before)} → ${metricNum(m.field, m.after)}${s.unit}`;
+  if (m.before !== null) {
+    const when = !day || day === today ? 'bugün' : day === shiftDay(today, -1) ? 'dün' : day;
+    return `${s.label} ${metricNum(m.field, m.before)}${s.unit} kaldırıldı; ${when} için ${s.label.split(' (')[0]} kaydı kalmadı`;
+  }
+  return `${s.label} ${metricNum(m.field, m.after!)}${s.unit} geri geldi`;
+}
+
+/**
+ * The undo receipt: what was removed and what is left. With metric changes the numbers say both
+ * ("Kayıt geri alındı — tartı 88 → 82 kg"); a record undo quotes the record and says what came back.
+ */
+function undoLine(prefix: string, row: Row, ctx?: ReceiptCtx): string {
+  const r = refOf(row.ref, ctx);
+  const s = summarizeUndo(ctx?.reversed);
+  const parts = s.metrics.map((m) => undoChangeTr(m, r?.day, ctx?.today ?? ''));
+  const shownWeight = s.metrics.find((m) => m.field === 'weight_kg')?.after;
+  if (s.profile_weight_after !== undefined && s.profile_weight_after !== null && s.profile_weight_after !== shownWeight) {
+    parts.push(`profildeki kilo ${trShort(s.profile_weight_after)} kg`);
+  }
+  if (s.records_restored > 0) parts.push('düzeltmeden önceki kayıt geri geldi');
+  if (s.constraints_removed > 0) parts.push('artık kısıtlarında yok');
+  if (s.metrics.length > 0) return `${prefix} — ${parts.join(' · ')}`;
+  return `${prefix}: ${refSummary(row.ref, ctx)}${parts.length ? ` · ${parts.join(' · ')}` : ''}`;
 }
 
 type Row = Record<string, unknown>;
@@ -259,9 +395,9 @@ const BUILDERS: Record<string, (row: Row, v: WriteVerdict, ctx?: ReceiptCtx) => 
     : `Dönem: ${label(PERIODIC_STATES, row.state)}${str(row.end_date) ? ` (bitiş ${row.end_date})` : ''}`,
   target_change: (row) => (PROGRAM_LINES[String(row.program)] ?? (() => 'Kalori programı güncellendi'))(row),
   data_erase_request: () => null,
-  record_delete: (row, _v, ctx) => `Kayıt geri alındı: ${refSummary(row.ref, ctx)}`,
+  record_delete: (row, _v, ctx) => undoLine('Kayıt geri alındı', row, ctx),
   record_update: (row, v, ctx) => correctionLine(row, v, ctx),
-  record_restore_metric: (row, _v, ctx) => `Önceki değere dönüldü: ${refSummary(row.ref, ctx)}`,
+  record_restore_metric: (row, _v, ctx) => undoLine('Önceki değere dönüldü', row, ctx),
   pending_confirm: () => 'Onaylandı',
   pending_discard: () => 'Vazgeçildi',
   commitment_add: (row) => `Söz kaydedildi: ${String(row.text)} (takip ${String(row.follow_up_date)})`,

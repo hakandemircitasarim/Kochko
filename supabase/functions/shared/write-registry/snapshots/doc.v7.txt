@@ -1,4 +1,4 @@
-YAZILABİLİR KAYITLAR (şema kochko_understand_v6)
+YAZILABİLİR KAYITLAR (şema kochko_understand_v7)
 Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aralığı denetler, hiçbir sayını sessizce değiştirmez. Her yazma ayrı denetlenir.
 day: today | yesterday | YYYY-MM-DD; en fazla 7 gün geri, gelecek yok.
 Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. Kayıt düzeltmenin tek yolu record_ops update; yazmalardaki replaces hep null.
@@ -95,7 +95,7 @@ AÇIKÇA hesabın ve tüm verilerin ya da yalnız koç hafızasının silinmesi 
 ## record_ops[] — kayıtları ref ile geri al / düzelt
 
 ### delete
-KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i). Değil: kısıt (constraint_retract), bekleyen (pending_ops), plan taslağı (plan_action).
+KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i). Değil: eski kısıt (constraint_retract; son turda eklenen kısıt burada), bekleyen (pending_ops), plan taslağı (plan_action).
 
 ### update
 KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir öğüne binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur. Değil: aynı kaydı yeni yazma olarak eklemek (çift sayım).

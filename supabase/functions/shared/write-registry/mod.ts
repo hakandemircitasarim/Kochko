@@ -22,11 +22,12 @@ export {
   type DecisionValidation, type WriteVerdict, type PlanVerdict, type Verdict, type Normalization, type NotWrittenReason,
 } from './validate.ts';
 export {
-  receiptLine, toActionReceipt, turnFactLine, holdLine, rejectLine, writeFailedLine, MEAL_LOGGED_MARK,
-  type ReceiptCtx,
+  receiptLine, toActionReceipt, turnFactLine, holdLine, rejectLine, writeFailedLine, MEAL_LOGGED_MARK, summarizeUndo, undoChangeTr,
+  type ReceiptCtx, type UndoMetricChange, type UndoRow, type UndoSummary,
 } from './receipts.ts';
+export { undoQuestionTr } from './ops/records.ts';
 export {
-  REF_KINDS, BLOCK_TITLES, BLOCK_REF_KINDS, parseRef, formatRef, DELETABLE_KINDS, PATCH_OPS_BY_TARGET,
+  REF_KINDS, BLOCK_TITLES, BLOCK_REF_KINDS, parseRef, formatRef, DELETABLE_KINDS, UNDO_REF_KINDS, PATCH_OPS_BY_TARGET,
   type RefKind, type RefTarget, type RenderedRef, type RenderedRefs,
 } from './refs.ts';
 export {

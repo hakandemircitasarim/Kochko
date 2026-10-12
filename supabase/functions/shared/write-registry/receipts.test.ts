@@ -3,8 +3,8 @@
  * (AI_MIMARI_V2 §4.1 receipts.ts, §5.2; mem#13 'yaş' label, final2#15 English enum leaks).
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
-import { holdLine, MEAL_LOGGED_MARK, receiptLine, rejectLine, toActionReceipt, turnFactLine } from './receipts.ts';
-import { validateChannelItems, type WriteVerdict } from './validate.ts';
+import { holdLine, MEAL_LOGGED_MARK, receiptLine, rejectLine, summarizeUndo, toActionReceipt, turnFactLine, undoChangeTr } from './receipts.ts';
+import { validateChannelItems, validateConfirmedHold, type WriteVerdict } from './validate.ts';
 import { SAMPLE_MESSAGES, SAMPLE_REFS, SAMPLE_TODAY, SAMPLE_WRITES, sampleContext, sampleMeal } from './samples.ts';
 import type { RenderedRef } from './refs.ts';
 import { REGISTRY } from './registry.ts';
@@ -98,9 +98,64 @@ Deno.test('trial: a meal record_update receipt renders the PATCH kcal, old → n
 });
 
 Deno.test('trial: undo / delete receipts quote the USER summary — no "[model]" tag', () => {
-  const del = validateChannelItems('record_ops', [{ op: 'delete', ref: 'm1', reason: 'geri al' }], trialCtx('geri al'))[0];
+  const del = validateChannelItems('record_ops', [{ op: 'delete', ref: 'm1', reason: 'geri al', evidence_quote: 'geri al' }], trialCtx('geri al'))[0];
   const line = receiptLine(del, { today: SAMPLE_TODAY, refs: trialCtx('geri al').refs })!;
   assertEquals(line, 'Kayıt geri alındı: lahmacun (2 dilim ~200 g) 500 kcal; ayran (bir ayran ~250 g) 90 kcal · toplam 590 kcal');
+});
+
+// ─── re-trial 2026-10-12: the undo receipt states what was removed AND what is left (lane U) ───
+
+const dm = (field: string, before: unknown, after: unknown, row = 'dm-today') =>
+  ({ table: 'daily_metrics', row_id: row, ref: null, field_set: [field], before: { [field]: before }, after: { [field]: after } });
+const prof = (before: number, after: number, derived = false) =>
+  ({ table: 'profiles', row_id: 'u', ref: null, field_set: ['weight_kg'], before: { weight_kg: before }, after: { weight_kg: after }, ...(derived ? { derived: true } : {}) });
+const undoV = (ref: string, refs: Record<string, RenderedRef>) =>
+  validateChannelItems('record_ops', [{ op: 'delete', ref, reason: 'geri al', evidence_quote: null }], sampleContext({ user_message: 'geri al', refs: { ...SAMPLE_REFS, ...refs } }))[0];
+const W88: RenderedRef = { kind: 'd', target: 'weight', op: 'body_weight', day: SAMPLE_TODAY, last_turn: true, summary_tr: 'tartı: 88 kg', snapshot: { value: 88 } };
+
+Deno.test('undo receipt: undoing a weight correction says 88 → 82 — the value LEFT, not the removed one (final2 turn 13)', () => {
+  const v = undoV('d9', { d9: W88 });
+  assertEquals(v.verdict, 'COMMIT', JSON.stringify(v.issues));
+  // w_record_delete's reversed[] for "geri al" on the 88 correction (115: the replaced 82 comes back).
+  const reversed = [
+    prof(88, 81.6), { table: 'weight_history', row_id: 'wh88', field_set: ['weight_kg'], before: { weight_kg: 88 }, after: null },
+    dm('weight_kg', 88, null), dm('weight_kg', null, 82.0),
+    { table: 'weight_history', row_id: 'wh82', field_set: ['weight_kg'], before: null, after: { weight_kg: 82 } }, prof(81.6, 82),
+  ];
+  const line = receiptLine(v, { today: SAMPLE_TODAY, refs: { ...SAMPLE_REFS, d9: W88 }, reversed });
+  assertEquals(line, 'Kayıt geri alındı — tartı 88 → 82 kg');
+  const s = summarizeUndo(reversed);
+  assertEquals(s.metrics, [{ field: 'weight_kg', before: 88, after: 82 }]);
+  assertEquals([s.restored, s.profile_weight_after], [true, 82]);
+});
+
+Deno.test('undo receipt: nothing left that day is said plainly; a re-derived profile weight is named (115)', () => {
+  const v = undoV('d9', { d9: W88 });
+  const refs = { ...SAMPLE_REFS, d9: W88 };
+  const gone = receiptLine(v, { today: SAMPLE_TODAY, refs, reversed: [prof(88, 81.6), dm('weight_kg', 88, null)] });
+  assertEquals(gone, 'Kayıt geri alındı — tartı 88 kg kaldırıldı; bugün için tartı kaydı kalmadı · profildeki kilo 81,6 kg');
+  // Yesterday's weigh-in removed: restore_previous rewinds the profile to 78,2, the sync row to the latest weigh-in (80).
+  const yRef: RenderedRef = { kind: 'd', target: 'weight', op: 'body_weight', day: '2026-10-05', summary_tr: 'tartı: 81,6 kg', snapshot: { value: 81.6 } };
+  const yv = validateConfirmedHold('record_delete', { op: 'delete', ref: 'd8', reason: 'x', evidence_quote: null }, sampleContext({ user_message: 'evet', refs: { ...SAMPLE_REFS, d8: yRef } }))!;
+  const y = receiptLine(yv, { today: SAMPLE_TODAY, refs: { ...SAMPLE_REFS, d8: yRef }, reversed: [prof(81.6, 78.2), dm('weight_kg', 81.6, null, 'dm-y'), prof(78.2, 80, true)] });
+  assertEquals(y, 'Kayıt geri alındı — tartı 81,6 kg kaldırıldı; dün için tartı kaydı kalmadı · profildeki kilo 80 kg');
+});
+
+Deno.test('undo receipt: water is the day total old → new; a meal correction undo says the old record came back', () => {
+  const d3 = undoV('d3', {});
+  assertEquals(receiptLine(d3, { today: SAMPLE_TODAY, refs: SAMPLE_REFS, reversed: [dm('water_liters', 1.6, 1.4)] }), 'Kayıt geri alındı — su (gün toplamı) 1,6 → 1,4 L');
+  const m = undoV('m1', { m1: LAHMACUN_REF });
+  const meal = receiptLine(m, {
+    today: SAMPLE_TODAY, refs: trialCtx('').refs,
+    reversed: [
+      { table: 'meal_logs', row_id: 'new', ref: 'm9', field_set: ['is_deleted', 'deleted_at'], before: { is_deleted: false }, after: { is_deleted: true } },
+      { table: 'meal_logs', row_id: 'old', ref: 'm8', field_set: ['is_deleted', 'deleted_at'], before: { is_deleted: true }, after: { is_deleted: false } },
+    ],
+  });
+  assertEquals(meal, 'Kayıt geri alındı: lahmacun (2 dilim ~200 g) 500 kcal; ayran (bir ayran ~250 g) 90 kcal · toplam 590 kcal · düzeltmeden önceki kayıt geri geldi');
+  const s = summarizeUndo([{ table: 'user_constraints', row_id: 'uc', field_set: ['active'], before: { active: true }, after: { active: false } }]);
+  assertEquals([s.constraints_removed, s.restored], [1, false]);
+  assertEquals(undoChangeTr({ field: 'steps', before: null, after: 12000 }, SAMPLE_TODAY, SAMPLE_TODAY), 'adım 12.000 geri geldi');
 });
 
 Deno.test('a correction diff names added and removed items; a metric correction is old → new in its unit', () => {

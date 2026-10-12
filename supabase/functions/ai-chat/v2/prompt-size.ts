@@ -81,11 +81,17 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * reason only when nothing else is written). Measured: rules ≈2079, prefix ≈13888 (+32; SCHEMA v6
  * adds no tokens). Ceilings: understandRules 2050 → 2085, stageAPrefix 13860 → 13895 (+35 each, within
  * the brief's +60 allowance); few-shots unchanged.
+ * 2026-10-12 (SCHEMA_VERSION v7, re-trial lane U — undo / record ops): record_delete's strict shape
+ * gains evidence_quote (`["string","null"]` + its `required` entry, +61 schema chars) and its not_when
+ * line names the one constraint it may undo ("eski kısıt (constraint_retract; son turda eklenen kısıt
+ * burada)", +37 doc chars) — without that line Stage A sends a just-added allergy's "geri al" to
+ * constraint_retract and the add's ledger group is never undone. Measured prefix ≈13919 (+31):
+ * stageAPrefix 13895 → 13925 (+30, within the brief's +60 allowance). Rules and few-shots unchanged.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],
   understandRules: [900, 2085],
   understandFewShots: [1500, 3350],
   exemplars: [1100, 2400],
-  stageAPrefix: [9000, 13895],
+  stageAPrefix: [9000, 13925],
 } as const satisfies Record<string, readonly [number, number]>;

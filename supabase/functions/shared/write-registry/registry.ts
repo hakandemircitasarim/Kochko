@@ -64,8 +64,15 @@ import { memory_note } from './ops/memory.ts';
  * (iki_adimli_siddet_dusurme) — so the coach's capability line for it gains "Gerekirse önce
  * kullanıcıya sorulur." Schema bytes and the Stage A doc are unchanged apart from the version name.
  * (v5 was never deployed: live holds are v4 either way and come back as stale_hold.)
+ * v7 (2026-10-12, re-trial lane U — undo / record ops): record_delete gains evidence_quote (nullable,
+ * checked verbatim when given) and its first ASK rules — a record that is not the last turn's own write
+ * of today, or that the user confirmed through a hold, is held with ONE code question naming it
+ * ("Dünkü 81,6 kg tartını silmemi istiyor musun?"); a c# is accepted only for the user's newest
+ * constraint_add (always behind a safety confirmation), so its not_when line reads "eski kısıt
+ * (constraint_retract; son turda eklenen kısıt burada)". record_delete holds are pending_writes.op
+ * 'record_delete'. v6 holds come back as stale_hold.
  */
-export const SCHEMA_VERSION = 'v6';
+export const SCHEMA_VERSION = 'v7';
 
 export const REGISTRY: readonly RegOp[] = [
   // writes[] — what the user reported

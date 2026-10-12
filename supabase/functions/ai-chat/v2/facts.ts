@@ -30,7 +30,7 @@
  *
  * Pure: no I/O, no clock, no reading of the user's words (the message is only placed by coach.ts).
  */
-import type { CoachInput, CommitResult, TripwireResolution, UnderstandDecision, V2Hold, V2Receipt } from './contracts.ts';
+import type { CoachInput, CommitResult, TripwireResolution, UnderstandDecision, V2Hold, V2Receipt, V2Undo } from './contracts.ts';
 import { constraintLine, edTierOf, planTypeTr, profilePhrases, turnRefs, type TurnInput } from './input.ts';
 import { dayLabelTr, fmtTr, quoteLine } from './stage-a-request.ts';
 import {
@@ -201,8 +201,12 @@ export function budgetFacts(ti: TurnInput, delta: TurnIntakeDelta | null = null)
   };
 }
 
-/** "Bugün (sunucu): 1.240 kcal · hedef aralığı 1.800–2.000 kcal (plan), alt sınıra 560 kcal var · protein 58 / 120 g · su 1,80 / 2,5 L". */
-export function renderBudgetLine(b: BudgetFacts): string {
+/**
+ * "Bugün (sunucu): 1.240 kcal · hedef aralığı 1.800–2.000 kcal (plan), alt sınıra 560 kcal var · protein 58 / 120 g · su 1,80 / 2,5 L".
+ * `waterAfterUndo` (lane U): a record op of THIS turn changed today's water — the stored number is
+ * pre-turn, so it is marked as such and the writer's post-commit value is appended (null = none left).
+ */
+export function renderBudgetLine(b: BudgetFacts, waterAfterUndo?: number | null): string {
   const parts: string[] = [];
   if (!b.certain) {
     parts.push(`${fmtTr(b.consumedKcal)} kcal (az önceki değişiklikten önceki toplam; yeni toplam hesaplanamadı, toplam ya da kalan sayısı verme)`);
@@ -218,11 +222,60 @@ export function renderBudgetLine(b: BudgetFacts): string {
     }
   }
   parts.push(b.proteinTargetG !== null ? `protein ${fmtTr(b.proteinG)} / ${fmtTr(b.proteinTargetG)} g` : `protein ${fmtTr(b.proteinG)} g`);
-  if (b.waterLiters !== null || b.waterTargetLiters !== null) {
+  if (waterAfterUndo !== undefined) {
+    const pre = b.waterLiters !== null ? `${fmtTr(b.waterLiters, 2)} L` : 'kayıt yok';
+    const post = waterAfterUndo !== null && waterAfterUndo > 0 ? `${fmtTr(waterAfterUndo, 2)} L` : 'kayıt kalmadı';
+    parts.push(`su ${pre} (geri almadan önceki değer; şimdi ${post})${b.waterTargetLiters !== null ? ` / hedef ${fmtTr(b.waterTargetLiters, 1)} L` : ''}`);
+  } else if (b.waterLiters !== null || b.waterTargetLiters !== null) {
     const now = b.waterLiters !== null ? fmtTr(b.waterLiters, 2) : 'kayıt yok';
     parts.push(b.waterTargetLiters !== null ? `su ${now} / ${fmtTr(b.waterTargetLiters, 1)} L` : `su ${now} L`);
   }
   return `Bugün (sunucu): ${parts.join(' · ')}`;
+}
+
+// ─── record ops of this turn: removed, brought back, and the numbers they touched (lane U) ─────────
+
+/** The record ops whose receipt is a removal (SİLİNDİ), not a stored record. */
+export const UNDO_RECEIPT_OPS: ReadonlySet<string> = new Set(['record_delete', 'record_restore_metric']);
+
+const UNDO_METRIC_TR: Readonly<Record<string, { label: string; unit: string; decimals: number }>> = {
+  weight_kg: { label: 'tartı', unit: ' kg', decimals: 1 },
+  water_liters: { label: 'su (gün toplamı)', unit: ' L', decimals: 2 },
+  sleep_hours: { label: 'uyku', unit: ' saat', decimals: 1 },
+  mood_score: { label: 'ruh hali', unit: '/5', decimals: 0 },
+  steps: { label: 'adım', unit: '', decimals: 0 },
+};
+
+/** "tartı şimdi 82,0 kg" / "tartı kaydı kalmadı" — the value an undo LEFT, per metric it changed. */
+function undoNowTr(u: V2Undo): string[] {
+  return u.metrics.flatMap((m) => {
+    const s = UNDO_METRIC_TR[m.field];
+    if (!s) return [];
+    return [m.after === null ? `${s.label.split(' (')[0]} kaydı kalmadı` : `${s.label} şimdi ${fmtTr(m.after, s.decimals)}${s.unit}`];
+  });
+}
+
+/** The post-commit numbers KULLANICI DURUMU must mark (the TurnInput is the pre-turn snapshot). */
+export interface PostTurnState {
+  /** profiles.weight_kg after this turn's record ops (undefined = untouched). */
+  profileWeightKg?: number | null;
+  /** Today's water total after this turn's record ops (undefined = untouched). */
+  waterTodayLiters?: number | null;
+  /** c# tokens a record op switched off this turn. */
+  removedConstraintRefs: string[];
+}
+
+export function postTurnState(ti: TurnInput, commit: CommitResult): PostTurnState {
+  const out: PostTurnState = { removedConstraintRefs: [] };
+  for (const u of commit.undos ?? []) {
+    if (u.profile_weight_after !== undefined) out.profileWeightKg = u.profile_weight_after;
+    if ((u.day ?? ti.day) === ti.day) {
+      const w = u.metrics.find((m) => m.field === 'water_liters');
+      if (w) out.waterTodayLiters = w.after;
+    }
+    if (u.constraints_removed > 0 && u.ref) out.removedConstraintRefs.push(u.ref);
+  }
+  return out;
 }
 
 // ─── user state ────────────────────────────────────────────────────────────────────────────────────
@@ -231,18 +284,28 @@ const HOLD_OP_TR: Record<string, string> = {
   account_erase_request: 'veri silme talebi',
   // constraint_add is held only for one reason: lowering a guarded row's severity (ADDING is never held).
   constraint_add: 'kısıtın şiddetini düşürme',
+  // record_delete is held when the record is not the last turn's own write of today (records.ts): nothing is deleted yet.
+  record_delete: 'kaydı silme, henüz silinmedi',
 };
 
 /**
  * KULLANICI DURUMU lines from the TurnInput (+ this turn's budget). Facts only; an empty section is
  * left out instead of printed as "yok", except constraints, whose absence is itself a safety fact.
+ * `post` (lane U): numbers a record op of THIS turn changed are marked pre-turn, with the writer's
+ * post-commit value — the coach must not read the snapshot as the state after an undo.
  */
-export function renderUserState(ti: TurnInput, budget: BudgetFacts | null = null): string[] {
+export function renderUserState(ti: TurnInput, budget: BudgetFacts | null = null, post: PostTurnState | null = null): string[] {
   const lines: string[] = [];
   const local = ti.local;
   lines.push(`Şimdi: ${local.weekday_tr} ${local.date} ${local.time}${ti.day !== local.date ? ` (günlük kayıt günü ${ti.day})` : ''}`);
 
   const prof = profilePhrases(ti.profile, ti.goal);
+  if (post?.profileWeightKg !== undefined) {
+    const now = post.profileWeightKg !== null ? `${fmtTr(post.profileWeightKg, 1)} kg` : 'kayıt yok';
+    const i = prof.findIndex((p) => p.startsWith('kilo '));
+    if (i >= 0) prof[i] = `${prof[i]} (geri almadan önceki değer; şimdi ${now})`;
+    else prof.push(`kilo şimdi ${now} (geri almayla değişti)`);
+  }
   if (prof.length > 0) lines.push(`Profil: ${prof.join(' · ')}`);
   if (ti.profile.onboarding_completed === false) {
     const missing = (['gender', 'birth_year', 'height_cm', 'weight_kg'] as const)
@@ -251,7 +314,7 @@ export function renderUserState(ti: TurnInput, budget: BudgetFacts | null = null
     lines.push(`Tanışma: tamamlanmadı${missing.length ? ` (eksik: ${missing.join(', ')})` : ''}`);
   }
 
-  lines.push(renderBudgetLine(budget ?? budgetFacts(ti)));
+  lines.push(renderBudgetLine(budget ?? budgetFacts(ti), post?.waterTodayLiters));
 
   const tier = edTierOf(ti);
   if (tier !== 'none') {
@@ -268,7 +331,8 @@ export function renderUserState(ti: TurnInput, budget: BudgetFacts | null = null
       const unknownSev = (c.kind === 'allergen' || c.kind === 'intolerance') && (c.severity === null || c.severity === 'moderate');
       // Stage B speaks to the user: body-part ids in Turkish ("knee" → "diz"), never an English enum.
       const body_parts = c.body_parts.map((p) => (vocab.BODY_PARTS as Record<string, string>)[p] ?? p);
-      lines.push(`- ${c.ref} ${constraintLine({ kind: c.kind, subject: c.subject, severity: c.severity, body_parts, note: c.note })}${unknownSev ? ' (netleşene kadar ciddi sayılır)' : ''}`);
+      const removed = post?.removedConstraintRefs.includes(c.ref) ? ' (az önce geri alındı, artık geçerli değil)' : '';
+      lines.push(`- ${c.ref} ${constraintLine({ kind: c.kind, subject: c.subject, severity: c.severity, body_parts, note: c.note })}${removed || (unknownSev ? ' (netleşene kadar ciddi sayılır)' : '')}`);
     }
   } else {
     lines.push('Kısıtlar: kayıtlı alerji, sakatlık ya da hastalık yok');
@@ -404,6 +468,8 @@ export const SAFETY_HOLD_OPS: ReadonlySet<string> = new Set([
 ]);
 export const SAFETY_HOLD_REASONS: ReadonlySet<string> = new Set([
   'iki_adimli_kaldirma', SEVERITY_DOWNGRADE_CODE, 'kvkk_onay', 'kimlik_degisimi', 'kimlik_kaniti', 'hedef_degisiyor', 'bant_degisimi',
+  // record_delete on a just-added constraint (records.ts): the safety filters change, so code asks.
+  'son_eklenen_kisit',
 ]);
 
 /** The stored class first (pending_writes.hold_class), else by op / reason code — fail-safe either way. */
@@ -427,6 +493,19 @@ function refSummary(ref: string, refs: RenderedRefs): string {
   const r = refs[ref];
   const s = r?.user_summary_tr ?? r?.summary_tr;
   return s ? `${ref} (${quoteLine(s, 80)})` : ref;
+}
+
+/** The records of the newest write groups (input.ts recent_rank), newest first, with their day — at most 4. */
+function recentCandidates(refs: RenderedRefs, today: string): string[] {
+  return Object.entries(refs)
+    .filter(([, r]) => typeof r.recent_rank === 'number' && r.kind !== 'c')
+    .sort((a, b) => (a[1].recent_rank ?? 9) - (b[1].recent_rank ?? 9))
+    .slice(0, 4)
+    .map(([ref, r]) => {
+      const s = r.user_summary_tr ?? r.summary_tr;
+      const day = r.day ? dayLabelTr(r.day, today) : null;
+      return `${ref} (${[day, s ? quoteLine(s, 80) : null].filter(Boolean).join(' · ')})`;
+    });
 }
 
 /** Severe-or-unknown allergen subjects of the user's spine (the exposure line's "ciddi" mark). */
@@ -462,8 +541,20 @@ export function renderTurnEvents(
     return false;
   };
 
+  // Lane U (re-trial 2026-10-12): a removal is not a stored record. "KAYDEDİLDİ: Kayıt geri alındı: tartı
+  // 88 kg" read as "88 is there again"; and a deletion the reply left out ("dünkü 81,6 silindi") went
+  // unsaid. Every landed record op is a SİLİNDİ fact the reply states; what it brought back, GERİ GETİRİLDİ.
+  const undos = commit.undos ?? [];
+  let undoAt = 0;
   for (const r of commit.receipts) {
-    if (r.ok) {
+    if (r.ok && UNDO_RECEIPT_OPS.has(r.action_type)) {
+      const u = undos[undoAt++] ?? null;
+      lines.push(`- SİLİNDİ: ${r.user_line ?? opTitle(r.action_type)}; bunu cevabında açıkça söyle, silinen kayıt hâlâ duruyormuş gibi konuşma`);
+      if (u?.restored) {
+        const now = undoNowTr(u);
+        lines.push(`- GERİ GETİRİLDİ: düzeltmeden önceki kayıt yeniden geçerli${now.length ? ` (${now.join(', ')})` : ''}; bunu da cevabında söyle`);
+      }
+    } else if (r.ok) {
       lines.push(`- KAYDEDİLDİ: ${r.user_line ?? opTitle(r.action_type)}`);
     } else if (!explainedByReject(r)) {
       lines.push(`- KAYDEDİLEMEDİ (teknik hata, ${r.failure_class ?? 'bilinmiyor'}): ${r.user_line ?? opTitle(r.action_type)}`);
@@ -476,6 +567,8 @@ export function renderTurnEvents(
       if (f.code !== 'missed_write' && !f.code.startsWith('not_written:')) lines.push(`- Not: ${f.note_tr}`);
       continue;
     }
+    // A confirmed delete: its SİLİNDİ line above already says what happened ("kayıt yazıldı" would be wrong).
+    if (UNDO_RECEIPT_OPS.has(f.op) && isConfirmedAsk(f)) continue;
     // A confirmed hold: the user answered its question, so its reason is no longer a doubt to repeat.
     if (isConfirmedAsk(f)) {
       const detail = f.note_tr.startsWith(CONFIRMED_ASK_PREFIX) ? f.note_tr.slice(CONFIRMED_ASK_PREFIX.length) : f.note_tr;
@@ -515,7 +608,11 @@ export function renderTurnEvents(
   if (clarify) {
     const refs = turnRefs(ti).rendered;
     const cands = arr(clarify.candidate_refs).filter((r): r is string => typeof r === 'string').map((r) => refSummary(r, refs));
-    lines.push(`- NETLEŞTİRME GEREKİYOR: ${quoteLine(String(clarify.topic ?? ''), 160)}${cands.length ? `; adaylar: ${cands.join(', ')}` : ''}`);
+    // Lane U: "geri al" with nothing written last turn got "hangi kayıt?" with no option named. A
+    // correction clarify without candidates offers the newest writes (ledger order), by name.
+    const intent = isRec(decision.intent) ? decision.intent.primary : null;
+    const recent = cands.length === 0 && intent === 'correction' ? recentCandidates(refs, ti.day) : [];
+    lines.push(`- NETLEŞTİRME GEREKİYOR: ${quoteLine(String(clarify.topic ?? ''), 160)}${cands.length ? `; adaylar: ${cands.join(', ')}` : ''}${recent.length ? `; son yazılan kayıtlar (seçenek olarak adlarıyla sun): ${recent.join(', ')}` : ''}`);
   }
 
   const missed = forbidUnanchored ?? missedWriteFlagged(commit, decision);
@@ -602,7 +699,7 @@ export function buildStageBFacts(input: CoachInput): StageBFacts {
   const budget = budgetFacts(ti, turnIntakeDelta(ti, input.decision, input.commit));
   const forbid = unanchoredQuestionForbidden(input);
   return {
-    state: renderUserState(ti, budget),
+    state: renderUserState(ti, budget, postTurnState(ti, input.commit)),
     extra: input.userState.filter((l) => typeof l === 'string' && l.trim() !== ''),
     turn: [...renderTurnEvents(ti, input.decision, input.commit, input.tripwire.kind !== 'normal', forbid), ...renderDecisionFacts(input.decision, budget)],
     safety: renderTripwireFacts(input.tripwire),

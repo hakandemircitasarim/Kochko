@@ -28,9 +28,12 @@ import { estimateTokens } from './tokens.ts';
  * one went to bed) and the allergen hint that a bare "fıstık" is mostly peanut (a peanut-allergic
  * user's "fıstık alerjim var" was once written as tree_nut, which does not cover peanuts) — under
  * the owner's 2026-10-10 rule "önce doğruluk, sonra tasarruf" (the prefix is ~99 % cached).
+ * 2026-10-12 (SCHEMA v7, re-trial lane U): doc 3350 → 3365. record_delete's not_when line names the one
+ * constraint it may undo (a just-added one, behind a safety confirmation) — measured doc ≈3360 (+12);
+ * the schema share (+19, evidence_quote) stays inside its own ceiling and the total's.
  */
 export const STAGE_A_REGISTRY_BUDGET = {
-  doc: { floor: 2000, ceiling: 3350 },
+  doc: { floor: 2000, ceiling: 3365 },
   schema: { ceiling: 5300 },
   total: { ceiling: 8650 },
 } as const;

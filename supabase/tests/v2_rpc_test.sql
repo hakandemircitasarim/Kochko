@@ -1,6 +1,6 @@
--- v2 veritabanı RPC testleri (AI_MIMARI_V2 Faz 1 · migrasyonlar 108-114).
+-- v2 veritabanı RPC testleri (AI_MIMARI_V2 Faz 1 · migrasyonlar 108-115).
 --
--- NEREDE: yalnızca bir DAL (branch) veritabanında, 108-114 uygulandıktan sonra. CANLIDA ÇALIŞTIRMA.
+-- NEREDE: yalnızca bir DAL (branch) veritabanında, 108-115 uygulandıktan sonra. CANLIDA ÇALIŞTIRMA.
 --   psql "$BRANCH_DB_URL" -v ON_ERROR_STOP=1 -f supabase/tests/v2_rpc_test.sql
 -- Her şey tek işlemde koşar ve sonda ROLLBACK edilir: hiçbir satır kalıcı olmaz. Bir ASSERT tutmazsa
 -- psql durur ve hangi senaryonun kırıldığını mesajda yazar. Başarıda son satır 'v2_rpc_test OK' olur.
@@ -13,7 +13,9 @@
 -- bekletme açıldığı turda onaylanamaz · KVKK bekletme tekilliği korunur · v1 defter eki · v1 '23:00' eki
 -- kanonik saklanır ve geri alınır · antrenman + başarım + set'ler birlikte · 7 günden eski kayıt · yarıda kalan
 -- yazmanın geri sarılması · v2_turn_input şekli, ref kararlılığı ve yakında geri alınanlar · mesaj bağlama ·
--- 30 gün saklama (KVKK/güvenlik bekletmeleri kalır) · chat_messages v2 sütunları istemciden yazılamaz · yanlış eklenen kısıt tek grup geri alınır, omurga satırı silinmez (114).
+-- 30 gün saklama (KVKK/güvenlik bekletmeleri kalır) · chat_messages v2 sütunları istemciden yazılamaz · yanlış eklenen kısıt tek grup geri alınır, omurga satırı silinmez (114) ·
+-- düzeltmeyi ref ile geri almak önceki kaydı her tabloda geri getirir, geri getir/geri al zinciri tutarlı, düzeltmenin
+-- düzeltmesi eskiyi canlandırmaz; tartı geri alınınca profil kilosu kalan en son tartıyı izler (115).
 
 \set ON_ERROR_STOP on
 BEGIN;
@@ -907,6 +909,137 @@ BEGIN
   -- SECURITY DEFINER RPC (sunucu yolu) turn_id'yi damgalayabilir.
   r := v2_link_turn_message(b, t, '00000000-0000-4000-8000-00000000c521');
   ASSERT (r ->> 'ok')::boolean AND (SELECT turn_id = t FROM chat_messages WHERE id = '00000000-0000-4000-8000-00000000c521'), 'T20 link: ' || r::text;
+END $$;
+
+-- ─── T21 (115) düzeltmeyi geri almak önceki kaydı geri getirir; profil kilosu en son tartıyı izler ─────
+-- Canlı yeniden deneme (final2): 82 → "aslında 88" (onaylı düzeltme) → "geri al" bugünün tartısını
+-- tamamen siliyordu; dünkü tartının silinmesi profili bayat 78,2'ye sarıyordu. Temiz bir kullanıcıyla.
+INSERT INTO auth.users (id, instance_id, aud, role, email, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+VALUES ('00000000-0000-4000-8000-0000000000c1', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+        'v2-rpc-test-c@kochko.test', '{}', '{}', now(), now());
+INSERT INTO profiles (id) VALUES ('00000000-0000-4000-8000-0000000000c1') ON CONFLICT (id) DO NOTHING;
+UPDATE profiles SET weight_kg = 78.2 WHERE id = '00000000-0000-4000-8000-0000000000c1';
+-- v2 öncesi bir tartı (uygulama/eski geçmiş): kalan en son tartı bu olacak.
+INSERT INTO weight_history (user_id, weight_kg, recorded_at) VALUES ('00000000-0000-4000-8000-0000000000c1', 80.0, current_date - 3);
+
+DO $$
+DECLARE
+  c uuid := '00000000-0000-4000-8000-0000000000c1';
+  w1 jsonb;
+  w2 jsonb;
+  w3 jsonb;
+  r jsonb;
+  g2 uuid;
+BEGIN
+  ASSERT NOT has_function_privilege('authenticated', 'public._v2_profile_weight_sync(uuid,uuid,text,uuid,text,text)', 'EXECUTE')
+     AND NOT has_function_privilege('authenticated', 'public._v2_latest_weight(uuid)', 'EXECUTE'), 'T21 115 helpers exposed';
+  -- Dün 81,6 (o gün "bugün" diye yazıldığı için profili de yazdı), bugün 82.
+  w1 := w_metric_apply(c, gen_random_uuid(), jsonb_build_object('metric', 'weight', 'day', current_date - 1,
+          'values', jsonb_build_object('kg', 81.6), 'update_profile', true));
+  ASSERT (w1 ->> 'ok')::boolean, 'T21 w1: ' || w1::text;
+  w2 := w_metric_apply(c, gen_random_uuid(), jsonb_build_object('metric', 'weight', 'day', current_date,
+          'values', jsonb_build_object('kg', 82), 'update_profile', true, 'as_stated', 'bu sabah 82 kiloydum'));
+  ASSERT (w2 ->> 'ok')::boolean, 'T21 w2: ' || w2::text;
+  g2 := (w2 ->> 'group_id')::uuid;
+  -- "aslında 88" → onaylı düzeltme: 82 geri alınır + 88 yazılır, tek grup.
+  w3 := w_metric_apply(c, gen_random_uuid(), jsonb_build_object('metric', 'weight', 'day', current_date,
+          'values', jsonb_build_object('kg', 88), 'update_profile', true, 'replaces', w2 ->> 'ref'));
+  ASSERT (w3 ->> 'ok')::boolean AND w3 -> 'replaced' -> 'target' ->> 'ref' = w2 ->> 'ref', 'T21 correction: ' || w3::text;
+  ASSERT (SELECT weight_kg FROM daily_metrics WHERE user_id = c AND date = current_date) = 88, 'T21 dm 88';
+  ASSERT (SELECT count(*) = 1 AND min(weight_kg) = 88 FROM weight_history WHERE user_id = c AND recorded_at = current_date), 'T21 wh 88';
+  ASSERT (SELECT weight_kg FROM profiles WHERE id = c) = 88, 'T21 profile 88';
+  ASSERT NOT EXISTS (SELECT 1 FROM turn_writes WHERE group_id = g2 AND undone_at IS NULL), 'T21 82 not replaced';
+
+  -- "tartı düzeltmesini geri al" → ref ile (Stage A'nın yolu): 88 gider, 82 HER YERDE geri gelir.
+  r := w_record_delete(c, gen_random_uuid(), jsonb_build_object('ref', w3 ->> 'ref'), '{"reason":"düzeltmeyi geri al"}');
+  ASSERT (r ->> 'ok')::boolean, 'T21 undo correction: ' || r::text;
+  ASSERT (SELECT weight_kg FROM daily_metrics WHERE user_id = c AND date = current_date) = 82, 'T21 dm not back to 82';
+  ASSERT (SELECT count(*) = 1 AND min(weight_kg) = 82 FROM weight_history WHERE user_id = c AND recorded_at = current_date), 'T21 wh not back to 82';
+  ASSERT (SELECT weight_kg FROM profiles WHERE id = c) = 82, 'T21 profile not back to 82';
+  ASSERT NOT EXISTS (SELECT 1 FROM turn_writes WHERE group_id = g2 AND undone_at IS NOT NULL), 'T21 the 82 write is not live again';
+  ASSERT NOT EXISTS (SELECT 1 FROM turn_writes WHERE group_id = (w3 ->> 'group_id')::uuid AND undone_at IS NULL), 'T21 correction group still live';
+  -- Makbuz sonucu taşır: günün tartısının son satırı 82'ye döndü (88 → null → 82); profil zaten 82, eşitleme satırı yok.
+  ASSERT (SELECT (e -> 'after' ->> 'weight_kg')::numeric FROM jsonb_array_elements(r -> 'reversed') WITH ORDINALITY AS x(e, i)
+          WHERE e ->> 'table' = 'daily_metrics' ORDER BY i DESC LIMIT 1) = 82, 'T21 reversed[] does not end at 82: ' || r::text;
+  ASSERT NOT EXISTS (SELECT 1 FROM jsonb_array_elements(r -> 'reversed') e WHERE (e ->> 'derived')::boolean), 'T21 needless profile sync';
+
+  -- Geri getir → 88 döner; yeniden geri al → yine 82 (zincir tutarlı).
+  r := w_record_restore(c, gen_random_uuid(), jsonb_build_object('ref', w3 ->> 'ref'));
+  ASSERT (r ->> 'ok')::boolean, 'T21 restore: ' || r::text;
+  ASSERT (SELECT weight_kg FROM daily_metrics WHERE user_id = c AND date = current_date) = 88
+     AND (SELECT weight_kg FROM profiles WHERE id = c) = 88
+     AND (SELECT count(*) = 1 AND min(weight_kg) = 88 FROM weight_history WHERE user_id = c AND recorded_at = current_date), 'T21 restore not 88 everywhere';
+  ASSERT NOT EXISTS (SELECT 1 FROM turn_writes WHERE group_id = g2 AND undone_at IS NULL), 'T21 after restore the 82 write must be replaced again';
+  r := w_record_delete(c, gen_random_uuid(), jsonb_build_object('ref', w3 ->> 'ref'));
+  ASSERT (r ->> 'ok')::boolean AND (SELECT weight_kg FROM daily_metrics WHERE user_id = c AND date = current_date) = 82
+     AND (SELECT weight_kg FROM profiles WHERE id = c) = 82, 'T21 second undo: ' || r::text;
+  INSERT INTO v2t VALUES ('t21_w1', w1), ('t21_w2', w2);
+END $$;
+
+-- T21b tartı geri alınınca profil, o yazmanın "önceki" bayat değerine değil kalan en son tartıya döner.
+DO $$
+DECLARE
+  c uuid := '00000000-0000-4000-8000-0000000000c1';
+  w1 jsonb := (SELECT v FROM v2t WHERE k = 't21_w1');
+  w2 jsonb := (SELECT v FROM v2t WHERE k = 't21_w2');
+  r jsonb;
+  sync jsonb;
+BEGIN
+  r := w_record_delete(c, gen_random_uuid(), jsonb_build_object('ref', w2 ->> 'ref'));
+  ASSERT (r ->> 'ok')::boolean AND (SELECT weight_kg FROM profiles WHERE id = c) = 81.6, 'T21b today undone: ' || r::text;
+  -- Dünkü 81,6 silinir: restore_previous profili 78,2'ye sarardı; kalan en son tartı 3 gün önceki 80,0.
+  r := w_record_delete(c, gen_random_uuid(), jsonb_build_object('ref', w1 ->> 'ref'));
+  ASSERT (r ->> 'ok')::boolean, 'T21b yesterday undone: ' || r::text;
+  ASSERT (SELECT weight_kg FROM profiles WHERE id = c) = 80.0, 'T21b profile is stale, not the latest weigh-in';
+  SELECT e INTO sync FROM jsonb_array_elements(r -> 'reversed') e WHERE (e ->> 'derived')::boolean;
+  ASSERT sync IS NOT NULL AND (sync -> 'before' ->> 'weight_kg')::numeric = 78.2 AND (sync -> 'after' ->> 'weight_kg')::numeric = 80.0,
+    'T21b sync row missing from reversed[]: ' || r::text;
+  ASSERT EXISTS (SELECT 1 FROM turn_writes WHERE id = (sync ->> 'write_id')::uuid AND op = 'record_delete' AND table_name = 'profiles'
+                 AND group_id = (r ->> 'group_id')::uuid AND meta ->> 'derived' = 'profile_weight_latest'), 'T21b sync not in the undo group';
+  -- Geri getir: eşitleme de geri döner, profil yine en son tartı (dün 81,6).
+  r := w_record_restore(c, gen_random_uuid(), jsonb_build_object('ref', w1 ->> 'ref'));
+  ASSERT (r ->> 'ok')::boolean AND (SELECT weight_kg FROM profiles WHERE id = c) = 81.6, 'T21b restore: ' || r::text;
+  -- Uygulama ekranı tartısı (yalnız daily_metrics + profiles yazar) da "en son tartı" sayılır.
+  UPDATE daily_metrics SET weight_kg = 79.5 WHERE user_id = c AND date = current_date;
+  UPDATE profiles SET weight_kg = 79.5 WHERE id = c;
+  ASSERT _v2_latest_weight(c) = 79.5, 'T21b app-screen weigh-in ignored';
+END $$;
+
+-- T21c öğün: düzeltmeyi geri almak eski öğünü geri getirir; düzeltmenin düzeltmesi eskiyi CANLANDIRMAZ (çift sayım yok).
+DO $$
+DECLARE
+  c uuid := '00000000-0000-4000-8000-0000000000c1';
+  ma jsonb;
+  mb jsonb;
+  mc jsonb;
+  r jsonb;
+BEGIN
+  ma := w_meal_apply(c, gen_random_uuid(), jsonb_build_object('day', current_date, 'meal_type', 'lunch', 'raw', '2 dilim kıymalı pide',
+          'items', jsonb_build_array(jsonb_build_object('name', 'kıymalı pide', 'as_stated', '2 dilim', 'kcal', 430, 'protein_g', 17, 'carbs_g', 50, 'fat_g', 16))));
+  ASSERT (ma ->> 'ok')::boolean, 'T21c meal A: ' || ma::text;
+  mb := w_meal_apply(c, gen_random_uuid(), jsonb_build_object('day', current_date, 'meal_type', 'lunch', 'raw', 'tek dilimdi',
+          'replaces', ma ->> 'ref',
+          'items', jsonb_build_array(jsonb_build_object('name', 'kıymalı pide', 'as_stated', 'tek dilim', 'kcal', 215, 'protein_g', 9, 'carbs_g', 25, 'fat_g', 8))));
+  ASSERT (mb ->> 'ok')::boolean, 'T21c meal B: ' || mb::text;
+  ASSERT (SELECT is_deleted FROM meal_logs WHERE id = (ma ->> 'row_id')::uuid), 'T21c A not replaced';
+  r := w_record_delete(c, gen_random_uuid(), jsonb_build_object('ref', mb ->> 'ref'));
+  ASSERT (r ->> 'ok')::boolean, 'T21c undo correction: ' || r::text;
+  ASSERT (SELECT NOT is_deleted FROM meal_logs WHERE id = (ma ->> 'row_id')::uuid), 'T21c A not back';
+  ASSERT (SELECT is_deleted FROM meal_logs WHERE id = (mb ->> 'row_id')::uuid), 'T21c B still live';
+  ASSERT EXISTS (SELECT 1 FROM jsonb_array_elements(r -> 'reversed') e
+                 WHERE e ->> 'row_id' = ma ->> 'row_id' AND (e -> 'after' ->> 'is_deleted')::boolean = false), 'T21c reversed[] lacks A: ' || r::text;
+  -- Geri getir → B döner, A yine yerine geçilmiş (ve defterde de geri alınmış görünür).
+  r := w_record_restore(c, gen_random_uuid(), jsonb_build_object('ref', mb ->> 'ref'));
+  ASSERT (r ->> 'ok')::boolean AND (SELECT is_deleted FROM meal_logs WHERE id = (ma ->> 'row_id')::uuid)
+     AND (SELECT NOT is_deleted FROM meal_logs WHERE id = (mb ->> 'row_id')::uuid), 'T21c restore: ' || r::text;
+  ASSERT (SELECT undone_at IS NOT NULL FROM turn_writes WHERE id = (ma ->> 'write_id')::uuid), 'T21c A''s write looks live after the restore';
+  -- Düzeltmenin düzeltmesi (B → C): yalnız B gider; A canlanmaz.
+  mc := w_meal_apply(c, gen_random_uuid(), jsonb_build_object('day', current_date, 'meal_type', 'lunch', 'raw', 'yarım dilim',
+          'replaces', mb ->> 'ref',
+          'items', jsonb_build_array(jsonb_build_object('name', 'kıymalı pide', 'as_stated', 'yarım dilim', 'kcal', 110, 'protein_g', 5, 'carbs_g', 13, 'fat_g', 4))));
+  ASSERT (mc ->> 'ok')::boolean, 'T21c meal C: ' || mc::text;
+  ASSERT (SELECT count(*) FROM meal_logs WHERE user_id = c AND logged_for_date = current_date AND NOT is_deleted) = 1, 'T21c double count after B → C';
+  ASSERT (SELECT is_deleted FROM meal_logs WHERE id = (ma ->> 'row_id')::uuid), 'T21c A revived by a correction of the correction';
 END $$;
 
 SELECT 'v2_rpc_test OK' AS result;

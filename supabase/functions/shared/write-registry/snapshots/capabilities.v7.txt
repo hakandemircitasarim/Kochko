@@ -19,9 +19,9 @@ BU UYGULAMADA GERÇEKTEN YAPABİLDİKLERİN (kayıtlar yalnızca bu yollarla de�
 - Dönemsel durum: Geçici bir dönemin (ramazan, hastalık, sınav, seyahat, hamilelik…) bugün başlaması ya da bitmesi; yarın başlayacak dönem henüz yazılmaz. Gerekirse önce kullanıcıya sorulur.
 - Kalori programı: Açıkça istenen ya da kabul edilen kalori programı (bakım, mini cut, plato stratejisi, telafi, MVD günü); "bakıma geçmem gerekir mi?" sorusu değil. Gerekirse önce kullanıcıya sorulur.
 - Veri silme talebi (KVKK): Hafızanın ya da hesabın silinmesi talebini almak; silme yalnızca kullanıcı bir sonraki mesajında açıkça onaylarsa yapılır. Gerekirse önce kullanıcıya sorulur.
-- Kaydı geri al/sil: Gösterilen belirli bir kaydı geri almak (yalnızca son 7 gün).
+- Kaydı geri al/sil: Gösterilen belirli bir kaydı geri almak (yalnızca son 7 gün). Gerekirse önce kullanıcıya sorulur.
 - Kaydı düzelt: Yanlış bir kaydı düzeltmek; fark ettiğin şüpheli bir geçmiş kaydı (ör. küçük bir öğüne binlerce kcal) önce kullanıcıya sorarak. Gerekirse önce kullanıcıya sorulur.
-- Metriği önceki değerine döndür: Bir günlük metriği belirli bir yazmadan önceki değerine döndürmek.
+- Metriği önceki değerine döndür: Bir günlük metriği belirli bir yazmadan önceki değerine döndürmek. Gerekirse önce kullanıcıya sorulur.
 - Söz/taahhüt: Somut, takip edilebilir bir söz ("yarından itibaren akşam 8’den sonra yemeyeceğim").
 - Söz sonucu: AÇIK SÖZLER’deki bir sözün sonucu ("dün akşam 8’den sonra yemedim").
 - Hafıza notu: Bu kişiyle ilgili kalıcı gözlemleri hafızana yazmak (memory[]).

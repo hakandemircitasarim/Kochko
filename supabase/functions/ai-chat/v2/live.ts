@@ -132,6 +132,15 @@ export async function liveResolveTarget(userId: string, today: string, target: T
     const ref = (data as { ref?: unknown } | null)?.ref;
     return typeof ref === 'string' ? { ok: true, ref, write_id: null } : { ok: false, failure_class: 'unknown_ref' };
   }
+  if (target.kind === 'ledger_group') {
+    // The live constraint_add that switched this spine row on: undone as its whole group (write id).
+    const { data, error } = await from('turn_writes').select('id').eq('user_id', userId).eq('table_name', target.table)
+      .eq('row_id', target.id).eq('op', target.op).eq('is_primary', true).is('undone_at', null).is('reverses', null)
+      .order('seq', { ascending: false }).limit(1);
+    if (error) return { ok: false, failure_class: 'write_failed' };
+    const w = rowsOf(data)?.[0];
+    return w && typeof w.id === 'string' ? { ok: true, ref: null, write_id: w.id } : { ok: false, failure_class: 'not_in_ledger' };
+  }
   const { data, error } = await from('turn_writes').select('id, ref').eq('user_id', userId).eq('table_name', 'daily_metrics')
     .eq('row_id', target.id).eq('is_primary', true).is('undone_at', null).is('reverses', null)
     .contains('field_set', [target.field]).order('seq', { ascending: false }).limit(1);

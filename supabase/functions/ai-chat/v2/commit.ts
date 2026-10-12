@@ -32,11 +32,11 @@ import {
   type WaterApplyOk, HOLD_DEFAULT_TTL_MIN, parseRpcReceipt, V2_RPC,
 } from '../../shared/v2-db-types.ts';
 import {
-  collectRefs, ERASE_HOLD_OP, getOp, PROFILE_FIELD_SPECS, receiptLine, rejectLine, SCHEMA_VERSION, validateConfirmedHold, writeFailedLine,
-  type DecisionValidation, type RenderedRefs, type ValidationContext, type WriteVerdict,
+  collectRefs, ERASE_HOLD_OP, getOp, PROFILE_FIELD_SPECS, receiptLine, rejectLine, SCHEMA_VERSION, summarizeUndo, validateConfirmedHold,
+  writeFailedLine, type DecisionValidation, type RenderedRefs, type UndoRow, type ValidationContext, type WriteVerdict,
 } from '../../shared/write-registry/mod.ts';
 import { trNum } from '../../shared/write-registry/util.ts';
-import type { CommitResult, V2Flag, V2Hold, V2Receipt, V2Reject } from './contracts.ts';
+import type { CommitResult, V2Flag, V2Hold, V2Receipt, V2Reject, V2Undo } from './contracts.ts';
 import { SAFETY_HOLD_OPS, SAFETY_HOLD_REASONS } from './facts.ts';
 import type { RefMapTarget, TurnInput, TurnRefs } from './input.ts';
 
@@ -112,6 +112,12 @@ export function failureTr(cls: string | null | undefined): string {
 export type TargetSpec =
   | { kind: 'row'; table: string; id: string; token: string }
   | { kind: 'metric'; table: 'daily_metrics'; id: string; field: string; op: string; token: string }
+  /**
+   * A spine row undone as the ledger GROUP of the write that switched it on (a just-added constraint:
+   * records.ts accepts only RenderedRef.undo_add). Resolves to that constraint_add's write id —
+   * w_record_delete {write_id} reverses its whole group (the spine row is deactivated, its mirrors go).
+   */
+  | { kind: 'ledger_group'; table: 'user_constraints'; id: string; op: 'constraint_add'; token: string }
   | { kind: 'unresolvable'; token: string; reason: string };
 
 /** What a target resolved to in the database (record_refs ref and/or a ledger write id). */
@@ -135,7 +141,7 @@ interface StepBase {
 
 export type CommitStep =
   | (StepBase & { kind: 'rpc'; rpc: WriterRpc; payload: Record<string, unknown>; replaces: TargetSpec | null; pendingId: string | null })
-  | (StepBase & { kind: 'record_delete'; target: TargetSpec; reason: string })
+  | (StepBase & { kind: 'record_delete'; target: TargetSpec; reason: string; pendingId?: string | null })
   | (StepBase & { kind: 'adapter'; op: string; row: Record<string, unknown>; replaces: TargetSpec | null; pendingId: string | null; refRow: RefMapTarget | null })
   | (StepBase & { kind: 'hold_open'; holdOp: string; payload: HoldPayloadV2; opts: HoldOpenOptions })
   | (StepBase & { kind: 'erase_hold'; scope: 'memory' | 'account' })
@@ -221,6 +227,11 @@ export function targetOf(token: unknown, refs: TurnRefs): TargetSpec {
   if (['meal_logs', 'workout_logs', 'supplement_logs', 'life_events', 'lab_values'].includes(m.table)) {
     return { kind: 'row', table: m.table, id: m.id, token: t };
   }
+  // A c# reaches here only from record_delete, which the validator allows for the user's newest
+  // constraint_add alone (records.ts kisit_yalniz_son_ekleme); corrections never patch the spine.
+  if (m.table === 'user_constraints' && refs.rendered[t]?.undo_add === true) {
+    return { kind: 'ledger_group', table: 'user_constraints', id: m.id, op: 'constraint_add', token: t };
+  }
   return { kind: 'unresolvable', token: t, reason: 'not_deletable' };
 }
 
@@ -259,7 +270,9 @@ function plainReject(v: WriteVerdict, reasonCode: string, reasonTr: string, fail
 export function holdSubjectKey(v: WriteVerdict, refs: TurnRefs): string | null {
   const a = v.args;
   switch (v.op) {
-    case 'record_update': {
+    case 'record_update':
+    case 'record_delete':
+    case 'record_restore_metric': {
       const t = refs.refMap.get(String(a.ref));
       return t ? `${v.op}:${t.id}${t.field ? `:${t.field}` : ''}` : null;
     }
@@ -426,7 +439,7 @@ function writeStep(v: WriteVerdict, refs: TurnRefs, today: string, pendingId: st
     return { kind: 'adapter', op: patchOp, row: patch, replaces: target, pendingId, refRow: null, verdict: v };
   }
   if (v.op === 'record_delete' || v.op === 'record_restore_metric') {
-    return { kind: 'record_delete', target: targetOf(v.args.ref, refs), reason: str(v.args.reason) ?? '', verdict: v };
+    return { kind: 'record_delete', target: targetOf(v.args.ref, refs), reason: str(v.args.reason) ?? '', pendingId, verdict: v };
   }
   const replaces = typeof v.args.replaces === 'string' ? targetOf(v.args.replaces, refs) : null;
   if (RPC_OPS[v.op]) return { kind: 'rpc', rpc: RPC_OPS[v.op], payload: rpcPayloadFor(v.op, row, today), replaces, pendingId, verdict: v };
@@ -638,12 +651,39 @@ interface StepResult {
   exposureItems?: Array<{ name: unknown; allergens: unknown; may_contain: unknown }>;
   exposureSource?: 'meal' | 'supplement';
   spineAdds?: string[];
+  undo?: V2Undo;
 }
 
 const errMsg = (e: unknown) => ((e as Error)?.message ?? String(e)).slice(0, 300);
 
-function okReceipt(v: WriteVerdict, plan: CommitPlan, r: { rows_affected: number | null; ref: string | null; write_id: string | null }, extra?: string | null): V2Receipt {
-  const line = receiptLine(v, { today: plan.today, refs: plan.refs });
+/**
+ * The reason w_record_delete is given. 'replaced' is the writers' own supersede signal (115: such a
+ * call removes only the record, never the correction's replaced one) — a model reason that happens to
+ * read exactly 'replaced' must not switch a user's undo onto that path.
+ */
+export function undoReason(reason: string): string | null {
+  const r = reason.slice(0, 120);
+  if (!r) return null;
+  return r === 'replaced' ? 'replaced (kullanıcı)' : r;
+}
+
+/** A landed record op → what Stage B is told about it (pure: the writer's reversed[] rows, summed). */
+function undoOf(v: WriteVerdict, plan: CommitPlan, receipt: V2Receipt, reversed: readonly UndoRow[]): V2Undo {
+  const token = typeof v.args.ref === 'string' ? v.args.ref : null;
+  const s = summarizeUndo(reversed);
+  return {
+    op: v.op, ref: token, line: receipt.user_line, day: (token && plan.refs[token]?.day) || null,
+    metrics: s.metrics.map((m) => ({ field: m.field, before: m.before, after: m.after })),
+    ...(s.profile_weight_after !== undefined ? { profile_weight_after: s.profile_weight_after } : {}),
+    restored: s.restored, constraints_removed: s.constraints_removed,
+  };
+}
+
+function okReceipt(
+  v: WriteVerdict, plan: CommitPlan, r: { rows_affected: number | null; ref: string | null; write_id: string | null }, extra?: string | null,
+  reversed?: readonly UndoRow[],
+): V2Receipt {
+  const line = receiptLine(v, { today: plan.today, refs: plan.refs, ...(reversed ? { reversed } : {}) });
   return {
     action_type: v.op, ok: true, rows_affected: r.rows_affected, user_line: line && extra ? `${line} · ${extra}` : line ?? extra ?? null,
     failure_class: null, ref: r.ref, write_id: r.write_id, legacy_type: v.envelope,
@@ -737,17 +777,32 @@ async function runStep(step: CommitStep, plan: CommitPlan, ports: CommitPorts, m
       return out;
     }
     case 'record_delete': {
+      const pendingId = step.pendingId ?? null;
       const res = await resolveOrFail(ports, plan, step.target);
-      if (!res.ok) return failResult(v, res.failure_class);
-      const target = res.ref ? { ref: res.ref } : res.write_id ? { write_id: res.write_id } : null;
-      if (!target) return failResult(v, 'not_in_ledger');
+      if (!res.ok) {
+        // A confirmed delete that cannot run any more must not leave its hold open for a stray "evet".
+        if (pendingId) await closeHold(ports, plan, pendingId, false, null, res.failure_class);
+        return failResult(v, res.failure_class);
+      }
+      // A spine row is undone as its constraint_add's whole group (write id), never by its c# ref.
+      const target = step.target.kind === 'ledger_group'
+        ? (res.write_id ? { write_id: res.write_id } : null)
+        : res.ref ? { ref: res.ref } : res.write_id ? { write_id: res.write_id } : null;
+      if (!target) {
+        if (pendingId) await closeHold(ports, plan, pendingId, false, null, 'not_in_ledger');
+        return failResult(v, 'not_in_ledger');
+      }
       markWrite();
       const r = await callRpc<RecordOpOk>(ports, V2_RPC.recordDelete, {
         p_user: plan.userId, p_turn_id: plan.turnId, p_target: target,
-        p_opts: { max_age_days: 7, pipeline: 'v2', reason: step.reason.slice(0, 120) || null },
+        p_opts: { max_age_days: 7, pipeline: 'v2', reason: undoReason(step.reason) },
       }, ['record_delete']);
+      // The delete is its own transaction, so a confirmed hold is closed right after it (like a held correction).
+      if (pendingId) await closeHold(ports, plan, pendingId, r.ok, r.ok ? res.ref : null, r.ok ? null : r.failure_class);
       if (!r.ok) return failResult(v, r.failure_class);
-      return { receipt: okReceipt(v, plan, { rows_affected: Array.isArray(r.reversed) ? r.reversed.length : 1, ref: res.ref, write_id: null }) };
+      const reversed: UndoRow[] = Array.isArray(r.reversed) ? r.reversed as unknown as UndoRow[] : [];
+      const receipt = okReceipt(v, plan, { rows_affected: reversed.length || 1, ref: res.ref, write_id: null }, null, reversed);
+      return { receipt, undo: undoOf(v, plan, receipt, reversed) };
     }
     case 'adapter': {
       let replaces: AdapterRequest['replaces'] = null;
@@ -869,6 +924,7 @@ export async function executeCommit(plan: CommitPlan, ports: CommitPorts): Promi
     if (out.reject) result.rejects.push(out.reject);
     if (out.flags) result.flags.push(...out.flags);
     if (out.receipt?.ok && out.ref) result.writtenRefs.push(out.ref);
+    if (out.receipt?.ok && out.undo) (result.undos ??= []).push(out.undo);
     if (out.receipt?.ok && out.exposureItems && out.exposureSource) {
       exposureCandidates.push({ source: out.exposureSource, ref: out.ref ?? '', items: out.exposureItems });
     }

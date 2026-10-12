@@ -37,6 +37,7 @@ const MIG_DIR = new URL('../../migrations/', import.meta.url);
 const V2_MIGRATIONS = [
   '108_turn_writes.sql', '109_pending_writes_v2.sql', '110_soft_delete_and_types.sql',
   '111_turn_log_v2.sql', '112_chat_receipts.sql', '113_v2_writer_rpcs.sql', '114_ledger_spine_tables.sql',
+  '115_undo_restores_replaced.sql',
 ];
 // CRLF-safe: a Windows checkout must not turn a parity check red.
 const sql = (f: string) => Deno.readTextFileSync(new URL(f, MIG_DIR)).replace(/\r\n/g, '\n');
@@ -251,6 +252,37 @@ Deno.test('recently_undone window and limit match v2_turn_input (113)', () => {
   const m113 = sql('113_v2_writer_rpcs.sql');
   assert(m113.includes(`w.created_at >= now() - make_interval(hours => ${RECENTLY_UNDONE_HOURS})`), 'recently_undone window drifted');
   assert(m113.includes(`ORDER BY u.seq DESC LIMIT ${RECENTLY_UNDONE_LIMIT}`), 'recently_undone limit drifted');
+});
+
+Deno.test('115: undo by ref takes the anchor group\'s replaced deletes (never on the supersede path); profile weight follows the latest weigh-in', () => {
+  const m115 = sql('115_undo_restores_replaced.sql');
+  const fn = grab(m115, /(CREATE OR REPLACE FUNCTION public\._v2_record_op\([\s\S]*?\nEND \$\$;)/, '115 _v2_record_op');
+  // Same signature as 108 (CREATE OR REPLACE must replace, not overload).
+  assert(fn.includes('p_user uuid, p_turn_id uuid, p_target jsonb, p_action text, p_group uuid, p_opts jsonb'), 'signature drifted from 108');
+  assert(fn.includes("v_supersede boolean := coalesce(v_opts ->> 'reason', '') = 'replaced';"), 'the supersede path is not told apart');
+  // Both delete-by-ref branches (metric write anchor, record row anchor) include the replaced deletes.
+  const inclusions = fn.split("OR (NOT v_supersede AND op = 'record_delete' AND meta ->> 'reason' = 'replaced')").length - 1;
+  assertEquals(inclusions, 2, 'both ref branches must take the replaced deletes');
+  assert(/IF NOT v_supersede AND EXISTS \([\s\S]*?_v2_profile_weight_sync\(/.test(fn), 'the profile sync must skip the supersede path');
+  assert(fn.includes("'reversed', v_rows"), 'the sync row must reach reversed[]');
+  // The ledger invariant: a live reversal row's own target is undone again.
+  assert(/UPDATE turn_writes o SET undone_at = now\(\)[\s\S]*?r\.reverses IS NOT NULL[\s\S]*?o\.id = r\.reverses/.test(fn), 'reversal-chain invariant missing');
+  // Every other code line of the body is 108's: a line that is neither in 108 nor one of the 115 additions
+  // (supersede flag, replaced inclusion, chain invariant, profile sync, reversed rows) is an accidental edit.
+  const m108 = sql('108_turn_writes.sql');
+  const old = grab(m108, /(CREATE OR REPLACE FUNCTION public\._v2_record_op\([\s\S]*?\nEND \$\$;)/, '108 _v2_record_op');
+  const oldLines = new Set(old.split('\n').map((l) => l.trim()));
+  const added = fn.split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('--') && !oldLines.has(l));
+  const ADDITION = /v_supersede|v_rows|v_sync|turn_writes o SET|FROM turn_writes l, turn_writes r|l\.reverses IS NOT NULL|r\.id = l\.reverses|o\.id = r\.reverses|AND \(\(op NOT IN|e ->> 'table'|jsonb_array_elements\(v_rows\)/;
+  assertEquals(added.filter((l) => !ADDITION.test(l)), [], 'an unexpected change to 108\'s _v2_record_op body');
+  assert(added.length <= 22, `115 changed more of 108's body than its additions (${added.length} lines)`);
+  for (const l of ['_v2_fail(\'not_deletable\'', "_v2_fail('replaced'", '_v2_reverse_rows(p_user, p_turn_id, v_ids, v_op, p_group, v_force, v_meta)']) {
+    assert(old.includes(l) && fn.includes(l), `108 behaviour lost: ${l}`);
+  }
+  // The latest weigh-in reads BOTH stores (the app screen writes daily_metrics + profiles only).
+  const latest = grab(m115, /(CREATE OR REPLACE FUNCTION public\._v2_latest_weight[\s\S]*?\$\$;)/, '_v2_latest_weight');
+  assert(latest.includes('FROM daily_metrics dm') && latest.includes('FROM weight_history wh'), 'latest weigh-in must union both stores');
+  assert(m115.includes('DOWN:'), '115 documents its DOWN');
 });
 
 Deno.test('migration numbers are unique (parallel branches must not both ship a 108)', () => {

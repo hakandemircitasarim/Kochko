@@ -249,7 +249,7 @@ Deno.test('runShadow: ASK and REJECT verdicts land in the row with their codes',
       { ...SAMPLE_WRITES.water_log, as_stated: 'toplam 1 litre', quantity: 1, unit: 'litre', mode: 'set_day_total' },
       { ...SAMPLE_WRITES.water_log, unit: 'other', other_ml_each: null },
     ],
-    record_ops: [{ op: 'delete', ref: 'm99', reason: 'yanlış' }],
+    record_ops: [{ op: 'delete', ref: 'm99', reason: 'yanlış', evidence_quote: null }],
   });
   const { rec, row } = await shadow({ message: 'bugün toplam 1 litre su içtim, şu öğünü de sil' }, decision);
   assertEquals(rec.validation?.counts, { COMMIT: 0, FLAG: 0, ASK: 1, REJECT: 2 });

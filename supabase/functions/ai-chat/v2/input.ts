@@ -141,6 +141,38 @@ export interface TurnInputLoadError {
   message: string;
 }
 
+/**
+ * One turn_writes row the loader read (newest first). The plain loader renders records from their own
+ * tables; these rows add what only the ledger knows about them (re-trial 2026-10-12, lane U): which
+ * write group is newest ("geri al" candidates), whether a record's live write was confirmed through
+ * a hold or is a correction (record_delete asks first), and which constraint was just added (the one
+ * c# record_delete may undo).
+ */
+export interface LedgerRecentRow {
+  id: string;
+  seq: number;
+  /** Persistent record_refs ref (m12, w3…) — NOT a turn token. */
+  ref: string | null;
+  op: string;
+  table: string;
+  row_id: string | null;
+  day: string | null;
+  field_set: string[];
+  before: Record<string, unknown> | null;
+  is_primary: boolean;
+  group_id: string;
+  turn_id: string | null;
+  reverses: string | null;
+  undone_at: string | null;
+  created_at: string;
+  /** meta.pending_id: a writer claimed a hold atomically for this write. */
+  pending_id: string | null;
+  /** meta.reason ('replaced' on a correction's deletes). */
+  reason: string | null;
+  /** Written in the previous turn (the same window as the records' "son tur"). */
+  last_turn: boolean;
+}
+
 /** The RPC's TurnInputRow (same keys, same item shapes) + what TypeScript adds. */
 export type TurnInput = Omit<TurnInputRow, 'schema'> & {
   schema: typeof TURN_INPUT_SCHEMA | typeof PLAIN_TURN_INPUT_SCHEMA;
@@ -159,6 +191,10 @@ export type TurnInput = Omit<TurnInputRow, 'schema'> & {
   references: [];
   /** A failed section is empty and listed here; the turn never fails because of it. */
   load_errors: TurnInputLoadError[];
+  /** The user's newest ledger rows, newest first (absent: an older producer / fixture — no ledger facts). */
+  ledger_recent?: LedgerRecentRow[];
+  /** Persistent refs that confirmed holds produced (pending_writes.result.ref, last 8 days). */
+  hold_confirmed_refs?: string[];
 };
 
 export interface LoadTurnInputOptions {
@@ -290,8 +326,23 @@ export function turnInputQueries(userId: string, now: Date, historyLimit = TURN_
     },
     { section: 'active_intent', table: 'chat_sessions', columns: 'active_intent', filters: [own(), { op: 'eq', column: 'is_active', value: true }], limit: 1 },
     { section: 'portion_calibration', table: 'ai_summary', columns: 'portion_calibration', filters: [own()], limit: 1 },
+    // Lane U (re-trial 2026-10-12): what only the ledger knows about the rendered records.
+    {
+      section: 'ledger_recent', table: 'turn_writes',
+      columns: 'id, seq, ref, op, table_name, row_id, for_date, field_set, before, is_primary, group_id, turn_id, reverses, undone_at, created_at, meta',
+      filters: [own(), { op: 'gte', column: 'created_at', value: `${lo}T00:00:00Z` }],
+      order: [{ column: 'seq', ascending: false }], limit: LEDGER_RECENT_ROWS,
+    },
+    {
+      section: 'holds_confirmed', table: 'pending_writes', columns: 'op, result, resolved_at',
+      filters: [own(), { op: 'eq', column: 'status', value: 'confirmed' }, { op: 'gte', column: 'resolved_at', value: `${lo}T00:00:00Z` }],
+      order: [{ column: 'resolved_at', ascending: false }], limit: 30,
+    },
   ];
 }
+
+/** How many of the user's newest ledger rows the loader reads (a turn writes a handful; 3 groups ≪ 80). */
+export const LEDGER_RECENT_ROWS = 80;
 
 /**
  * Load the TurnInput. Every read is issued before the first await (one wave), so callers that start
@@ -543,6 +594,25 @@ export function assembleTurnInput(
     })),
   };
 
+  // ── ledger facts (lane U): newest first; refs here are persistent record_refs refs, never turn tokens ──
+  const ledger_recent: LedgerRecentRow[] = rows('ledger_recent')
+    .filter((w) => typeof w.id === 'string' && typeof w.op === 'string' && typeof w.group_id === 'string')
+    .map((w) => {
+      const meta = isRec(w.meta) ? w.meta : {};
+      return {
+        id: String(w.id), seq: num(w.seq) ?? 0, ref: str(w.ref), op: String(w.op), table: str(w.table_name) ?? '',
+        row_id: str(w.row_id), day: day10(w.for_date),
+        field_set: Array.isArray(w.field_set) ? (w.field_set as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+        before: isRec(w.before) ? w.before : null, is_primary: w.is_primary === true, group_id: String(w.group_id),
+        turn_id: str(w.turn_id), reverses: str(w.reverses), undone_at: str(w.undone_at), created_at: str(w.created_at) ?? '',
+        pending_id: str(meta.pending_id), reason: str(meta.reason), last_turn: inLastTurn(w.created_at),
+      };
+    })
+    .sort((a, b) => b.seq - a.seq);
+  const hold_confirmed_refs = rows('holds_confirmed')
+    .map((p) => (isRec(p.result) ? str(p.result.ref) : null))
+    .filter((r): r is string => r !== null);
+
   const safetyRow = rows('safety')[0] ?? null;
   const tier = str(safetyRow?.ed_tier);
   const ot = str(safetyRow?.overtraining_tier);
@@ -604,6 +674,8 @@ export function assembleTurnInput(
     ],
     references: [],
     load_errors,
+    ledger_recent,
+    hold_confirmed_refs,
   };
   return ti;
 }
@@ -698,7 +770,69 @@ export function turnRefs(ti: TurnInput): TurnRefs {
   }
   for (const k of ti.commitments) add(k.ref, 'k', 'commitment', 'user_commitments', k.id);
   for (const d of ti.plans.drafts) add(d.ref, 'dft', 'plan_draft', 'weekly_plans', d.id);
+  applyLedgerFacts(ti, rendered, refMap);
   return { rendered, refMap };
+}
+
+// ─── ledger facts on the rendered refs (lane U, re-trial 2026-10-12) ───────────────────────────────
+
+const RECORD_OPS: ReadonlySet<string> = new Set(['record_delete', 'record_restore']);
+/** The tables whose rows a rendered record ref names (d# = a daily_metrics row + field). */
+const LEDGERED_TABLES: ReadonlySet<string> = new Set([
+  'meal_logs', 'workout_logs', 'supplement_logs', 'life_events', 'lab_values', 'daily_metrics', 'user_constraints',
+]);
+/** How many of the newest write groups "geri al" may name as candidates. */
+export const RECENT_WRITE_GROUPS = 3;
+
+const isLiveWrite = (w: LedgerRecentRow) => w.is_primary && w.undone_at === null && w.reverses === null && !RECORD_OPS.has(w.op);
+
+/**
+ * The newest live write group ids, newest first (at most RECENT_WRITE_GROUPS). A group is one
+ * logical write (a meal + its venue, a correction = the old record's deletes + the new record).
+ */
+export function recentWriteGroups(ledger: readonly LedgerRecentRow[]): string[] {
+  const out: string[] = [];
+  for (const w of ledger) {
+    if (!isLiveWrite(w) || out.includes(w.group_id)) continue;
+    out.push(w.group_id);
+    if (out.length >= RECENT_WRITE_GROUPS) break;
+  }
+  return out;
+}
+
+/**
+ * What the ledger says about each rendered record: its live write (the newest live primary row on
+ * that row — and that field, for a d#), whether that write was confirmed through a hold (the writer
+ * claimed it — meta.pending_id — or a confirmed hold's result names its ref), whether it is a
+ * correction, how recent its group is, and — for a c# — whether its constraint_add is the user's
+ * newest write and switched the row on (the one constraint record_delete may undo). Pure; a TurnInput
+ * without ledger rows (an older producer, a fixture) changes nothing.
+ */
+function applyLedgerFacts(ti: TurnInput, rendered: Record<string, RenderedRef>, refMap: ReadonlyMap<string, RefMapTarget>): void {
+  const ledger = ti.ledger_recent ?? [];
+  if (ledger.length === 0) return;
+  const confirmed = new Set(ti.hold_confirmed_refs ?? []);
+  const groups = recentWriteGroups(ledger);
+  for (const [token, t] of refMap) {
+    const r = rendered[token];
+    if (!r || !LEDGERED_TABLES.has(t.table)) continue;
+    const w = ledger.find((x) => isLiveWrite(x) && x.table === t.table && x.row_id === t.id
+      && (t.field ? x.field_set.includes(t.field) : true)
+      && (t.table === 'user_constraints' ? x.op === 'constraint_add' : true));
+    if (!w) continue;
+    const rank = groups.indexOf(w.group_id) + 1;
+    if (rank > 0) r.recent_rank = rank;
+    if (t.table === 'user_constraints') {
+      if (w.last_turn) r.last_turn = true;
+      // The add switched the row on AND belongs to the user's newest write turn: nothing was written in
+      // another turn since (a confirming "evet" writes nothing before its own commit, so it still holds there).
+      const newestTurn = w.turn_id !== null && ledger.every((x) => !isLiveWrite(x) || x.seq <= w.seq || x.turn_id === w.turn_id);
+      if (newestTurn && w.before?.active === false) r.undo_add = true;
+      continue;
+    }
+    if (w.pending_id !== null || (w.ref !== null && confirmed.has(w.ref))) r.confirmed_hold = true;
+    if (ledger.some((x) => x.group_id === w.group_id && x.op === 'record_delete' && x.reason === 'replaced' && x.undone_at === null)) r.correction = true;
+  }
 }
 
 // ─── validation context ────────────────────────────────────────────────────────────────────────────
@@ -950,34 +1084,41 @@ export function stageAView(ti: TurnInput, opts: { image?: boolean } = {}): Stage
   }
 
   const last = new Set(ti.last_turn_refs);
+  // Lane U: with nothing written last turn, "geri al" can still name the newest writes (ledger order).
+  const rendered = turnRefs(ti).rendered;
+  const recent = (ref: string, lastTurn: boolean | undefined): string => {
+    const rank = rendered[ref]?.recent_rank;
+    if (!rank || lastTurn) return '';
+    return rank === 1 ? ' (en son yazılan)' : ` (sondan ${rank}. yazılan)`;
+  };
   const records: RefLine[] = [];
   for (const m of ti.meals) {
     const mt = (vocab.MEAL_TYPES as Record<string, string>)[m.meal_type] ?? m.meal_type;
-    records.push({ ref: m.ref, line: `${dayLabelTr(m.day, t)} ${mt} · "${quoteLine(m.raw_input, 100)}" → ${mealSummary(m)}`, last_turn: m.last_turn });
+    records.push({ ref: m.ref, line: `${dayLabelTr(m.day, t)} ${mt} · "${quoteLine(m.raw_input, 100)}" → ${mealSummary(m)}${recent(m.ref, m.last_turn)}`, last_turn: m.last_turn });
   }
-  for (const d of ti.metric_days) records.push({ ref: d.ref, line: `${dayLabelTr(d.day, t)} ${metricSummary(d)}`, last_turn: d.last_turn });
+  for (const d of ti.metric_days) records.push({ ref: d.ref, line: `${dayLabelTr(d.day, t)} ${metricSummary(d)}${recent(d.ref, d.last_turn)}`, last_turn: d.last_turn });
   for (const w of ti.workouts) {
     const it = w.intensity ? ` ${(vocab.INTENSITY as Record<string, string>)[w.intensity] ?? w.intensity}` : '';
     const kc = w.calories_burned ? ` ~${fmtTr(w.calories_burned)} kcal` : '';
     const sets = w.set_count ? ` · ${w.set_count} set` : '';
     records.push({
       ref: w.ref,
-      line: `${dayLabelTr(w.day, t)} antrenman · "${quoteLine(w.raw_input, 80)}" → ${w.workout_type ?? '?'} ${fmtTr(w.duration_min)} dk${it}${kc}${sets}`,
+      line: `${dayLabelTr(w.day, t)} antrenman · "${quoteLine(w.raw_input, 80)}" → ${w.workout_type ?? '?'} ${fmtTr(w.duration_min)} dk${it}${kc}${sets}${recent(w.ref, last.has(w.ref))}`,
       last_turn: last.has(w.ref),
     });
   }
   for (const s of ti.supplements) {
     records.push({
       ref: s.ref,
-      line: `${dayLabelTr(s.day, t)} takviye · ${quoteLine(s.name, 40)}${s.amount ? ` (${quoteLine(s.amount, 20)})` : ''}`,
+      line: `${dayLabelTr(s.day, t)} takviye · ${quoteLine(s.name, 40)}${s.amount ? ` (${quoteLine(s.amount, 20)})` : ''}${recent(s.ref, last.has(s.ref))}`,
       last_turn: last.has(s.ref),
     });
   }
   for (const l of ti.labs) {
     const range = l.reference_min !== null || l.reference_max !== null ? ` (referans ${l.reference_min ?? '?'}–${l.reference_max ?? '?'})` : '';
-    records.push({ ref: l.ref, line: `${dayLabelTr(l.day, t)} tahlil · ${quoteLine(l.parameter, 40)} ${fmtTr(l.value, 2)} ${l.unit}${range}` });
+    records.push({ ref: l.ref, line: `${dayLabelTr(l.day, t)} tahlil · ${quoteLine(l.parameter, 40)} ${fmtTr(l.value, 2)} ${l.unit}${range}${recent(l.ref, false)}` });
   }
-  for (const e of ti.life_events) records.push({ ref: e.ref, line: `olay · ${e.event_date} · ${quoteLine(e.title, 60)} (${e.event_type})` });
+  for (const e of ti.life_events) records.push({ ref: e.ref, line: `olay · ${e.event_date} · ${quoteLine(e.title, 60)} (${e.event_type})${recent(e.ref, false)}` });
 
   return {
     now: { today: t, local_date: ti.local.date, local_time: ti.local.time, tz: ti.local.tz },
@@ -986,8 +1127,10 @@ export function stageAView(ti: TurnInput, opts: { image?: boolean } = {}): Stage
     gates: [],
     today,
     records,
+    // A constraint added in the previous turn is "(son tur)": the one record_delete may undo (records.ts).
     constraints: ti.constraints.map((c) => ({
       ref: c.ref, line: constraintLine({ kind: c.kind, subject: c.subject, severity: c.severity, body_parts: c.body_parts, note: c.note }),
+      ...(rendered[c.ref]?.last_turn ? { last_turn: true } : {}),
     })),
     pending: ti.pending.map((h) => ({
       ref: h.ref, line: `${h.op} · açıldı ${localClock(h.created_at, ti.local.tz, t)} · bitiş ${localClock(h.expires_at, ti.local.tz, t)}`,
