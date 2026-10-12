@@ -124,7 +124,9 @@ Deno.test('§7.1 re-checked on structure: a violating suggestion list never goes
   assertEquals(out.reply.suggested_foods, []);
   assertEquals(out.reply.memory, [], 'no durable note from a draft that failed the check');
   assertEquals(out.reply.why, null);
-  assertStringIncludes(out.reply.reply, SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin ve diz sakatlığın'));
+  // A withheld food names the allergy only (no judge verdict in this port's log clears the name-only hit).
+  assertStringIncludes(out.reply.reply, SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin'));
+  assert(!out.reply.reply.includes('diz'), out.reply.reply);
   assertEquals(out.codeNotes, [{ kind: 'other', text: PORTION.question_tr }], 'a code-authored reply asks the one ordinary question too');
   assert(out.issues.includes('guarantee_suggestion_violation'));
   // On the protective path: the ready-made safety reply instead.

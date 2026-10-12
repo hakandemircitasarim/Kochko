@@ -15,15 +15,17 @@ import type { CoachRun } from './coach.ts';
 import type { CoachReply, V2Hold } from './contracts.ts';
 import { isSafetyHold, renderTurnEvents } from './facts.ts';
 import {
-  clarifyLine, JUDGE_SCHEMA, type JudgeOutcome, type JudgeRequest, lunaJudge, mandatoryLines, MIN_COACH_CALL_MS, MIN_JUDGE_CALL_MS,
-  postcheckReply, type ProseJudge, RECEIPTS_BELOW_TR, referralFlagMismatch, type RegenNote, rejectLine, replyAsksHold,
-  SAFE_FALLBACK_VARIANTS, safetyProfileOf, suggestionViolations, withCodeNotes, withinBudget,
+  clarifyLine, emptyPostcheckLog, JUDGE_INSTRUCTIONS, JUDGE_SCHEMA, type JudgeOutcome, judgeReason, type JudgeRequest, judgeUserText,
+  LIVE_JUDGE_SCOPE, lunaJudge, mandatoryLines, MIN_COACH_CALL_MS, MIN_JUDGE_CALL_MS, postcheckReply, type ProseJudge, RECEIPTS_BELOW_TR,
+  referralFlagMismatch, type RegenNote, rejectLine, replyAsksHold, SAFE_FALLBACK_VARIANTS, safetyProfileOf, suggestionViolations,
+  withCodeNotes, withinBudget,
 } from './postcheck.ts';
-import { SUGGESTION_UNVERIFIED_LINE } from './guarantees.ts';
+import { applyGuarantees, constraintPhrase, judgeClearedFinal, SUGGESTION_UNVERIFIED_LINE } from './guarantees.ts';
 import { fakeResponses, refusalBody, responsesBody } from './testing.ts';
 import {
-  coachInput, commit, decision, edFallbackTripwire, protectiveTripwire, replyJson, seededTurnInput,
+  coachInput, commit, decision, edFallbackTripwire, protectiveTripwire, replyJson, seededTurnInput, stageBTransport, USER,
 } from './stage-b-testing.ts';
+import { stageBPorts } from './ports.ts';
 
 function run(reply: CoachReply | null, status: CoachRun['status'] = reply ? 'ok' : 'error'): CoachRun {
   return { status, reply, model: 'gpt-5.6-terra', effort: 'low', contract: null, latencyMs: 10, usage: null, attempts: 1, retries: [], detail: null, regen: false };
@@ -37,8 +39,9 @@ function judges(...outs: JudgeOutcome[]): { judge: ProseJudge; calls: number } {
 const CLEAN: JudgeOutcome = { status: 'ok', violation: false, items: [], ms: 5 };
 const FAILED: JudgeOutcome = { status: 'failed', reason: 'timeout', ms: 5000 };
 
+// The model's own tag names the allergen: a TAG hit, which blocks whatever the judge says.
 const PEANUT_TOAST = replyJson({
-  suggested_foods: [{ name: 'fıstık ezmeli tost', allergens: [], may_contain: [] }],
+  suggested_foods: [{ name: 'fıstık ezmeli tost', allergens: ['peanut'], may_contain: [] }],
   reply: 'Ara öğünde fıstık ezmeli tost iyi gider.',
 });
 const SAFE_SNACK = replyJson({
@@ -108,13 +111,15 @@ Deno.test('regen still violating → safe fallback: no suggestion, other notices
   assertEquals(r.log.outcome, 'safe_fallback');
   assertEquals([r.reply.suggested_foods, r.reply.suggested_exercises], [[], []]);
   assert(r.reply.reply.startsWith('Bu turdaki kaydın yerinde. '), r.reply.reply);
-  assertStringIncludes(r.reply.reply, SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin ve diz sakatlığın'));
+  // A withheld FOOD names the allergies only — never the knee (live 2026-10-12, final2#10).
+  assertStringIncludes(r.reply.reply, SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin'));
+  assert(!r.reply.reply.includes('diz'), r.reply.reply);
   assertEquals(r.codeNotes.map((n) => n.kind), ['allergen_exposure', 'safety_hold'], 'the exposure and the hold question survive the fallback');
   // The next turn, if it falls back again, uses the other wording.
   const again = await postcheckReply({ ...input, history: [{ role: 'assistant', content: r.text }] }, run(PEANUT_TOAST), {
     judge: judges(CLEAN).judge, regen: () => Promise.resolve(run(PEANUT_TOAST)),
   });
-  assertStringIncludes(again.reply.reply, SAFE_FALLBACK_VARIANTS[1]('fıstık alerjin ve diz sakatlığın'));
+  assertStringIncludes(again.reply.reply, SAFE_FALLBACK_VARIANTS[1]('fıstık alerjin'));
 });
 
 Deno.test('code-authored fallbacks: "in place" only when every write landed; no memory from a rejected draft', async () => {
@@ -133,7 +138,7 @@ Deno.test('code-authored fallbacks: "in place" only when every write landed; no 
   const two = await postcheckReply(coachInput(ti, { commit: commit({ receipts: [OK, { ...OK, ref: 'm5' }] }) }), run(firstDraft), deps);
   assert(two.reply.reply.startsWith('Bu turdaki kayıtların yerinde. '), two.reply.reply);
   const none = await postcheckReply(coachInput(ti), run(firstDraft), deps);
-  assert(none.reply.reply.startsWith(SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin ve diz sakatlığın')), 'no writes, no receipts lead');
+  assert(none.reply.reply.startsWith(SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin')), 'no writes, no receipts lead');
 
   const crisis = await postcheckReply(coachInput(ti, { tripwire: protectiveTripwire('ed') }), run(firstDraft), { ...deps, regen: () => Promise.resolve(run(firstDraft)) });
   assertEquals([crisis.log.outcome, crisis.reply.memory], ['crisis_canned', []]);
@@ -439,6 +444,153 @@ Deno.test('lines are appended LAST in order (referral → exposure → hold) and
     assert(text.startsWith(reply.reply), 'the coach\'s text is untouched');
     assertEquals(text, [reply.reply, ...notes.map((n) => n.text)].join('\n\n'));
   }
+});
+
+// ─── name-only hits (live 2026-10-12, final2#10: "… deniz ürünü olmadan" → a code refusal) ─────────
+
+const SEAFOOD_ROW = {
+  id: 'uc-3', user_id: USER, kind: 'allergen', subject: 'deniz ürünleri', severity: 'moderate', body_parts: [], active: true,
+  source: 'user_stated', note: null, stated_at: '2026-10-01T08:00:00Z', confidence: 1, confirmed_at: null,
+};
+const seafoodUser = () => seededTurnInput((t) => { t.user_constraints.push(SEAFOOD_ROW); });
+const NEGATED_DISH = replyJson({
+  suggested_foods: [{ name: 'ızgara tavuk, deniz ürünü olmadan', allergens: [], may_contain: [] }],
+  reply: 'Akşam ızgara tavuk ve mevsim salatası iyi gider.',
+});
+const QUESTION = decision({ intent: { primary: 'question', is_hypothetical: false, about_other_person: false } });
+
+Deno.test('name-only hit (exclusion written into the dish name, tags clean): the judge decides — clean → it goes out, and the handler agrees', async () => {
+  const ti = await seafoodUser();
+  const profile = safetyProfileOf(ti);
+  assertEquals(suggestionViolations(NEGATED_DISH, profile).map((v) => v.allergens.map((a) => a.via)), [['name']], 'the structure still sees the word');
+  const reqs: JudgeRequest[] = [];
+  const judge: ProseJudge = (req) => { reqs.push(req); return Promise.resolve(CLEAN); };
+  const input = coachInput(ti, { decision: QUESTION });
+  const r = await postcheckReply(input, run(NEGATED_DISH), { judge, judgeScope: 'suggestions', regen: () => { throw new Error('no regen expected'); } });
+  assertEquals([r.log.outcome, r.codeAuthored, r.reply], ['first', false, NEGATED_DISH]);
+  assertEquals([r.log.invariant_hits, r.log.name_only_hits], [[[]], [['ızgara tavuk, deniz ürünü olmadan']]]);
+  assertEquals(reqs[0].nameOnly, [{ name: 'ızgara tavuk, deniz ürünü olmadan', constraints: ['deniz ürünleri'] }]);
+  const asked = judgeUserText(reqs[0]);
+  assertStringIncludes(asked, 'AYRICA KARAR VER');
+  assertStringIncludes(asked, '"ızgara tavuk, deniz ürünü olmadan": adında deniz ürünleri ile ilgili bir sözcük geçiyor ama etiketleri temiz');
+  assertStringIncludes(JUDGE_INSTRUCTIONS, '"… olmadan"');
+  // The handler's final structural step lets the same reply through on the port's clean verdict.
+  const g = applyGuarantees(input, r);
+  assertEquals([g.codeAuthored, g.issues, g.reply], [false, [], NEGATED_DISH]);
+});
+
+Deno.test('name-only hit: a judge violation, a failed judge or no judge (crisis) still blocks — never cleared by default', async () => {
+  const ti = await seafoodUser();
+  const flagged: JudgeOutcome = {
+    status: 'ok', violation: true, ms: 5,
+    items: [{ name: 'ızgara tavuk, deniz ürünü olmadan', kind: 'food', constraint: 'deniz ürünleri', reason: 'marinesinde balık sosu olabilir' }],
+  };
+  const notes: RegenNote[] = [];
+  const r = await postcheckReply(coachInput(ti), run(NEGATED_DISH), { judge: judges(flagged, CLEAN).judge, regen: (n) => { notes.push(n); return Promise.resolve(run(SAFE_SNACK)); } });
+  assertEquals(r.log.outcome, 'regen');
+  assertEquals(notes[0].excluded, [{ name: 'ızgara tavuk, deniz ürünü olmadan', why: 'deniz ürünleri alerjisi' }], 'one entry per item');
+  assertEquals(r.log.judge_items, [{ attempt: 1, name: 'ızgara tavuk, deniz ürünü olmadan', kind: 'food', constraint: 'deniz ürünleri', reason: 'marinesinde balık sosu olabilir' }]);
+
+  const failed = await postcheckReply(coachInput(ti), run(NEGATED_DISH), { judge: judges(FAILED).judge, regen: () => Promise.resolve(run(NEGATED_DISH)) });
+  assertEquals([failed.log.outcome, failed.log.judge], ['safe_fallback', ['failed', 'failed']]);
+  assertStringIncludes(failed.reply.reply, SAFE_FALLBACK_VARIANTS[0]('fıstık, deniz ürünleri alerjin'));
+  assert(!failed.reply.reply.includes('diz'), 'a withheld food never cites the knee');
+
+  const crisis = await postcheckReply(coachInput(ti, { tripwire: protectiveTripwire('self_harm') }), run(NEGATED_DISH), { judge: judges(CLEAN).judge, regen: () => Promise.resolve(run(NEGATED_DISH)) });
+  assertEquals([crisis.log.outcome, crisis.log.judge], ['crisis_canned', ['skipped', 'skipped']]);
+
+  // The handler's final step: no clean verdict from the port → the same reply is replaced.
+  for (const log of [emptyPostcheckLog('first'), { ...emptyPostcheckLog('first'), judge: ['failed' as const] }, { ...emptyPostcheckLog('safe_fallback'), judge: ['clean' as const] }]) {
+    const g = applyGuarantees(coachInput(ti), { reply: NEGATED_DISH, codeNotes: [], codeAuthored: false, log });
+    assert(g.codeAuthored && g.issues.includes('guarantee_suggestion_violation'), JSON.stringify(log.judge));
+  }
+});
+
+Deno.test('a TAG hit blocks whatever the judge said — in the port and in the handler\'s final step', async () => {
+  const ti = await seededTurnInput();
+  const r = await postcheckReply(coachInput(ti), run(PEANUT_TOAST), { judge: judges(CLEAN).judge, regen: () => Promise.resolve(run(SAFE_SNACK)) });
+  assertEquals([r.log.outcome, r.log.invariant_hits, r.log.name_only_hits], ['regen', [['fıstık ezmeli tost'], []], [[], []]]);
+  const lying = { reply: PEANUT_TOAST, codeNotes: [], codeAuthored: false, log: { ...emptyPostcheckLog('first'), judge: ['clean' as const] } };
+  assert(judgeClearedFinal(lying), 'the log says clean…');
+  assert(applyGuarantees(coachInput(ti), lying).issues.includes('guarantee_suggestion_violation'), '…and the tag hit is replaced anyway');
+});
+
+Deno.test('live 2026-10-12 (final2#10): a judge-flagged draft, then a regen naming its dish "… olmadan" → the regen goes out, not the code refusal', async () => {
+  const ti = await seafoodUser();
+  const draft = replyJson({ suggested_foods: [{ name: 'tavuk sote', allergens: [], may_contain: [] }], reply: 'Akşam hazır soslu tavuk sote yapabilirsin.' });
+  const flagged: JudgeOutcome = { status: 'ok', violation: true, ms: 5, items: [{ name: 'tavuk sote', kind: 'food', constraint: 'deniz ürünleri', reason: 'hazır sosta balık sosu olabilir' }] };
+  const r = await postcheckReply(coachInput(ti, { decision: QUESTION }), run(draft), {
+    judge: judges(flagged, CLEAN).judge, judgeScope: LIVE_JUDGE_SCOPE, regen: () => Promise.resolve(run(NEGATED_DISH)),
+  });
+  assertEquals([r.log.outcome, r.log.judge, r.log.regens], ['regen', ['violation', 'clean'], 1]);
+  assertEquals(r.reply, NEGATED_DISH);
+  assertEquals(r.log.name_only_hits, [[], ['ızgara tavuk, deniz ürünü olmadan']]);
+  assertEquals(r.log.judge_items?.map((i) => [i.attempt, i.name, i.reason]), [[1, 'tavuk sote', 'hazır sosta balık sosu olabilir']]);
+});
+
+Deno.test('the fallback names only what was withheld: an exercise → the injury; no kind known → every constraint', async () => {
+  const ti = await seededTurnInput();
+  const squat = replyJson({ suggested_exercises: [{ name: 'squat', loads: ['knee'] }], reply: 'Yarın squat yap.' });
+  const r = await postcheckReply(coachInput(ti), run(squat), { judge: judges(CLEAN).judge, regen: () => Promise.resolve(run(squat)) });
+  assertStringIncludes(r.reply.reply, SAFE_FALLBACK_VARIANTS[0]('diz sakatlığın'));
+  assert(!r.reply.reply.includes('fıstık'));
+  const p = safetyProfileOf(ti);
+  assertEquals(constraintPhrase(p), 'fıstık alerjin ve diz sakatlığın');
+  assertEquals(constraintPhrase(p, new Set()), 'fıstık alerjin ve diz sakatlığın');
+  assertEquals(constraintPhrase(p, new Set(['food'] as const)), 'fıstık alerjin');
+  assertEquals(constraintPhrase(p, new Set(['exercise'] as const)), 'diz sakatlığın');
+  assertEquals(constraintPhrase({ ...p, severeAllergens: [] }, new Set(['food'] as const)), 'kısıtların');
+  // A judge that failed on a prose-only reply names nothing and no list says what it was: every constraint.
+  const prose = await postcheckReply(coachInput(ti, { decision: QUESTION }), run(replyJson()), { judge: judges(FAILED).judge, regen: () => Promise.resolve(run(replyJson())) });
+  assertStringIncludes(prose.reply.reply, SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin ve diz sakatlığın'));
+});
+
+Deno.test("judge scope 'suggestions' (live): a suggestion list, a message Stage A read as asking for advice, or prose naming the user's own constraint", async () => {
+  assertEquals(LIVE_JUDGE_SCOPE, 'suggestions');
+  const ti = await seededTurnInput();
+  const p = safetyProfileOf(ti);
+  const as = (primary: string) => ({ decision: decision({ intent: { primary, is_hypothetical: false, about_other_person: false } }) });
+  // final2#9: a motivation reply with no food in it was judged, flagged and regenerated (17 s).
+  const plain = replyJson({ reply: 'Bugün düşük hissetmen bırakman gerektiği anlamına gelmiyor; akşam normal bir öğün yiyip günü kapat.' });
+  assertEquals(judgeReason(as('chat'), plain, p, 'always'), 'always');
+  assertEquals(judgeReason(as('chat'), plain, p), 'always', 'the default stays always (eval, tests)');
+  for (const primary of ['chat', 'report', 'correction', 'confirmation', 'other']) assertEquals(judgeReason(as(primary), plain, p, 'suggestions'), null, primary);
+  assertEquals(judgeReason(as('chat'), SAFE_SNACK, p, 'suggestions'), 'lists');
+  for (const primary of ['question', 'hypothetical', 'plan']) assertEquals(judgeReason(as(primary), plain, p, 'suggestions'), 'asked', primary);
+  assertEquals(judgeReason({ decision: decision({ simulation: { food: 'baklava', kcal_estimate: 400, target_day: '2026-10-07' } }) }, plain, p, 'suggestions'), 'asked');
+  assertEquals(judgeReason({ decision: decision({ reply_route: { contract: 'plan', effort_hint: 'medium' } }) }, plain, p, 'suggestions'), 'asked');
+  assertEquals(judgeReason(as('report'), replyJson({ reply: 'Ara öğünde bir kaşık fıstık ezmesi iyi gider.' }), p, 'suggestions'), 'prose');
+  assertEquals(judgeReason(as('chat'), replyJson({ reply: 'Yarın 20 dakika koşuya çık.' }), p, 'suggestions'), 'prose', 'a move loading the injured knee');
+
+  // Through the port: the chat reply costs no judge call; the question turn is judged.
+  const j = judges(CLEAN);
+  const chat = await postcheckReply(coachInput(ti), run(plain), { judge: j.judge, judgeScope: 'suggestions', regen: () => { throw new Error('no regen expected'); } });
+  assertEquals([chat.log.outcome, chat.log.judge, j.calls], ['first', ['skipped'], 0]);
+  const question = await postcheckReply(coachInput(ti, { decision: QUESTION }), run(plain), { judge: j.judge, judgeScope: 'suggestions', regen: () => { throw new Error('no regen expected'); } });
+  assertEquals([question.log.judge, j.calls], [['clean'], 1]);
+  // A name-only hit is judged even when the scope alone would skip the reply.
+  const seafood = await seafoodUser();
+  const j2 = judges(CLEAN);
+  const nameOnly = await postcheckReply(coachInput(seafood), run(NEGATED_DISH), { judge: j2.judge, judgeScope: 'suggestions', regen: () => { throw new Error('no regen expected'); } });
+  assertEquals([nameOnly.log.outcome, j2.calls], ['first', 1]);
+});
+
+Deno.test('live wiring: production Stage B judges on LIVE_JUDGE_SCOPE — a severe user\'s chat reply costs no judge call', async () => {
+  // live.ts imports the Supabase client, so its wiring is pinned at the source.
+  const src = await Deno.readTextFile(new URL('./live.ts', import.meta.url));
+  assertStringIncludes(src, 'stageBPorts({ judgeScope: LIVE_JUDGE_SCOPE })');
+  const t = stageBTransport({ coach: [replyJson({ reply: 'Bugün kendine biraz alan aç; yarın kaldığımız yerden devam ederiz.' })] });
+  const ports = stageBPorts({ transport: t.transport, judgeScope: LIVE_JUDGE_SCOPE });
+  const input = coachInput(await seededTurnInput());
+  const first = await ports.coach(input, { userId: USER, timeoutMs: 5_000, regen: null });
+  const out = await ports.postcheck({ input, first, regen: () => Promise.reject(new Error('no regen expected')), remainingMs: () => 5_000 });
+  assertEquals([out.log.outcome, out.log.judge, t.judgeCalls().length], ['first', ['skipped'], 0]);
+  // The same ports judge a reply that carries a suggestion list.
+  const t2 = stageBTransport({ coach: [SAFE_SNACK], judge: [{ violation: false, items: [] }] });
+  const ports2 = stageBPorts({ transport: t2.transport, judgeScope: LIVE_JUDGE_SCOPE });
+  const first2 = await ports2.coach(input, { userId: USER, timeoutMs: 5_000, regen: null });
+  const out2 = await ports2.postcheck({ input, first: first2, regen: () => Promise.reject(new Error('no regen expected')), remainingMs: () => 5_000 });
+  assertEquals([out2.log.judge, t2.judgeCalls().length], [['clean'], 1]);
 });
 
 Deno.test('lunaJudge: strict schema on the fast tier, store:false; a refusal or an HTTP error is FAILED (fail-closed)', async () => {

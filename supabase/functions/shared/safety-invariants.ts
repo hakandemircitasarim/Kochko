@@ -9,9 +9,13 @@
  *   (loads ∪ EXERCISE_BODY_PART_MAP hits on the exercise NAME)   ∩ injured regions  = ∅
  *
  * The dictionaries (guardrails.ALLERGEN_FOODS via checkAllergens, the exercise map via
- * filterExercisesByInjury) can only ADD a hit, never clear a tag — so everything today's
- * dictionary check blocks is still blocked (§7.4.2: the union is a superset). Known cost of that
- * guarantee: a name like "Yumurtasız pankek" still hits egg (one targeted regen, as today).
+ * filterExercisesByInjury) can only ADD a hit, never clear a tag (§7.4.2: the union is a superset).
+ * The dictionary is blind to negation: "Yumurtasız pankek", "ızgara tavuk (deniz ürünü olmadan)"
+ * still hit. Every hit says where it came from (`via`), so the T7 consumer can tell a hit the
+ * model's own tags make (always blocking) from a hit only the NAME dictionary makes while the tags
+ * are clean (isNameOnlyViolation): live 2026-10-12, a regen wrote the exclusion into the dish name
+ * and the user got a code refusal. ai-chat/v2 sends such a hit to the independent prose judge —
+ * cleared only by a clean verdict on that exact reply, fail-closed otherwise.
  *
  * Ids are matched leniently because the vocabulary (write-registry/vocab.ts) is being built in
  * parallel: Turkish legacy subjects ("fıstık", "deniz ürünleri"), English/EU-14 ids ("peanuts",
@@ -20,7 +24,7 @@
  *
  * Reads structured fields only — never the user's message, never prose. Pure, no I/O.
  */
-import { checkAllergens, extractInjuredBodyParts, filterExercisesByInjury } from './guardrails.ts';
+import { checkAllergens, extractInjuredBodyParts, filterExercisesByInjury, findInjuryConflictsInText } from './guardrails.ts';
 import { tagHitsAllergen } from './supplement-allergens.ts';
 
 // ─── shared normalisation ────────────────────────────────────────────────────
@@ -350,4 +354,39 @@ export function checkSuggestionInvariants(
     }
   }
   return out;
+}
+
+/**
+ * Only the NAME dictionary hit this item: none of its own tags (allergens, may_contain, loads)
+ * touched the user's spine. The dictionary cannot read negation ("… olmadan", "-sız"), so this is
+ * the one hit a model judge must decide; a tag hit is the model's own statement and always blocks.
+ */
+export function isNameOnlyViolation(v: SuggestionViolation): boolean {
+  const hits = v.allergens.length + v.injuries.length;
+  return hits > 0 && v.allergens.every((a) => a.via === 'name') && v.injuries.every((i) => i.via === 'name');
+}
+
+/**
+ * The same dictionaries over free PROSE (the coach's reply text): which of the user's severe
+ * allergens / injured regions it NAMES. Add-only, and never a verdict — a mention is not a
+ * suggestion ("deniz ürünü içeren soslardan uzak dur" names seafood too). Its only use is to ADD a
+ * prose-judge call to a reply whose suggestion lists are empty (ai-chat/v2 postcheck judgeScope
+ * 'suggestions'); it can never clear anything.
+ */
+export function proseDictionaryHits(
+  text: string,
+  safety: { severeAllergens: readonly string[]; injuredRegions: readonly string[] },
+  opts: { allergenExpand?: (id: string) => readonly string[]; regionExpand?: (region: string) => readonly string[] } = {},
+): { allergens: string[]; regions: string[] } {
+  const prose = (text ?? '').trim();
+  if (!prose) return { allergens: [], regions: [] };
+  const allergens = safety.severeAllergens.length > 0
+    ? allergenTagsHit({ name: prose }, safety.severeAllergens, { expand: opts.allergenExpand }).map((h) => h.allergen)
+    : [];
+  const regions: string[] = [];
+  for (const region of safety.injuredRegions) {
+    if (typeof region !== 'string' || !region.trim()) continue;
+    if (findInjuryConflictsInText(prose, regionTerms(region, opts.regionExpand)).length > 0) regions.push(region);
+  }
+  return { allergens, regions };
 }

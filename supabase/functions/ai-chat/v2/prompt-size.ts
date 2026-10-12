@@ -99,7 +99,13 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * stageAPrefix 13895 → 13925 (+30, within the brief's +60 allowance). Rules and few-shots unchanged.
  */
 export const PROMPT_BUDGETS = {
-  constitution: [2400, 3600],
+  // 2026-10-12 (constitution v3, re-trial lane C): the coach owns its own mistakes, does not re-word a
+  // code-owned hold question, does not repeat a standing caveat (helal, alerji) every turn, keeps the
+  // ED tier internal and does not repeat a referral the facts date, and keeps exclusions out of a
+  // suggestion's name. Two redundant sentences were trimmed first (a Ses example duplicating the
+  // "Başarıyı kutla" one, a second memory sentence); measured ≈3785 → ceiling 3600 → 3850. Stage B's
+  // prefix is cached per user, so this is the owner's "quality first" allowance, not a test fix.
+  constitution: [2400, 3850],
   understandRules: [900, 2115],
   understandFewShots: [1500, 3350],
   exemplars: [1100, 2400],

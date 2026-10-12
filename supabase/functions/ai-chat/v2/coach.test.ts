@@ -164,6 +164,8 @@ Deno.test('coachTurn end to end: violating first reply → ONE regen with the DE
   assertEquals(last.role, 'system');
   assertStringIncludes(last.content, 'DENETİM NOTU');
   assertStringIncludes(last.content, 'fıstık ezmeli tost (fıstık alerjisi)');
+  // Live 2026-10-12: the regen wrote "… deniz ürünü olmadan" into the dish name — the note says where exclusions go.
+  assertStringIncludes(last.content, 'Listedeki ad yalnızca yemeğin ya da hareketin adıdır ("fırın tavuk"); neyi çıkardığını ya da neye dikkat edileceğini adına değil cevap metnine yaz.');
   assertEquals(t.judgeCalls().length, 2, 'the first reply and the regen are both judged (severe-constraint user)');
   assertEquals(renderRegenNote({ excluded: [], judgeFailed: true }).includes('doğrulayamadı'), true);
 });

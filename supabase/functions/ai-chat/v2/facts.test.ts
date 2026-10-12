@@ -10,16 +10,17 @@
  */
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import {
-  budgetFacts, buildStageBFacts, holdNumbers, MISSED_WRITE_ALSO_LINE, MISSED_WRITE_LINE, missedWrite, postTurnState, renderBudgetLine, renderStageBFacts,
-  renderTripwireFacts, renderTurnEvents, renderUserState, turnIntakeDelta, unanchoredQuestionForbidden,
+  budgetFacts, buildStageBFacts, holdNumbers, lastReferralDay, MISSED_WRITE_ALSO_LINE, MISSED_WRITE_LINE, missedWrite, postTurnState,
+  renderBudgetLine, renderStageBFacts, renderTripwireFacts, renderTurnEvents, renderUserState, turnIntakeDelta, unanchoredQuestionForbidden,
 } from './facts.ts';
+import { REQUIRED_SAFETY_LINE } from '../../shared/safety-tripwires.ts';
 import type { CoachInput, V2Undo } from './contracts.ts';
 import { USER } from './testing.ts';
 import { validationContext } from './input.ts';
 import { validateDecision } from '../../shared/write-registry/mod.ts';
 import { asciiTurkishHits, pileWords, shoutedWords, SHOUT_WORDS } from '../../shared/prompt-lint.ts';
 import {
-  coachInput, commit, decision, edFallbackTripwire, mealWrite, normalTripwire, NOW, protectiveTripwire, seededTurnInput,
+  coachInput, commit, decision, edFallbackTripwire, mealWrite, normalTripwire, NOW, protectiveTripwire, seededTurnInput, USER,
 } from './stage-b-testing.ts';
 
 const MEAL_OK = { action_type: 'meal_log', legacy_type: 'meal_log', ok: true, rows_affected: 1, failure_class: null, user_line: 'Öğün kaydedildi — ızgara tavuk (1 porsiyon) ~400 kcal · toplam 400 kcal', ref: 'm4' };
@@ -44,6 +45,36 @@ Deno.test('user state: no constraints is itself a fact; an unread safety row rea
   assertStringIncludes(renderUserState(ti).join('\n'), 'Kısıtlar: kayıtlı alerji, sakatlık ya da hastalık yok');
   const amber = await seededTurnInput((t) => { (t.user_safety_state[0] as Record<string, unknown>).ed_tier = 'amber'; });
   assertStringIncludes(renderUserState(amber).join('\n'), 'Yeme bozukluğu risk düzeyi: yükselmiş (amber) (kodda hedef düşürme ve kalori açığı kapalı)');
+});
+
+Deno.test('ED tier is internal; a referral the coach already made is dated so it is not repeated (re-trial mem#2 → #2c)', async () => {
+  const redTier = (t: Record<string, Record<string, unknown>[]>) => { t.user_safety_state[0].ed_tier = 'red'; };
+  const red = await seededTurnInput(redTier);
+  const plain = renderUserState(red).join('\n');
+  assertStringIncludes(plain, 'Yeme bozukluğu risk düzeyi: yüksek (kırmızı) (kodda hedef düşürme ve kalori açığı kapalı); iç bilgi, kişiye söyleme');
+  assert(!plain.includes('Uzman yönlendirmesi'), 'no referral in the window: no line');
+
+  // The coach's own words yesterday evening (the live paragraph), then the code-owned line today.
+  const said = (content: string, created_at: string, role = 'assistant') => ({ user_id: USER, role, content, created_at, actions_executed: null });
+  const OWN = 'Yeme düzeniyle ilgili bunu tek başına taşımaman önemli; bir diyetisyen veya psikologla görüşmek sana daha güvenli destek sağlar.';
+  const yesterday = await seededTurnInput((t) => { redTier(t); t.chat_messages.push(said(OWN, '2026-10-06T20:00:00Z')); });
+  assertEquals(lastReferralDay(yesterday), '2026-10-06', 'the local day (Istanbul 23:00)');
+  assertStringIncludes(renderUserState(yesterday).join('\n'), 'Uzman yönlendirmesi: dün yapıldı; yeni bir yeme bozukluğu işareti yoksa ve kişi sormadıkça tekrarlama');
+  const today = await seededTurnInput((t) => {
+    t.chat_messages.push(said(OWN, '2026-10-06T20:00:00Z'), said(`Tamam.\n\n${REQUIRED_SAFETY_LINE.ed}`, '2026-10-07T10:00:00Z'));
+  });
+  assertEquals(lastReferralDay(today), '2026-10-07', 'the newest one, the code-owned line included');
+  assertStringIncludes(renderUserState(today).join('\n'), 'Uzman yönlendirmesi: bugün yapıldı', 'a referral is a fact whatever the tier');
+
+  // Not a referral: a mention of the profession, the user's own words, the hidden "Neden?" block.
+  const none = await seededTurnInput((t) => {
+    t.chat_messages.push(
+      said('Ben diyetisyen değilim ama genel bir bilgi verebilirim.', '2026-10-07T10:00:00Z'),
+      said('bir diyetisyenle görüşmem gerekir mi?', '2026-10-07T10:01:00Z', 'user'),
+      said('Tamam, yarın bakarız.\n<reasoning>Bir diyetisyenle görüşmesi iyi olabilir.</reasoning>', '2026-10-07T10:02:00Z'),
+    );
+  });
+  assertEquals(lastReferralDay(none), null);
 });
 
 Deno.test('budget: a committed meal of today is added (the coach can quote post-turn numbers)', async () => {
