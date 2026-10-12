@@ -1,0 +1,300 @@
+{
+  "key": "b1004a4623163521f5ec87b131856c76d2ee2ead03db64aed7f9685f36b1f0f9",
+  "recorded_at": "2026-10-12T06:00:48.768Z",
+  "fixture_ids": [
+    "d-ogun-commit-karara-esit"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":\"13:30\",\"raw\":\"2 yumurta ve 1 dilim tam buğday ekmeği yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"yumurta\",\"as_stated\":\"2 yumurta\",\"grams\":100,\"kcal\":144,\"protein_g\":12.6,\"carbs_g\":0.8,\"fat_g\":9.6,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8},{\"name\":\"tam buğday ekmeği\",\"as_stated\":\"1 dilim tam buğday ekmeği\",\"grams\":30,\"kcal\":75,\"protein_g\":3.2,\"carbs_g\":13.5,\"fat_g\":1,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.75}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": "13:30",
+            "raw": "2 yumurta ve 1 dilim tam buğday ekmeği yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "yumurta",
+                "as_stated": "2 yumurta",
+                "grams": 100,
+                "kcal": 144,
+                "protein_g": 12.6,
+                "carbs_g": 0.8,
+                "fat_g": 9.6,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "egg"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              },
+              {
+                "name": "tam buğday ekmeği",
+                "as_stated": "1 dilim tam buğday ekmeği",
+                "grams": 30,
+                "kcal": 75,
+                "protein_g": 3.2,
+                "carbs_g": 13.5,
+                "fat_g": 1,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.75
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12582,
+        "output_tokens": 375,
+        "cached_tokens": 12579,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 4211,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"2 yumurta ve 1 dilim tam buğday ekmeği yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"yumurta\",\"as_stated\":\"2 yumurta\",\"grams\":100,\"kcal\":144,\"protein_g\":12.6,\"carbs_g\":0.8,\"fat_g\":9.6,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8},{\"name\":\"tam buğday ekmeği\",\"as_stated\":\"1 dilim tam buğday ekmeği\",\"grams\":30,\"kcal\":75,\"protein_g\":3.2,\"carbs_g\":13.5,\"fat_g\":1.1,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.75}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "2 yumurta ve 1 dilim tam buğday ekmeği yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "yumurta",
+                "as_stated": "2 yumurta",
+                "grams": 100,
+                "kcal": 144,
+                "protein_g": 12.6,
+                "carbs_g": 0.8,
+                "fat_g": 9.6,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "egg"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              },
+              {
+                "name": "tam buğday ekmeği",
+                "as_stated": "1 dilim tam buğday ekmeği",
+                "grams": 30,
+                "kcal": 75,
+                "protein_g": 3.2,
+                "carbs_g": 13.5,
+                "fat_g": 1.1,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.75
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12582,
+        "output_tokens": 375,
+        "cached_tokens": 0,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 4899,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":\"13:30\",\"raw\":\"2 yumurta ve 1 dilim tam buğday ekmeği yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"yumurta\",\"as_stated\":\"2 yumurta\",\"grams\":100,\"kcal\":143,\"protein_g\":13,\"carbs_g\":1,\"fat_g\":10,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8},{\"name\":\"tam buğday ekmeği\",\"as_stated\":\"1 dilim tam buğday ekmeği\",\"grams\":30,\"kcal\":75,\"protein_g\":3,\"carbs_g\":14,\"fat_g\":1,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": "13:30",
+            "raw": "2 yumurta ve 1 dilim tam buğday ekmeği yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "yumurta",
+                "as_stated": "2 yumurta",
+                "grams": 100,
+                "kcal": 143,
+                "protein_g": 13,
+                "carbs_g": 1,
+                "fat_g": 10,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "egg"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              },
+              {
+                "name": "tam buğday ekmeği",
+                "as_stated": "1 dilim tam buğday ekmeği",
+                "grams": 30,
+                "kcal": 75,
+                "protein_g": 3,
+                "carbs_g": 14,
+                "fat_g": 1,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12582,
+        "output_tokens": 420,
+        "cached_tokens": 12579,
+        "reasoning_tokens": 53
+      },
+      "latency_ms": 6382,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

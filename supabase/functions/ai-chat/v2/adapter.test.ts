@@ -7,9 +7,9 @@
  * on an adapter op undoes the old record first and restores it if the new write fails.
  */
 import { assert, assertEquals } from 'https://deno.land/std@0.208.0/assert/mod.ts';
-import { validateChannelItems } from '../../shared/write-registry/mod.ts';
+import { validateChannelItems, validateConfirmedHold } from '../../shared/write-registry/mod.ts';
 import { SAMPLE_WRITES } from '../../shared/write-registry/samples.ts';
-import { createAdapter, nextListValue } from './adapter.ts';
+import { createAdapter, nextListValue, SEVERITY_KEPT_NOTE } from './adapter.ts';
 import type { AdapterRequest } from './commit.ts';
 import { turnRefs, validationContext } from './input.ts';
 import { NOW, USER } from './testing.ts';
@@ -181,6 +181,59 @@ Deno.test('constraint_add restating a stored row WITH a new severity → that ro
   assertEquals(db.rows.user_constraints[0].severity, 'moderate');
   const [led] = ledgerEntries(db);
   assertEquals([led.table_name, led.row_id, led.undo_mode, led.before, led.after], ['user_constraints', 'uc-2', 'restore_previous', { severity: null }, { severity: 'moderate' }]);
+});
+
+Deno.test('constraint_add CONFIRMED severity downgrade (legacy severe "fıstık" → hafif, after the hold) → the stored row takes it, undoable', async () => {
+  const db = fakeAdapterDb({ user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', severity: 'severe', active: true }] });
+  const h = fakeHelpers({ db });
+  const msg = 'fıstık alerjim var ama hafif';
+  const ti = await seededTurnInput();
+  const refs = turnRefs(ti);
+  const item = { ...w('constraint_add'), subject_id: 'peanut', display_tr: 'fıstık', severity: 'mild', evidence_quote: msg };
+  const ask = validateChannelItems('writes', [item], validationContext(ti, msg, NOW, refs))[0];
+  assertEquals(ask.verdict, 'ASK', 'the downgrade turn itself writes nothing');
+  const v = validateConfirmedHold('constraint_add', ask.hold_args!, validationContext(ti, 'evet', NOW, refs))!;
+  const out = await createAdapter({ db, helpers: h }).apply({ userId: USER, turnId: 'turn-2', today: '2026-10-07', op: v.op, row: v.row!, verdict: v, replaces: null, refRow: null });
+  assertEquals(out.ok, true);
+  assertEquals(out.note_tr, null);
+  assertEquals(db.rows.user_constraints[0].severity, 'mild');
+  assertEquals(h.synced.length, 0, 'still no second row');
+  const [led] = ledgerEntries(db);
+  assertEquals([led.undo_mode, led.before, led.after], ['restore_previous', { severity: 'severe' }, { severity: 'mild' }], '"geri al" restores severe');
+});
+
+Deno.test('constraint_add: an UNCONFIRMED downgrade reaching the writer (row went severe since the turn loaded) keeps the stored severity and says so', async () => {
+  // The turn rendered the row as 'moderate' (moderate → mild is not two-step), but it is 'severe' now.
+  const db = fakeAdapterDb({ user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', severity: 'severe', active: true }] });
+  const ti = await seededTurnInput((t) => {
+    const row = t.user_constraints.find((c) => c.id === 'uc-1');
+    if (row) row.severity = 'moderate';
+  });
+  const refs = turnRefs(ti);
+  const msg = 'fıstık alerjim var ama hafif';
+  const v = validateChannelItems('writes', [{ ...w('constraint_add'), subject_id: 'peanut', display_tr: 'fıstık', severity: 'mild', evidence_quote: msg }], validationContext(ti, msg, NOW, refs))[0];
+  assert(v.row, JSON.stringify(v.issues));
+  const out = await createAdapter({ db, helpers: fakeHelpers({ db }) }).apply({ userId: USER, turnId: 'turn-1', today: '2026-10-07', op: v.op, row: v.row!, verdict: v, replaces: null, refRow: null });
+  assertEquals(out.ok, true);
+  assertEquals(db.rows.user_constraints[0].severity, 'severe', 'never a silent downgrade');
+  assertEquals(out.note_tr, SEVERITY_KEPT_NOTE);
+  const [led] = ledgerEntries(db);
+  assertEquals(led.undo_mode, 'none');
+  assertEquals((led.meta as Record<string, unknown>).severity_kept, true);
+});
+
+Deno.test('constraint_add: a severity INCREASE still lands in one step (mild → severe)', async () => {
+  const db = fakeAdapterDb({ user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', severity: 'mild', active: true }] });
+  const ti = await seededTurnInput((t) => {
+    const row = t.user_constraints.find((c) => c.id === 'uc-1');
+    if (row) row.severity = 'mild';
+  });
+  const refs = turnRefs(ti);
+  const msg = 'fıstık alerjim aslında çok ciddi';
+  const v = validateChannelItems('writes', [{ ...w('constraint_add'), subject_id: 'peanut', display_tr: 'fıstık', severity: 'severe', evidence_quote: msg }], validationContext(ti, msg, NOW, refs))[0];
+  assertEquals(v.verdict, 'COMMIT', JSON.stringify(v.issues));
+  await createAdapter({ db, helpers: fakeHelpers({ db }) }).apply({ userId: USER, turnId: 'turn-1', today: '2026-10-07', op: v.op, row: v.row!, verdict: v, replaces: null, refRow: null });
+  assertEquals(db.rows.user_constraints[0].severity, 'severe');
 });
 
 Deno.test('constraint_add restatement whose stored row vanished since the turn loaded → written as new (protection never drops)', async () => {

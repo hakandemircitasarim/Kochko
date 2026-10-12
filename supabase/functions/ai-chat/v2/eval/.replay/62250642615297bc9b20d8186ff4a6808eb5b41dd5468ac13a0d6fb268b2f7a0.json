@@ -1,0 +1,270 @@
+{
+  "key": "62250642615297bc9b20d8186ff4a6808eb5b41dd5468ac13a0d6fb268b2f7a0",
+  "recorded_at": "2026-10-12T06:01:11.222Z",
+  "fixture_ids": [
+    "ho-kucuk-sise-su-turk-kahvesi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"küçük bir şişe su\",\"quantity\":1,\"unit\":\"sise_330\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null},{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"breakfast\",\"time_local\":null,\"raw\":\"bir fincan türk kahvesi\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"Türk kahvesi\",\"as_stated\":\"bir fincan\",\"grams\":60,\"kcal\":2,\"protein_g\":0.1,\"carbs_g\":0.3,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":60,\"preparation\":\"sade\",\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.75}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "küçük bir şişe su",
+            "quantity": 1,
+            "unit": "sise_330",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          },
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "breakfast",
+            "time_local": null,
+            "raw": "bir fincan türk kahvesi",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "Türk kahvesi",
+                "as_stated": "bir fincan",
+                "grams": 60,
+                "kcal": 2,
+                "protein_g": 0.1,
+                "carbs_g": 0.3,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 60,
+                "preparation": "sade",
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.75
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12583,
+        "output_tokens": 379,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 65
+      },
+      "latency_ms": 4594,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"küçük bir şişe su\",\"quantity\":1,\"unit\":\"sise_330\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null},{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"breakfast\",\"time_local\":null,\"raw\":\"bir fincan türk kahvesi\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"Türk kahvesi\",\"as_stated\":\"bir fincan türk kahvesi\",\"grams\":60,\"kcal\":2,\"protein_g\":0.1,\"carbs_g\":0.3,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":60,\"preparation\":\"sade\",\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "küçük bir şişe su",
+            "quantity": 1,
+            "unit": "sise_330",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          },
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "breakfast",
+            "time_local": null,
+            "raw": "bir fincan türk kahvesi",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "Türk kahvesi",
+                "as_stated": "bir fincan türk kahvesi",
+                "grams": 60,
+                "kcal": 2,
+                "protein_g": 0.1,
+                "carbs_g": 0.3,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 60,
+                "preparation": "sade",
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12583,
+        "output_tokens": 376,
+        "cached_tokens": 12580,
+        "reasoning_tokens": 58
+      },
+      "latency_ms": 4438,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"küçük bir şişe su\",\"quantity\":1,\"unit\":\"sise_330\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null},{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"breakfast\",\"time_local\":null,\"raw\":\"bir fincan türk kahvesi\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"Türk kahvesi\",\"as_stated\":\"bir fincan\",\"grams\":60,\"kcal\":7,\"protein_g\":0.2,\"carbs_g\":1.4,\"fat_g\":0.1,\"alcohol_g\":0,\"caffeine_mg\":60,\"preparation\":\"sade\",\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "küçük bir şişe su",
+            "quantity": 1,
+            "unit": "sise_330",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          },
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "breakfast",
+            "time_local": null,
+            "raw": "bir fincan türk kahvesi",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "Türk kahvesi",
+                "as_stated": "bir fincan",
+                "grams": 60,
+                "kcal": 7,
+                "protein_g": 0.2,
+                "carbs_g": 1.4,
+                "fat_g": 0.1,
+                "alcohol_g": 0,
+                "caffeine_mg": 60,
+                "preparation": "sade",
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12583,
+        "output_tokens": 375,
+        "cached_tokens": 12580,
+        "reasoning_tokens": 59
+      },
+      "latency_ms": 4044,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

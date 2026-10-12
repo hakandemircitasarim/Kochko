@@ -1,0 +1,213 @@
+{
+  "key": "45ed85d5a1093f5dc5d46584e42135ca589c13c985cf1a8b83f48c03d7d269d5",
+  "recorded_at": "2026-10-12T06:01:22.917Z",
+  "fixture_ids": [
+    "probe-dtm-laktoz-intoleransi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için laktoz intoleransı bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"intolerance\",\"subject_id\":\"milk\",\"display_tr\":\"laktoz\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"laktoz intoleransım var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için laktoz intoleransı bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "intolerance",
+            "subject_id": "milk",
+            "display_tr": "laktoz",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "laktoz intoleransım var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12699,
+        "output_tokens": 221,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3259,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için laktoz intoleransı bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"intolerance\",\"subject_id\":\"milk\",\"display_tr\":\"laktoz\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"laktoz intoleransım var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için laktoz intoleransı bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "intolerance",
+            "subject_id": "milk",
+            "display_tr": "laktoz",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "laktoz intoleransım var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12699,
+        "output_tokens": 221,
+        "cached_tokens": 12696,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3155,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi laktoz intoleransını açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"intolerance\",\"subject_id\":\"milk\",\"display_tr\":\"laktoz\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"laktoz intoleransım var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi laktoz intoleransını açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "intolerance",
+            "subject_id": "milk",
+            "display_tr": "laktoz",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "laktoz intoleransım var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12699,
+        "output_tokens": 222,
+        "cached_tokens": 12696,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3840,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

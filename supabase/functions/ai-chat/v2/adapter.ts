@@ -31,7 +31,7 @@ import type { Constraint, ConstraintKind } from '../../shared/constraints.ts';
 import type { NoteSource } from '../../shared/coaching-notes.ts';
 import { isIFCompatible, type PeriodicState } from '../../shared/periodic-config.ts';
 import { type LedgerAppendEntry, type LedgerAppendOk, type LedgerTable, parseRpcReceipt, V2_RPC } from '../../shared/v2-db-types.ts';
-import { PROFILE_FIELD_SPECS, restatedSeverity } from '../../shared/write-registry/mod.ts';
+import { PROFILE_FIELD_SPECS, restatedSeverity, SEVERITY_DOWNGRADE_CODE, severityDowngrade } from '../../shared/write-registry/mod.ts';
 import type { AdapterOutcome, AdapterPort, AdapterRequest, EraseConfirmOutcome } from './commit.ts';
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -288,6 +288,9 @@ async function goalSet(d: AdapterDeps, req: AdapterRequest): Promise<AdapterOutc
 const SEVERITY_DB: Record<string, 'mild' | 'moderate' | 'severe' | null> = { mild: 'mild', moderate: 'moderate', severe: 'severe', unknown: null };
 const HEALTH_EVENT_KINDS: ReadonlySet<string> = new Set(['injury', 'surgery', 'condition', 'medication']);
 
+/** An unconfirmed downgrade the writer refused (receipt note; the coach reads it as a fact). */
+export const SEVERITY_KEPT_NOTE = 'şiddet düşürülmedi: kayıtlı şiddet korunuyor, düşürmek için açık onay gerekiyor';
+
 /** shared/constraints.ts syncConstraint's own subject key (the UNIQUE(user_id,kind,subject) value). */
 const spineSubjectKey = (s: string) => s.trim().toLocaleLowerCase('tr').slice(0, 80);
 const FP_FIELDS = ['preference', 'is_allergen', 'allergen_severity'] as const;
@@ -308,21 +311,28 @@ async function confirmRestated(d: AdapterDeps, req: AdapterRequest, kind: string
   const id = cur.data && typeof cur.data.id === 'string' ? cur.data.id : null;
   if (cur.error || !id) return null;
   const now = (d.now ?? (() => new Date()))().toISOString();
-  const changed = restatedSeverity(r);
+  // Only an INCREASE lands without the user's explicit "evet" (registry iki_adimli_siddet_dusurme
+  // holds a downgrade; its confirmed re-validation carries the rule as a FLAG). A downgrade reaching
+  // the writer unconfirmed — the stored severity moved since the turn loaded, or a caller skipped
+  // the hold — keeps the stored severity and says so: never a silent downgrade.
+  const stated = restatedSeverity(r);
+  const down = stated ? severityDowngrade(kind, stated, cur.data?.severity ?? null) : null;
+  const refused = down !== null && !req.verdict.issues.some((i) => i.code === SEVERITY_DOWNGRADE_CODE && i.level === 'flag');
+  const changed = refused ? null : stated;
   const next = changed ? SEVERITY_DB[changed] : null;
   const up = await d.db.update('user_constraints', {
     confidence: 1, confirmed_at: now, source: 'confirmed', updated_at: now, ...(changed ? { severity: next } : {}),
   }, { id, user_id: req.userId }, 'id');
   if (up.error) return fail('write_failed');
   if (!up.data?.length) return null;
-  const meta = { effect: r.effect, restated: true, kind, subject: r.subject_id, stored_subject: stored };
+  const meta = { effect: r.effect, restated: true, kind, subject: r.subject_id, stored_subject: stored, ...(refused ? { severity_kept: true, stated_severity: stated } : {}) };
   const lg = await ledger(d, req, [changed
     ? {
       op: 'constraint_add', table_name: 'user_constraints', row_id: id, field_set: ['severity'], before: { severity: cur.data?.severity ?? null },
       after: { severity: next }, undo_mode: 'restore_previous', group: 'c', is_primary: true, meta,
     }
     : audit('constraint_add', meta, 'user_constraints', id)]);
-  return ok(1, lg);
+  return ok(1, lg, refused ? SEVERITY_KEPT_NOTE : null);
 }
 
 async function constraintAdd(d: AdapterDeps, req: AdapterRequest): Promise<AdapterOutcome> {

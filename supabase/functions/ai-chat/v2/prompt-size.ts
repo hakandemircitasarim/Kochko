@@ -75,11 +75,17 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * +249 prompt-v8 chars were each measured on their own bytes; together they land at the measured
  * merged prefix: measured ≈13856 (rules ≈2047, few-shots ≈3314, schema ≈5147), so stageAPrefix
  * 13850 → 13860 (lane B's +10 on top of lane C's +250). No other ceiling moved.
+ * 2026-10-12 (prompt v9, pre-retrial review): rule 4 points a spice added to a dish at rule 7 (its old
+ * "bir tutam baharat" example contradicted it), rule 7 says a small addition is never a meal of its
+ * own, and rule 4's score clause became one unambiguous sentence (no score written or asked, the
+ * reason only when nothing else is written). Measured: rules ≈2079, prefix ≈13888 (+32; SCHEMA v6
+ * adds no tokens). Ceilings: understandRules 2050 → 2085, stageAPrefix 13860 → 13895 (+35 each, within
+ * the brief's +60 allowance); few-shots unchanged.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],
-  understandRules: [900, 2050],
+  understandRules: [900, 2085],
   understandFewShots: [1500, 3350],
   exemplars: [1100, 2400],
-  stageAPrefix: [9000, 13860],
+  stageAPrefix: [9000, 13895],
 } as const satisfies Record<string, readonly [number, number]>;

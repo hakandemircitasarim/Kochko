@@ -37,7 +37,7 @@ import {
 } from '../../shared/write-registry/mod.ts';
 import { trNum } from '../../shared/write-registry/util.ts';
 import type { CommitResult, V2Flag, V2Hold, V2Receipt, V2Reject } from './contracts.ts';
-import { SAFETY_HOLD_OPS } from './facts.ts';
+import { SAFETY_HOLD_OPS, SAFETY_HOLD_REASONS } from './facts.ts';
 import type { RefMapTarget, TurnInput, TurnRefs } from './input.ts';
 
 /** The ONE safety-hold classifier lives in facts.ts (facts, post-checks and guarantees read it too). */
@@ -267,6 +267,12 @@ export function holdSubjectKey(v: WriteVerdict, refs: TurnRefs): string | null {
       const t = refs.refMap.get(String(a.target));
       return t ? `${v.op}:${t.id}` : null;
     }
+    case 'constraint_add': {
+      // A held severity downgrade names the stored row it would change (derive `existing`).
+      const ex = isRec(v.derived?.existing) ? v.derived.existing : null;
+      const t = ex && typeof ex.ref === 'string' ? refs.refMap.get(ex.ref) : undefined;
+      return t ? `${v.op}:${t.id}` : null;
+    }
     case 'profile_set': {
       const c = Array.isArray(a.changes) && isRec(a.changes[0]) ? a.changes[0] : null;
       return c && typeof c.field === 'string' ? `${v.op}:${c.field}` : null;
@@ -284,6 +290,9 @@ export function holdSubjectKey(v: WriteVerdict, refs: TurnRefs): string | null {
  */
 export function holdClassOf(v: WriteVerdict): 'ask' | 'safety' {
   if (SAFETY_HOLD_OPS.has(v.hold_op ?? v.op) || v.op === ERASE_HOLD_OP) return 'safety';
+  // A safety REASON on an otherwise ordinary op (a severe allergy's severity lowered: constraint_add).
+  const ask = (v.issues ?? []).find((i) => i.level === 'ask');
+  if (ask && SAFETY_HOLD_REASONS.has(ask.code)) return 'safety';
   if (v.op === 'profile_set') {
     const changes = Array.isArray(v.args.changes) ? v.args.changes.filter(isRec) : [];
     if (changes.some((c) => typeof c.field === 'string' && PROFILE_FIELD_SPECS[c.field]?.identity)) return 'safety';

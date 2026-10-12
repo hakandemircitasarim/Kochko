@@ -1,0 +1,153 @@
+{
+  "key": "b193ad5b02fc45c3ccb337d556442766f8eb74b6cba58956bb156a5cda1e6e90",
+  "recorded_at": "2026-10-12T06:00:56.828Z",
+  "fixture_ids": [
+    "devir-8-haftalik-antrenman-programi-istegi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"plan\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"generate\",\"plan_type\":\"workout\",\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"plan\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "plan",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "generate",
+          "plan_type": "workout",
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "plan",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12574,
+        "output_tokens": 133,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2842,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"plan\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"generate\",\"plan_type\":\"workout\",\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"plan\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "plan",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "generate",
+          "plan_type": "workout",
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "plan",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12574,
+        "output_tokens": 133,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 2983,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"plan\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"generate\",\"plan_type\":\"workout\",\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"plan\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "plan",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "generate",
+          "plan_type": "workout",
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "plan",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12574,
+        "output_tokens": 152,
+        "cached_tokens": 12571,
+        "reasoning_tokens": 17
+      },
+      "latency_ms": 2464,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

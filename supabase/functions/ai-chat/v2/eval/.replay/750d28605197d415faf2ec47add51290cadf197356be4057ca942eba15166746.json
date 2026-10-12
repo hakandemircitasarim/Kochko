@@ -1,0 +1,297 @@
+{
+  "key": "750d28605197d415faf2ec47add51290cadf197356be4057ca942eba15166746",
+  "recorded_at": "2026-10-12T06:03:51.795Z",
+  "fixture_ids": [
+    "trial-final2-salataya-tuz-yemegiyle"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"salataya 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"salata\",\"as_stated\":\"salata\",\"grams\":null,\"kcal\":20,\"protein_g\":1,\"carbs_g\":4,\"fat_g\":0.2,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.3},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik tuz\",\"grams\":0.7,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.6}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"salatanın içeriği ve miktarı\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "salataya 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "salata",
+                "as_stated": "salata",
+                "grams": null,
+                "kcal": 20,
+                "protein_g": 1,
+                "carbs_g": 4,
+                "fat_g": 0.2,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.3
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik tuz",
+                "grams": 0.7,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.6
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "salatanın içeriği ve miktarı",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12659,
+        "output_tokens": 358,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3787,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"salataya 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"salata\",\"as_stated\":\"salata\",\"grams\":150,\"kcal\":35,\"protein_g\":2,\"carbs_g\":7,\"fat_g\":0.4,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.35},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik\",\"grams\":1,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"salatanın içeriği ve porsiyonu\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "salataya 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "salata",
+                "as_stated": "salata",
+                "grams": 150,
+                "kcal": 35,
+                "protein_g": 2,
+                "carbs_g": 7,
+                "fat_g": 0.4,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.35
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik",
+                "grams": 1,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "salatanın içeriği ve porsiyonu",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12659,
+        "output_tokens": 355,
+        "cached_tokens": 12656,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3930,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"salataya 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"salata\",\"as_stated\":\"salata\",\"grams\":null,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.3},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik tuz\",\"grams\":0.7,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.6}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"salatanın içeriği ve miktarı\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "salataya 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "salata",
+                "as_stated": "salata",
+                "grams": null,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.3
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik tuz",
+                "grams": 0.7,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.6
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "salatanın içeriği ve miktarı",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12659,
+        "output_tokens": 356,
+        "cached_tokens": 12656,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3879,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

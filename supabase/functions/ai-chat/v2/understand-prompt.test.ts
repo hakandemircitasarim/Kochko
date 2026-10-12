@@ -634,6 +634,27 @@ Deno.test('rules (v8, first live trial 2026-10-11): each trial miss is answered 
   assertEquals(k.self_check?.not_written_reason, undefined, 'written, not explained away');
 });
 
+Deno.test('rules (v9, pre-retrial review): rule 4 no longer contradicts rule 7, and its score clause is one unambiguous principle', () => {
+  const rule = (n: number) => {
+    const start = UNDERSTAND_RULES.indexOf(`\n${n}. `);
+    const end = UNDERSTAND_RULES.indexOf(`\n${n + 1}. `);
+    return UNDERSTAND_RULES.slice(start, end);
+  };
+  const r4 = rule(4);
+  const r7 = rule(7);
+  // A spice was rule 4's own example of a no-question item — the thing rule 7 says goes with its dish.
+  assert(!r4.includes('bir tutam baharat'));
+  assert(r4.includes('yemeğe katılan baharat yemeğiyle, kural 7'));
+  assert(r7.includes('küçük bir ek tek başına öğün olmaz'));
+  // The score clause: no score written, none asked (every passing v8 mood rep asked 1–5 / 1–10), and the
+  // not-written reason only when nothing else was written — no "do not open clarify … needs_clarification" knot.
+  assert(r4.includes('Söylenmeyen puan, set ya da tekrar uydurma'));
+  assert(r4.includes('puan yazma, 1–5 ya da 1–10 puan da sorma'));
+  assert(r4.includes('başka yazma yoksa gerekçe needs_clarification'));
+  assert(!r4.includes('clarify da açma'));
+  assertEquals(UNDERSTAND_PROMPT_VERSION, 'v9');
+});
+
 // ─── rendering and the prefix ────────────────────────────────────────────────────────────────────
 
 Deno.test('renderFewShots: decisions render in schema order at every level, whatever the literal order', () => {

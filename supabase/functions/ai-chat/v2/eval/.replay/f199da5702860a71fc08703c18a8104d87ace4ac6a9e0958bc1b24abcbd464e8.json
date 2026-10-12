@@ -1,0 +1,297 @@
+{
+  "key": "f199da5702860a71fc08703c18a8104d87ace4ac6a9e0958bc1b24abcbd464e8",
+  "recorded_at": "2026-10-12T06:03:36.571Z",
+  "fixture_ids": [
+    "spec-a-yumurtaya-iki-cimdik-tuz"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":\"13:30\",\"raw\":\"yumurtaya 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"yumurta\",\"as_stated\":\"yumurta\",\"grams\":50,\"kcal\":72,\"protein_g\":6.3,\"carbs_g\":0.4,\"fat_g\":4.8,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik tuz\",\"grams\":0.7,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": "13:30",
+            "raw": "yumurtaya 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "yumurta",
+                "as_stated": "yumurta",
+                "grams": 50,
+                "kcal": 72,
+                "protein_g": 6.3,
+                "carbs_g": 0.4,
+                "fat_g": 4.8,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "egg"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.45
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik tuz",
+                "grams": 0.7,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12575,
+        "output_tokens": 353,
+        "cached_tokens": 12572,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3786,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"yumurtaya 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"yumurta\",\"as_stated\":\"yumurta\",\"grams\":50,\"kcal\":72,\"protein_g\":6.3,\"carbs_g\":0.4,\"fat_g\":4.8,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik tuz\",\"grams\":0.7,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "yumurtaya 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "yumurta",
+                "as_stated": "yumurta",
+                "grams": 50,
+                "kcal": 72,
+                "protein_g": 6.3,
+                "carbs_g": 0.4,
+                "fat_g": 4.8,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "egg"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.45
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik tuz",
+                "grams": 0.7,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12575,
+        "output_tokens": 351,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3228,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":\"13:30\",\"raw\":\"yumurtaya 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"yumurta\",\"as_stated\":\"yumurtaya\",\"grams\":50,\"kcal\":72,\"protein_g\":6.3,\"carbs_g\":0.4,\"fat_g\":4.8,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik tuz\",\"grams\":0.7,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"yumurtanın kaç adet olduğu ve nasıl hazırlandığı\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": "13:30",
+            "raw": "yumurtaya 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "yumurta",
+                "as_stated": "yumurtaya",
+                "grams": 50,
+                "kcal": 72,
+                "protein_g": 6.3,
+                "carbs_g": 0.4,
+                "fat_g": 4.8,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "egg"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.45
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik tuz",
+                "grams": 0.7,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "yumurtanın kaç adet olduğu ve nasıl hazırlandığı",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12575,
+        "output_tokens": 633,
+        "cached_tokens": 12572,
+        "reasoning_tokens": 261
+      },
+      "latency_ms": 7181,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

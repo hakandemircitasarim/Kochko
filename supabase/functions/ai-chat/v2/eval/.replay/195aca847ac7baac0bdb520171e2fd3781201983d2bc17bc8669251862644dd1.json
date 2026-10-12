@@ -1,0 +1,192 @@
+{
+  "key": "195aca847ac7baac0bdb520171e2fd3781201983d2bc17bc8669251862644dd1",
+  "recorded_at": "2026-10-12T06:02:01.410Z",
+  "fixture_ids": [
+    "r3-mem-2a-ciddi-yumurta-alerjisi-geri-cekme"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisinin geçtiğini ve test sonucunu bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"yumurta alerjim gecti\",\"note\":\"Alerji testinde temiz çıktığını belirtiyor.\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisinin geçtiğini ve test sonucunu bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "yumurta alerjim gecti",
+            "note": "Alerji testinde temiz çıktığını belirtiyor."
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12976,
+        "output_tokens": 208,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3664,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisinin geçtiğini ve testinin temiz çıktığını bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"yumurta alerjim gecti\",\"note\":\"Alerji testinde temiz çıktığını belirtiyor.\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisinin geçtiğini ve testinin temiz çıktığını bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "yumurta alerjim gecti",
+            "note": "Alerji testinde temiz çıktığını belirtiyor."
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12976,
+        "output_tokens": 314,
+        "cached_tokens": 12973,
+        "reasoning_tokens": 102
+      },
+      "latency_ms": 5372,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi yumurta alerjisinin artık geçmediğini değil, geçtiğini ve testinin temiz olduğunu bildirerek mevcut alerji kısıtının geçerliliğini düzeltiyor.\"}]},\"writes\":[{\"op\":\"constraint_retract\",\"target\":\"c1\",\"evidence_quote\":\"yumurta alerjim gecti\",\"note\":\"Alerji testinin temiz çıktığını belirtiyor.\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi yumurta alerjisinin artık geçmediğini değil, geçtiğini ve testinin temiz olduğunu bildirerek mevcut alerji kısıtının geçerliliğini düzeltiyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_retract",
+            "target": "c1",
+            "evidence_quote": "yumurta alerjim gecti",
+            "note": "Alerji testinin temiz çıktığını belirtiyor."
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12976,
+        "output_tokens": 231,
+        "cached_tokens": 12973,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3873,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

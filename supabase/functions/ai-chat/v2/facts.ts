@@ -34,7 +34,7 @@ import type { CoachInput, CommitResult, TripwireResolution, UnderstandDecision, 
 import { constraintLine, edTierOf, planTypeTr, profilePhrases, turnRefs, type TurnInput } from './input.ts';
 import { dayLabelTr, fmtTr, quoteLine } from './stage-a-request.ts';
 import {
-  ED_CATEGORIES, findWireOp, getOp, mlPerUnit, NOT_WRITTEN_REASONS, PLAN_OPS, type RenderedRefs, vocab,
+  ED_CATEGORIES, findWireOp, getOp, mlPerUnit, NOT_WRITTEN_REASONS, PLAN_OPS, type RenderedRefs, SEVERITY_DOWNGRADE_CODE, vocab,
 } from '../../shared/write-registry/mod.ts';
 import { resolveDay } from '../../shared/write-registry/util.ts';
 import { allergenSpine } from '../../shared/safety-invariants.ts';
@@ -229,6 +229,8 @@ export function renderBudgetLine(b: BudgetFacts): string {
 
 const HOLD_OP_TR: Record<string, string> = {
   account_erase_request: 'veri silme talebi',
+  // constraint_add is held only for one reason: lowering a guarded row's severity (ADDING is never held).
+  constraint_add: 'kısıtın şiddetini düşürme',
 };
 
 /**
@@ -401,7 +403,7 @@ export const SAFETY_HOLD_OPS: ReadonlySet<string> = new Set([
   'constraint_retract', 'goal_set', 'target_change', 'data_erase_request', 'account_erase_request',
 ]);
 export const SAFETY_HOLD_REASONS: ReadonlySet<string> = new Set([
-  'iki_adimli_kaldirma', 'kvkk_onay', 'kimlik_degisimi', 'kimlik_kaniti', 'hedef_degisiyor', 'bant_degisimi',
+  'iki_adimli_kaldirma', SEVERITY_DOWNGRADE_CODE, 'kvkk_onay', 'kimlik_degisimi', 'kimlik_kaniti', 'hedef_degisiyor', 'bant_degisimi',
 ]);
 
 /** The stored class first (pending_writes.hold_class), else by op / reason code — fail-safe either way. */

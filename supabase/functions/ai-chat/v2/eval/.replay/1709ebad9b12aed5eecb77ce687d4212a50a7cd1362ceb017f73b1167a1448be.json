@@ -1,0 +1,270 @@
+{
+  "key": "1709ebad9b12aed5eecb77ce687d4212a50a7cd1362ceb017f73b1167a1448be",
+  "recorded_at": "2026-10-12T06:01:06.916Z",
+  "fixture_ids": [
+    "ho-maden-suyu-ve-yarim-litre-su"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"yemekten sonra bir maden suyu\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"maden suyu\",\"as_stated\":\"bir maden suyu\",\"grams\":200,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8}]},{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"yarım litre su\",\"quantity\":0.5,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "yemekten sonra bir maden suyu",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "maden suyu",
+                "as_stated": "bir maden suyu",
+                "grams": 200,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              }
+            ]
+          },
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "yarım litre su",
+            "quantity": 0.5,
+            "unit": "litre",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12579,
+        "output_tokens": 306,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3656,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":null,\"raw\":\"yemekten sonra bir maden suyu\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"maden suyu\",\"as_stated\":\"bir maden suyu\",\"grams\":200,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]},{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"yarım litre su\",\"quantity\":0.5,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": null,
+            "raw": "yemekten sonra bir maden suyu",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "maden suyu",
+                "as_stated": "bir maden suyu",
+                "grams": 200,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          },
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "yarım litre su",
+            "quantity": 0.5,
+            "unit": "litre",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12579,
+        "output_tokens": 306,
+        "cached_tokens": 12576,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3681,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"yemekten sonra bir maden suyu\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"maden suyu\",\"as_stated\":\"bir maden suyu\",\"grams\":200,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8}]},{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"yarım litre su\",\"quantity\":0.5,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "yemekten sonra bir maden suyu",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "maden suyu",
+                "as_stated": "bir maden suyu",
+                "grams": 200,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              }
+            ]
+          },
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "yarım litre su",
+            "quantity": 0.5,
+            "unit": "litre",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12579,
+        "output_tokens": 306,
+        "cached_tokens": 12576,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3170,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

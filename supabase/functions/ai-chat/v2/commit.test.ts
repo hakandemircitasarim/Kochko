@@ -15,7 +15,8 @@ import {
 } from './commit.ts';
 import { turnRefs, validationContext, type TurnInput } from './input.ts';
 import { NOW, USER } from './testing.ts';
-import { fakeAdapter, fakeCommitPorts, seededTurnInput } from './turn-testing.ts';
+import { fakeAdapter, fakeAdapterDb, fakeCommitPorts, fakeHelpers, seededTurnInput } from './turn-testing.ts';
+import { createAdapter } from './adapter.ts';
 
 const w = (op: string, over: Record<string, unknown> = {}) => ({ ...structuredClone(SAMPLE_WRITES[op]), ...over });
 
@@ -315,6 +316,59 @@ Deno.test('safety holds carry hold_class safety into T7 (allergen removal, KVKK 
   assert(isSafetyHold({ op: 'goal_set', reason_code: 'x', question_tr: 'q?', hold_id: null }), 'a hold built without a class: by op');
   assert(isSafetyHold({ op: 'profile_set', reason_code: 'kimlik_degisimi', question_tr: 'q?', hold_id: null }), '…or by its reason code (the ONE classifier, facts.ts)');
   assert(!isSafetyHold({ op: 'water_log', reason_code: 'x', question_tr: 'q?', hold_id: null }));
+});
+
+Deno.test('severity downgrade of a legacy SEVERE allergy ("fıstık alerjim var ama hafif") → safety hold on that row; confirm writes it, discard keeps severe', async () => {
+  const ti = await seededTurnInput();
+  const msg = 'fıstık alerjim var ama hafif';
+  const item = {
+    op: 'constraint_add', kind: 'allergen', subject_id: 'peanut', display_tr: 'fıstık', whose: 'self', polarity: 'has', severity: 'mild',
+    body_parts: [], event_date: null, note: null, evidence_quote: msg,
+  };
+  const { plan } = planFor(ti, sampleDecision({ writes: [item] }), msg);
+  assertEquals(plan.steps.map((s) => s.kind), ['hold_open'], 'no write this turn');
+  const s = plan.steps[0];
+  if (s.kind !== 'hold_open') return;
+  assertEquals([s.holdOp, s.opts.hold_class, s.opts.subject_key, s.opts.reason_code], ['constraint_add', 'safety', 'constraint_add:uc-1', 'iki_adimli_siddet_dusurme']);
+  const { result } = await run(plan);
+  assertEquals(result.receipts.length, 0);
+  assertEquals(result.holds[0].question_tr, 'Fıstık alerjisi kaydını ciddi → hafif olarak değiştirmemi gerçekten istiyor musun? Güvenlik filtrelerin buna göre gevşeyecek.');
+  assert(isSafetyHold(result.holds[0]), 'code appends the question verbatim if the coach does not ask it');
+
+  // The next turn, with the hold stored as v2_hold_open persisted it.
+  const next = await seededTurnInput((t) => {
+    t.pending_writes.push({
+      id: 'pw-c', user_id: USER, op: 'constraint_add', status: 'pending', created_at: '2026-10-07T09:58:05Z', expires_at: '2026-10-09T09:58:05Z',
+      hold_class: 'safety', reason_code: 'iki_adimli_siddet_dusurme', schema_version: SCHEMA_VERSION, payload: s.payload,
+    });
+  });
+  const hold = next.pending.find((p) => p.id === 'pw-c')!;
+  const realAdapter = (db: ReturnType<typeof fakeAdapterDb>) => {
+    const real = createAdapter({ db, helpers: fakeHelpers({ db }) });
+    const a = fakeAdapter();
+    a.apply = (req) => {
+      a.calls.push(req);
+      return real.apply(req);
+    };
+    return a;
+  };
+  const severeRow = () => fakeAdapterDb({ user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', severity: 'severe', active: true }] });
+
+  const yesDb = severeRow();
+  const yes = planFor(next, sampleDecision({ pending_ops: [{ op: 'confirm', ref: hold.ref }] }), 'evet');
+  assertEquals(yes.plan.steps.map((x) => x.kind), ['adapter']);
+  const yesPorts = fakeCommitPorts({ adapter: realAdapter(yesDb) });
+  const confirmed = await executeCommit(yes.plan, yesPorts);
+  assertEquals(yesDb.rows.user_constraints[0].severity, 'mild', 'the explicit confirm applies the downgrade');
+  assertEquals(confirmed.receipts[0].ok, true);
+  assertEquals(yesPorts.rpcCalls.find((c) => c.name === 'v2_hold_resolve')?.args.p_status, 'confirmed', 'the hold is closed');
+
+  const noDb = severeRow();
+  const noAdapter = realAdapter(noDb);
+  const no = planFor(next, sampleDecision({ pending_ops: [{ op: 'discard', ref: hold.ref }] }), 'hayır, ciddi kalsın');
+  await executeCommit(no.plan, fakeCommitPorts({ adapter: noAdapter }));
+  assertEquals(noAdapter.calls.length, 0);
+  assertEquals(noDb.rows.user_constraints[0].severity, 'severe', 'declined: severe stays');
 });
 
 Deno.test('holdClassOf: an identity field in ANY change of a profile_set makes a safety hold (not only the first change)', () => {

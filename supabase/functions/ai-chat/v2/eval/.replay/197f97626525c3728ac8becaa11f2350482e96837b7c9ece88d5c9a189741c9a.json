@@ -1,0 +1,276 @@
+{
+  "key": "197f97626525c3728ac8becaa11f2350482e96837b7c9ece88d5c9a189741c9a",
+  "recorded_at": "2026-10-12T06:01:29.651Z",
+  "fixture_ids": [
+    "r3-diff-1c-ayranin-litresi-su-degil"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"bugün 1 litre ayran\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"ayran\",\"as_stated\":\"1 litre ayran\",\"grams\":1000,\"kcal\":370,\"protein_g\":20,\"carbs_g\":30,\"fat_g\":20,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]},{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"2 bardak su\",\"quantity\":2,\"unit\":\"bardak\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "bugün 1 litre ayran",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "ayran",
+                "as_stated": "1 litre ayran",
+                "grams": 1000,
+                "kcal": 370,
+                "protein_g": 20,
+                "carbs_g": 30,
+                "fat_g": 20,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          },
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "2 bardak su",
+            "quantity": 2,
+            "unit": "bardak",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12578,
+        "output_tokens": 302,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3354,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"bugün 1 litre ayran\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"ayran\",\"as_stated\":\"1 litre ayran\",\"grams\":1000,\"kcal\":370,\"protein_g\":20,\"carbs_g\":28,\"fat_g\":20,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]},{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"2 bardak su\",\"quantity\":2,\"unit\":\"bardak\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "bugün 1 litre ayran",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "ayran",
+                "as_stated": "1 litre ayran",
+                "grams": 1000,
+                "kcal": 370,
+                "protein_g": 20,
+                "carbs_g": 28,
+                "fat_g": 20,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          },
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "2 bardak su",
+            "quantity": 2,
+            "unit": "bardak",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12578,
+        "output_tokens": 302,
+        "cached_tokens": 12575,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3357,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"lunch\",\"time_local\":null,\"raw\":\"bugün 1 litre ayran\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"ayran\",\"as_stated\":\"1 litre ayran\",\"grams\":1000,\"kcal\":360,\"protein_g\":20,\"carbs_g\":28,\"fat_g\":18,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65}]},{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"2 bardak su\",\"quantity\":2,\"unit\":\"bardak\",\"other_ml_each\":null,\"mode\":\"add\",\"replaces\":null}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "lunch",
+            "time_local": null,
+            "raw": "bugün 1 litre ayran",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "ayran",
+                "as_stated": "1 litre ayran",
+                "grams": 1000,
+                "kcal": 360,
+                "protein_g": 20,
+                "carbs_g": 28,
+                "fat_g": 18,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              }
+            ]
+          },
+          {
+            "op": "water_log",
+            "day": "today",
+            "as_stated": "2 bardak su",
+            "quantity": 2,
+            "unit": "bardak",
+            "other_ml_each": null,
+            "mode": "add",
+            "replaces": null
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12578,
+        "output_tokens": 302,
+        "cached_tokens": 12575,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3169,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

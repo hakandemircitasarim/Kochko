@@ -152,6 +152,50 @@ Deno.test('constraint_add: does_not_have finds a LEGACY row through its canonica
   assertEquals(one('writes', w('constraint_add'), sampleContext({ user_message: 'Fındık alerjim var, ciddi.', refs })).row?.effect, 'activate');
 });
 
+Deno.test('constraint_add: a LOWER restated severity on a legacy SEVERE row is held (two-step, code-owned old → new question); confirm writes it', () => {
+  // review 2026-10-12: "fıstık alerjim var ama hafif" on mem's legacy severe 'fıstık' downgraded it in
+  // one step — the 112 sentence and the two-step removal went with it.
+  const { c1: _v2Peanut, ...others } = sampleContext().refs;
+  const refs = { ...others, c7: { kind: 'c' as const, target: 'constraint' as const, constraint: { kind: 'allergen', subject: 'peanut', severity: 'severe', stored_subject: 'fıstık' } } };
+  const msg = 'fıstık alerjim var ama hafif';
+  const v = one('writes', w('constraint_add', { subject_id: 'peanut', display_tr: 'fıstık', severity: 'mild', evidence_quote: msg }), sampleContext({ user_message: msg, refs }));
+  assertEquals(v.verdict, 'ASK');
+  assertEquals(codes(v), ['iki_adimli_siddet_dusurme']);
+  assertEquals(v.row, null, 'nothing is written this turn — the severe row stands');
+  assertEquals(v.hold_op, 'constraint_add');
+  assertEquals(v.question_tr, 'Fıstık alerjisi kaydını ciddi → hafif olarak değiştirmemi gerçekten istiyor musun? Güvenlik filtrelerin buna göre gevşeyecek.');
+  // The next turn's explicit confirm: the question is answered (FLAG note), the row takes the new severity.
+  const ok = validateConfirmedHold('constraint_add', v.hold_args!, sampleContext({ user_message: 'evet', refs }))!;
+  assertEquals(ok.verdict, 'FLAG', JSON.stringify(ok.issues));
+  assertEquals(ok.row?.severity, 'mild');
+  assertEquals((ok.row?.existing as Record<string, unknown>).subject, 'fıstık', 'still the stored row, never a second one');
+  assert(ok.issues.some((i) => i.code === 'iki_adimli_siddet_dusurme' && i.level === 'flag' && i.tr.startsWith('kullanıcı onayladı')));
+});
+
+Deno.test('constraint_add severity: only an INCREASE lands directly — unknown/severe allergen, surgery and severe injury downgrades are held', () => {
+  const ref = (kind: string, subject: string, severity: string | null, body_parts: string[] = []) =>
+    ({ ...sampleContext().refs, c9: { kind: 'c' as const, target: 'constraint' as const, constraint: { kind, subject, severity, body_parts } } });
+  const restate = (kind: string, subject: string, stored: string | null, stated: string, body_parts: string[] = []) => {
+    const msg = `${subject} durumum ${stated}`;
+    return one('writes', { op: 'constraint_add', kind, subject_id: subject, display_tr: subject, whose: 'self', polarity: 'has', severity: stated, body_parts, event_date: null, note: null, evidence_quote: msg },
+      sampleContext({ user_message: msg, refs: ref(kind, subject, stored, body_parts) }));
+  };
+  // Increases land in one step (protection only grows).
+  assertEquals(restate('allergen', 'sesame', 'mild', 'severe').row?.severity, 'severe');
+  assertEquals(restate('allergen', 'sesame', null, 'severe').verdict, 'COMMIT');
+  assertEquals(restate('injury', 'sol_diz', 'mild', 'severe', ['knee']).verdict, 'COMMIT');
+  // Held: unknown (= severe in every filter) and severe allergen/intolerance going down, surgery, severe injury.
+  const unknown = restate('allergen', 'sesame', null, 'moderate');
+  assertEquals(unknown.verdict, 'ASK');
+  assertEquals(unknown.question_tr, 'Susam alerjisi kaydını şiddeti belirsiz (ciddi sayılıyor) → orta olarak değiştirmemi gerçekten istiyor musun? Güvenlik filtrelerin buna göre gevşeyecek.');
+  assertEquals(restate('intolerance', 'milk', 'severe', 'mild').verdict, 'ASK');
+  assertEquals(restate('surgery', 'menisküs', 'moderate', 'mild', ['knee']).verdict, 'ASK');
+  assertEquals(restate('injury', 'sol_diz', 'severe', 'moderate', ['knee']).verdict, 'ASK');
+  // Not guarded by the removal rule either: a moderate allergen going mild, an unknown-severity injury answered "orta".
+  assertEquals(restate('allergen', 'sesame', 'moderate', 'mild').verdict, 'COMMIT');
+  assertEquals(restate('injury', 'sol_diz', null, 'moderate', ['knee']).verdict, 'COMMIT');
+});
+
 Deno.test('water: unit=other without its ml → REJECT, repairable (one repair call), and the decision asks for repair', () => {
   const d = validateDecision(sampleDecision({ writes: [water({ unit: 'other', other_ml_each: null })] }), sampleContext());
   const v = d.verdicts[0];

@@ -1,0 +1,299 @@
+{
+  "key": "b10cc9083723bc0a93b07ac4e2ecc246461e87a3f269e18a28ba396def990fcb",
+  "recorded_at": "2026-10-12T06:01:32.974Z",
+  "fixture_ids": [
+    "r3-final2-4a-alti-tavuk-nugget-persembe"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane\",\"grams\":120,\"kcal\":355,\"protein_g\":18,\"carbs_g\":24,\"fat_g\":19,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"kızartılmış\",\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":17,\"kcal\":19,\"protein_g\":0.2,\"carbs_g\":4.5,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":\"ketçap\",\"confidence\":0.5}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "2026-10-01",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "tavuk nugget",
+                "as_stated": "6 tane",
+                "grams": 120,
+                "kcal": 355,
+                "protein_g": 18,
+                "carbs_g": 24,
+                "fat_g": 19,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": "kızartılmış",
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "ketçap",
+                "as_stated": "ketçapla",
+                "grams": 17,
+                "kcal": 19,
+                "protein_g": 0.2,
+                "carbs_g": 4.5,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": "ketçap",
+                "confidence": 0.5
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12855,
+        "output_tokens": 365,
+        "cached_tokens": 12852,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 4334,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane\",\"grams\":120,\"kcal\":350,\"protein_g\":18,\"carbs_g\":28,\"fat_g\":18,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"kızartılmış\",\"allergens\":[\"gluten\",\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.6},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":17,\"kcal\":19,\"protein_g\":0.2,\"carbs_g\":4.5,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":\"ketçap\",\"confidence\":0.45}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "2026-10-01",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "tavuk nugget",
+                "as_stated": "6 tane",
+                "grams": 120,
+                "kcal": 350,
+                "protein_g": 18,
+                "carbs_g": 28,
+                "fat_g": 18,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": "kızartılmış",
+                "allergens": [
+                  "gluten",
+                  "egg"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.6
+              },
+              {
+                "name": "ketçap",
+                "as_stated": "ketçapla",
+                "grams": 17,
+                "kcal": 19,
+                "protein_g": 0.2,
+                "carbs_g": 4.5,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": "ketçap",
+                "confidence": 0.45
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12855,
+        "output_tokens": 467,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 98
+      },
+      "latency_ms": 5573,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane\",\"grams\":120,\"kcal\":355,\"protein_g\":18,\"carbs_g\":25,\"fat_g\":21,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"kızartılmış\",\"allergens\":[\"gluten\"],\"may_contain\":[\"egg\",\"milk\",\"soy\"],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":17,\"kcal\":19,\"protein_g\":0.2,\"carbs_g\":4.5,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":\"ketçap\",\"confidence\":0.55}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "2026-10-01",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "tavuk nugget",
+                "as_stated": "6 tane",
+                "grams": 120,
+                "kcal": 355,
+                "protein_g": 18,
+                "carbs_g": 25,
+                "fat_g": 21,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": "kızartılmış",
+                "allergens": [
+                  "gluten"
+                ],
+                "may_contain": [
+                  "egg",
+                  "milk",
+                  "soy"
+                ],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "ketçap",
+                "as_stated": "ketçapla",
+                "grams": 17,
+                "kcal": 19,
+                "protein_g": 0.2,
+                "carbs_g": 4.5,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": "ketçap",
+                "confidence": 0.55
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12855,
+        "output_tokens": 371,
+        "cached_tokens": 12852,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 4605,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

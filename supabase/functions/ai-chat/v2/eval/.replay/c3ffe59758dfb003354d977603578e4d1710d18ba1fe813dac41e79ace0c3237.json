@@ -1,0 +1,213 @@
+{
+  "key": "c3ffe59758dfb003354d977603578e4d1710d18ba1fe813dac41e79ace0c3237",
+  "recorded_at": "2026-10-12T06:02:11.595Z",
+  "fixture_ids": [
+    "bminus-kizimin-yumurta-alerjisi"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":true},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kızının yumurta alerjisini açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"egg\",\"display_tr\":\"yumurta (kızının)\",\"whose\":\"other_person\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"kızımın yumurta alerjisi var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": true
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kızının yumurta alerjisini açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "egg",
+            "display_tr": "yumurta (kızının)",
+            "whose": "other_person",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "kızımın yumurta alerjisi var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12703,
+        "output_tokens": 235,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3249,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":true},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kızının yumurta alerjisi olduğunu açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"egg\",\"display_tr\":\"yumurta (kızının)\",\"whose\":\"other_person\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"kızımın yumurta alerjisi var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": true
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kızının yumurta alerjisi olduğunu açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "egg",
+            "display_tr": "yumurta (kızının)",
+            "whose": "other_person",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "kızımın yumurta alerjisi var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12703,
+        "output_tokens": 236,
+        "cached_tokens": 12700,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3338,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":true},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kızının yumurta alerjisini açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"egg\",\"display_tr\":\"yumurta (kızının)\",\"whose\":\"other_person\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"kızımın yumurta alerjisi var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": true
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kızının yumurta alerjisini açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "egg",
+            "display_tr": "yumurta (kızının)",
+            "whose": "other_person",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "kızımın yumurta alerjisi var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12703,
+        "output_tokens": 235,
+        "cached_tokens": 12700,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3474,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

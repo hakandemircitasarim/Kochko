@@ -1,0 +1,288 @@
+{
+  "key": "d8d6ca9ef22c13db4a1c821facb6b9f2b0bf3a4873b224429000d9866b6ca676",
+  "recorded_at": "2026-10-12T06:01:18.562Z",
+  "fixture_ids": [
+    "probe-cap-mercimek-iki-cimdik-tuz"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"akşam 1 tabak mercimek çorbası içtim, içine 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"mercimek çorbası\",\"as_stated\":\"1 tabak\",\"grams\":300,\"kcal\":210,\"protein_g\":12,\"carbs_g\":30,\"fat_g\":5,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik\",\"grams\":1,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.75}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "akşam 1 tabak mercimek çorbası içtim, içine 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "mercimek çorbası",
+                "as_stated": "1 tabak",
+                "grams": 300,
+                "kcal": 210,
+                "protein_g": 12,
+                "carbs_g": 30,
+                "fat_g": 5,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik",
+                "grams": 1,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.75
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12589,
+        "output_tokens": 396,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 37
+      },
+      "latency_ms": 4664,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"akşam 1 tabak mercimek çorbası içtim, içine 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"mercimek çorbası\",\"as_stated\":\"1 tabak\",\"grams\":300,\"kcal\":210,\"protein_g\":11,\"carbs_g\":30,\"fat_g\":5,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik\",\"grams\":0.7,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "akşam 1 tabak mercimek çorbası içtim, içine 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "mercimek çorbası",
+                "as_stated": "1 tabak",
+                "grams": 300,
+                "kcal": 210,
+                "protein_g": 11,
+                "carbs_g": 30,
+                "fat_g": 5,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik",
+                "grams": 0.7,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12589,
+        "output_tokens": 359,
+        "cached_tokens": 12586,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 4145,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"akşam 1 tabak mercimek çorbası içtim, içine 2 çimdik tuz attım\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"mercimek çorbası\",\"as_stated\":\"1 tabak\",\"grams\":300,\"kcal\":210,\"protein_g\":12,\"carbs_g\":30,\"fat_g\":5,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"tuz\",\"as_stated\":\"2 çimdik\",\"grams\":1,\"kcal\":0,\"protein_g\":0,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "dinner",
+            "time_local": null,
+            "raw": "akşam 1 tabak mercimek çorbası içtim, içine 2 çimdik tuz attım",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "mercimek çorbası",
+                "as_stated": "1 tabak",
+                "grams": 300,
+                "kcal": 210,
+                "protein_g": 12,
+                "carbs_g": 30,
+                "fat_g": 5,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "tuz",
+                "as_stated": "2 çimdik",
+                "grams": 1,
+                "kcal": 0,
+                "protein_g": 0,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12589,
+        "output_tokens": 405,
+        "cached_tokens": 12586,
+        "reasoning_tokens": 46
+      },
+      "latency_ms": 4324,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

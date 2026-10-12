@@ -1,0 +1,261 @@
+{
+  "key": "bd31d3afb0046459cc5070acebd4e09efb8995456967b1283d787b4df6d8c9cf",
+  "recorded_at": "2026-10-12T06:03:09.609Z",
+  "fixture_ids": [
+    "bplus-fistik-yok-ama-findik-var"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi fındık alerjisini bildiriyor; ayrıca fıstık alerjisi olmadığını söylüyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fıstık alerjim yok\"},{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"hazelnut\",\"display_tr\":\"fındık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fındık alerjim var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"“fıstık” ile yer fıstığını mı, Antep fıstığını mı kastettiği\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi fındık alerjisini bildiriyor; ayrıca fıstık alerjisi olmadığını söylüyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fıstık alerjim yok"
+          },
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "hazelnut",
+            "display_tr": "fındık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fındık alerjim var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "“fıstık” ile yer fıstığını mı, Antep fıstığını mı kastettiği",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12706,
+        "output_tokens": 511,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 177
+      },
+      "latency_ms": 6554,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendi alerji durumunu bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fıstık alerjim yok\"},{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"hazelnut\",\"display_tr\":\"fındık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fındık alerjim var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"“fıstık” ile yer fıstığını mı, Antep fıstığını mı kastettiği\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendi alerji durumunu bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fıstık alerjim yok"
+          },
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "hazelnut",
+            "display_tr": "fındık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fındık alerjim var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "“fıstık” ile yer fıstığını mı, Antep fıstığını mı kastettiği",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12706,
+        "output_tokens": 621,
+        "cached_tokens": 12703,
+        "reasoning_tokens": 303
+      },
+      "latency_ms": 7393,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[{\"hit_id\":\"tw1\",\"reading\":\"positive\",\"reason\":\"Kullanıcı kendisi için fıstık ve fındık alerjisi durumunu açıkça bildiriyor.\"}]},\"writes\":[{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"peanut\",\"display_tr\":\"fıstık\",\"whose\":\"self\",\"polarity\":\"does_not_have\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fıstık alerjim yok\"},{\"op\":\"constraint_add\",\"kind\":\"allergen\",\"subject_id\":\"hazelnut\",\"display_tr\":\"fındık\",\"whose\":\"self\",\"polarity\":\"has\",\"severity\":\"unknown\",\"body_parts\":[],\"event_date\":null,\"note\":null,\"evidence_quote\":\"fındık alerjim var\"}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":{\"topic\":\"“fıstık” ile yer fıstığını mı, Antep fıstığını mı kastettiği\",\"candidate_refs\":[]},\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": [
+            {
+              "hit_id": "tw1",
+              "reading": "positive",
+              "reason": "Kullanıcı kendisi için fıstık ve fındık alerjisi durumunu açıkça bildiriyor."
+            }
+          ]
+        },
+        "writes": [
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "peanut",
+            "display_tr": "fıstık",
+            "whose": "self",
+            "polarity": "does_not_have",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fıstık alerjim yok"
+          },
+          {
+            "op": "constraint_add",
+            "kind": "allergen",
+            "subject_id": "hazelnut",
+            "display_tr": "fındık",
+            "whose": "self",
+            "polarity": "has",
+            "severity": "unknown",
+            "body_parts": [],
+            "event_date": null,
+            "note": null,
+            "evidence_quote": "fındık alerjim var"
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": {
+          "topic": "“fıstık” ile yer fıstığını mı, Antep fıstığını mı kastettiği",
+          "candidate_refs": []
+        },
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12706,
+        "output_tokens": 463,
+        "cached_tokens": 12703,
+        "reasoning_tokens": 132
+      },
+      "latency_ms": 5575,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

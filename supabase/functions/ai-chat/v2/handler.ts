@@ -53,7 +53,7 @@ import type { ActionReceipt, TurnEnvelope } from '../../shared/contracts/turn-en
 import type { RespondUsage } from '../../shared/openai.ts';
 import type { CodeNote, QuotaClass } from '../../shared/v2-db-types.ts';
 import {
-  SCHEMA_VERSION, validateChannelItems, validateDecision, type DecisionValidation, type ValidationContext, type Verdict,
+  ERASE_HOLD_OP, SCHEMA_VERSION, validateChannelItems, validateDecision, type DecisionValidation, type ValidationContext, type Verdict,
 } from '../../shared/write-registry/mod.ts';
 import {
   STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MIN_REPAIR_MS, STAGE_A_REPAIR_TIMEOUT_MS, STAGE_A_SALVAGE_TIMEOUT_MS, stageABudgetClass,
@@ -85,8 +85,8 @@ export const V2_STAGE_FUNCTION_NAME = 'ai-chat-v2';
 
 /**
  * Stage A failed on a turn that stays fail-closed (an ambiguous ED trigger in append mode, an
- * allergen mention, the daily cap with nothing else to say): nothing was understood, so nothing was
- * written. An ordinary turn never gets this line — v1 answers it (T4).
+ * allergen mention, an open v2 hold, the daily cap with nothing else to say): nothing was
+ * understood, so nothing was written. An ordinary turn never gets this line — v1 answers it (T4).
  */
 export const STAGE_A_FAILED_LINE = 'Mesajını şu an tam işleyemedim, bu yüzden hiçbir şey kaydetmedim. Birkaç saniye sonra tekrar yazar mısın?';
 
@@ -103,6 +103,22 @@ export const STAGE_A_FALLBACK_V1_CODES = {
 
 /** ai_turn_log issue code: the fail-closed reply carried the allergen-mention guidance line. */
 export const ALLERGEN_MENTION_ISSUE = 'allergen_mention';
+
+/** ai_turn_log issue code: Stage A failed while a v2 hold was open → fail-closed, never v1 (T4). */
+export const STAGE_A_OPEN_HOLD_ISSUE = 'stage_a_failed_open_hold';
+
+/**
+ * The open, unexpired v2 holds of this turn — the ones v1 cannot see. While one is open a Stage A
+ * failure stays fail-closed instead of handing the turn to v1: the user's "evet" / "ek olarak" is
+ * an answer to a v2 question, and v1 would act on it outside the hold machinery (an allergy-removal
+ * hold's "evet" could clear food_preferences rows with no ledger row and no undo, a weight or water
+ * hold's answer could be written twice). The KVKK erase hold is not one of them: both pipelines
+ * confirm it through shared/erase-hold.ts, which checks the hold itself.
+ */
+export function openV2Holds(ti: TurnInput, now: Date): TurnInput['pending'] {
+  const at = now.toISOString();
+  return ti.pending.filter((p) => p.op !== ERASE_HOLD_OP && p.expires_at > at);
+}
 /** ai_turn_log issue code (coach row): Stage B ran with CoachInput.facts.unanchoredQuestionForbidden. */
 export const UNANCHORED_QUESTION_FORBIDDEN_ISSUE = 'unanchored_question_forbidden';
 /** The turn crashed after the writes (honestCrashResponse): say what was stored, honestly, and nothing more. */
@@ -580,9 +596,14 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     const status = outcome.status === 'refused' ? 'refused' : outcome.status === 'error' && outcome.error?.class === 'timeout' ? 'timeout' : 'error';
     const fallback = resolveTripwires({ scan, stageA: { status } });
     // A live safety trigger (code-owned 112 / referral) or an allergen mention (code-owned exposure
-    // guidance) stays fail-closed: those lines must not depend on another model answering.
-    if (fallback.kind === 'fallback' || allergenLine) {
-      return { kind: 'response', response: await failClosedTurn(tc, fallback, reservedId, stageARows, { allergenLine, allergens: allergenMention }) };
+    // guidance) stays fail-closed: those lines must not depend on another model answering. So does a
+    // turn with an open v2 hold (openV2Holds): v1 cannot see it, and the hold stays as it is.
+    const heldOpen = openV2Holds(ti, now);
+    if (fallback.kind === 'fallback' || allergenLine || heldOpen.length > 0) {
+      return {
+        kind: 'response',
+        response: await failClosedTurn(tc, fallback, reservedId, stageARows, { allergenLine, allergens: allergenMention, openHolds: heldOpen.map((p) => p.op) }),
+      };
     }
     // Anything else: nothing was understood and nothing written (no side effect yet), so v1 answers
     // the ORIGINAL request — the route runs this turn's cleanup (journal claim, quota reservation)
@@ -906,7 +927,7 @@ async function salvageFacts(tc: TurnCtx, scan: TripwireScan): Promise<void> {
  */
 async function failClosedTurn(
   tc: TurnCtx, t: TripwireResolution, reservedId: string | null, rows: Record<string, unknown>[],
-  opts: { capMessage?: string; allergenLine?: string | null; allergens?: readonly string[] } = {},
+  opts: { capMessage?: string; allergenLine?: string | null; allergens?: readonly string[]; openHolds?: readonly string[] } = {},
 ): Promise<Response> {
   const { deps } = tc;
   tc.state.tripwire = t;
@@ -932,7 +953,7 @@ async function failClosedTurn(
   if (id === 'SESSION_NOT_FOUND') return deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404);
   const finish = t.kind === 'fallback'
     ? `${atCap ? 'cap_protective' : 'fallback'}:${t.category}`
-    : atCap ? 'cap_allergen_mention' : opts.allergenLine ? 'stage_a_failed_allergen' : 'stage_a_failed';
+    : atCap ? 'cap_allergen_mention' : opts.allergenLine ? 'stage_a_failed_allergen' : opts.openHolds?.length ? 'stage_a_failed_open_hold' : 'stage_a_failed';
   await logRows(tc, [...rows, {
     ...baseRow(tc, 'tripwire', V2_FUNCTION_NAME),
     system_mode: taskMode, model_requested: 'none', model_served: 'none',
@@ -941,6 +962,7 @@ async function failClosedTurn(
     issues: [
       { code: 'tripwire_outcome', path: null, outcome: null, value: t.kind, stage_a: t.log.stage_a },
       ...(opts.allergenLine ? [{ code: ALLERGEN_MENTION_ISSUE, path: null, outcome: null, allergens: [...(opts.allergens ?? [])] }] : []),
+      ...(opts.openHolds?.length ? [{ code: STAGE_A_OPEN_HOLD_ISSUE, path: null, outcome: null, value: [...opts.openHolds] }] : []),
     ],
   }]);
   const envelope: TurnEnvelope = { message: text, actions: [], receipts: null, task_mode: taskMode, assistant_message_id: id };

@@ -1,0 +1,240 @@
+{
+  "key": "2f1ae297ddc62fb7f7bd8970fbc8f2702d97dd8b17451f3dcbc062011ff0798d",
+  "recorded_at": "2026-10-12T06:01:47.262Z",
+  "fixture_ids": [
+    "r3-final2-14a-dunku-kahve-kafein"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"yesterday\",\"meal_type\":\"breakfast\",\"time_local\":\"09:00\",\"raw\":\"dün sabah 9 gibi 1 kupa sütsüz filtre kahve içmiştim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"sütsüz filtre kahve\",\"as_stated\":\"1 kupa\",\"grams\":250,\"kcal\":2,\"protein_g\":0.3,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":120,\"preparation\":\"filtre\",\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "yesterday",
+            "meal_type": "breakfast",
+            "time_local": "09:00",
+            "raw": "dün sabah 9 gibi 1 kupa sütsüz filtre kahve içmiştim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "sütsüz filtre kahve",
+                "as_stated": "1 kupa",
+                "grams": 250,
+                "kcal": 2,
+                "protein_g": 0.3,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 120,
+                "preparation": "filtre",
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12777,
+        "output_tokens": 332,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 51
+      },
+      "latency_ms": 3954,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"yesterday\",\"meal_type\":\"breakfast\",\"time_local\":\"09:00\",\"raw\":\"dün sabah 9 gibi 1 kupa sütsüz filtre kahve içmiştim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"sütsüz filtre kahve\",\"as_stated\":\"1 kupa\",\"grams\":250,\"kcal\":2,\"protein_g\":0.3,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":120,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.85}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "yesterday",
+            "meal_type": "breakfast",
+            "time_local": "09:00",
+            "raw": "dün sabah 9 gibi 1 kupa sütsüz filtre kahve içmiştim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "sütsüz filtre kahve",
+                "as_stated": "1 kupa",
+                "grams": 250,
+                "kcal": 2,
+                "protein_g": 0.3,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 120,
+                "preparation": null,
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.85
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12777,
+        "output_tokens": 278,
+        "cached_tokens": 12774,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3258,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"yesterday\",\"meal_type\":\"breakfast\",\"time_local\":\"09:00\",\"raw\":\"dün sabah 9 gibi 1 kupa sütsüz filtre kahve içmiştim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"sütsüz filtre kahve\",\"as_stated\":\"1 kupa\",\"grams\":250,\"kcal\":2,\"protein_g\":0.3,\"carbs_g\":0,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":120,\"preparation\":\"sade, sütsüz\",\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.8}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "yesterday",
+            "meal_type": "breakfast",
+            "time_local": "09:00",
+            "raw": "dün sabah 9 gibi 1 kupa sütsüz filtre kahve içmiştim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "sütsüz filtre kahve",
+                "as_stated": "1 kupa",
+                "grams": 250,
+                "kcal": 2,
+                "protein_g": 0.3,
+                "carbs_g": 0,
+                "fat_g": 0,
+                "alcohol_g": 0,
+                "caffeine_mg": 120,
+                "preparation": "sade, sütsüz",
+                "allergens": [],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.8
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12777,
+        "output_tokens": 327,
+        "cached_tokens": 12774,
+        "reasoning_tokens": 42
+      },
+      "latency_ms": 4429,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

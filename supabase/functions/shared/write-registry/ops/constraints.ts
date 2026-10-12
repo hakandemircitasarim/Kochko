@@ -17,6 +17,9 @@
  *     becomes a second row (trial 2026-10-11: "fıstık alerjim var" added 'peanut' beside the active
  *     'fıstık'): derive's `existing` names the stored row; a pure restatement is effect
  *     'already_active' (the row is confirmed), a stated different severity is 'activate' on that row.
+ *   • Only a severity INCREASE lands in one step. A restatement that LOWERS a severe/unknown
+ *     allergen, a surgery or a severe injury is held like its removal (iki_adimli_siddet_dusurme,
+ *     code-owned question naming the row and old → new) — never a silent downgrade.
  * Replaces food_preference(is_allergen)/clear, health_event, health_event_resolve and the regex
  * allergy/retract/injury/heal nets.
  */
@@ -65,6 +68,51 @@ export function restatedSeverity(row: Record<string, unknown>): 'mild' | 'modera
   return statedSeverityChange(row.severity, isRecord(row.existing) ? { severity: row.existing.severity } : null);
 }
 
+const SEVERITY_RANK: Readonly<Record<string, number>> = { mild: 1, moderate: 2, severe: 3 };
+
+/**
+ * A restated severity that LOWERS protection the removal rule guards (iki_adimli_kaldirma): a
+ * severe-or-unknown allergen/intolerance (an unstated severity counts as severe in every filter), a
+ * surgery (any decrease; unstated reads as severe), or a severe injury. Such a change is two-step —
+ * held for the user's explicit "evet" — exactly like removing the row, because "severe → mild" turns
+ * the same protections off (the 112 sentence, the two-step removal). An INCREASE, or a severity the
+ * row never had for a kind the rule does not guard (an injury of unknown severity answered "orta"),
+ * lands directly. `stored` is the row's severity (null = unstated). Returns the old → new pair, or null.
+ */
+export function severityDowngrade(kind: string, stated: unknown, stored: unknown): { from: string | null; to: 'mild' | 'moderate' } | null {
+  if (stated !== 'mild' && stated !== 'moderate') return null; // 'severe' never lowers; 'unknown' is not a change
+  const old = typeof stored === 'string' && SEVERITY_RANK[stored] ? stored : null;
+  const oldRank = old ? SEVERITY_RANK[old] : 3;
+  const guarded = (kind === 'allergen' || kind === 'intolerance') ? oldRank === 3
+    : kind === 'surgery' ? true
+    : kind === 'injury' ? old === 'severe'
+    : false;
+  return guarded && SEVERITY_RANK[stated] < oldRank ? { from: old, to: stated } : null;
+}
+
+/** The reason code of the held downgrade — a SAFETY hold (facts.ts SAFETY_HOLD_REASONS). */
+export const SEVERITY_DOWNGRADE_CODE = 'iki_adimli_siddet_dusurme';
+
+const SEVERITY_WORD_TR: Readonly<Record<string, string>> = { mild: 'hafif', moderate: 'orta', severe: 'ciddi' };
+const KIND_POSSESSIVE_TR: Readonly<Record<string, string>> = { allergen: 'alerjisi', intolerance: 'intoleransı', injury: 'sakatlığı', surgery: 'ameliyatı' };
+
+/** The stored row named for the user: a legacy row keeps its own word ('fıstık'), an id its label. */
+function constraintNameTr(kind: string, stored: string): string {
+  const custom = stored.startsWith('custom:') ? stored.slice('custom:'.length) : null;
+  const allergen = (kind === 'allergen' || kind === 'intolerance') && Object.prototype.hasOwnProperty.call(ALLERGENS, stored)
+    ? ALLERGENS[stored as keyof typeof ALLERGENS].split(' (')[0]
+    : null;
+  const name = custom ?? allergen ?? stored.split('_').join(' ');
+  return `${name} ${KIND_POSSESSIVE_TR[kind] ?? 'kısıtı'}`;
+}
+
+/** The held downgrade's ONE code-owned question: which row, old → new severity, what it changes. */
+export function severityDowngradeQuestion(kind: string, stored: string, from: string | null, to: string): string {
+  const name = constraintNameTr(kind, stored);
+  const old = from ? SEVERITY_WORD_TR[from] ?? from : 'şiddeti belirsiz (ciddi sayılıyor)';
+  return `${name.charAt(0).toLocaleUpperCase('tr')}${name.slice(1)} kaydını ${old} → ${SEVERITY_WORD_TR[to] ?? to} olarak değiştirmemi gerçekten istiyor musun? Güvenlik filtrelerin buna göre gevşeyecek.`;
+}
+
 export const constraint_add = op({
   type: 'constraint_add',
   channel: 'writes',
@@ -91,7 +139,8 @@ export const constraint_add = op({
     const existing = activeSame(a, ctx);
     // A pure restatement changes nothing: 'already_active' (confirm). One that states a different
     // severity still CHANGES protection: 'activate' with `existing` — the stored row is updated, never
-    // duplicated (the writer matches it by its stored subject).
+    // duplicated (the writer matches it by its stored subject). A LOWER one on a guarded row is held
+    // (ask rule iki_adimli_siddet_dusurme below).
     const restated = existing !== null && statedSeverityChange(a.severity, existing) === null;
     return {
       effect: a.whose === 'other_person' ? 'coach_note' : a.polarity === 'has' ? (restated ? 'already_active' : 'activate') : 'record_absence',
@@ -106,7 +155,7 @@ export const constraint_add = op({
     };
   },
   writes: { fn: 'syncConstraint', tables: ['user_constraints', 'health_events', 'food_preferences', 'belief_events', 'turn_writes'], undo: 'deactivate' },
-  invariants: ['spine_sync', 'note_append_with_history', 'plan_repair', 'unknown_severity_is_severe', 'region_unknown_is_strict'],
+  invariants: ['spine_sync', 'note_append_with_history', 'plan_repair', 'unknown_severity_is_severe', 'region_unknown_is_strict', 'two_step_severe_downgrade'],
 }).rules({
   hard: [
     rule('alerjen_kimligi', 'alerji/intoleransta subject_id alerjen listesinden ya da custom:<ad> olmalı', (a) =>
@@ -124,6 +173,21 @@ export const constraint_add = op({
     rule('alinti_dogrulanamadi', 'evidence_quote kullanıcının mesajında aynen geçmeli', (a, _d, ctx) =>
       !(a.whose === 'self' && a.polarity === 'has') && !isVerbatimQuote(a.evidence_quote, ctx.user_message),
       { repairable: true, failure_class: 'evidence', path: 'evidence_quote', evidence: true }),
+  ],
+  // Restating a stored row with a LOWER severity weakens protection the same way removing it does
+  // (review 2026-10-12: "fıstık alerjim var ama hafif" on mem's legacy severe 'fıstık' turned the
+  // 112 sentence and the two-step removal off in one step). Same bar as iki_adimli_kaldirma: held,
+  // the code asks, the next turn's explicit confirm writes it; an increase is never held.
+  ask: [
+    rule(SEVERITY_DOWNGRADE_CODE, 'ciddi/bilinmeyen alerjen ya da ameliyat/ciddi sakatlığın şiddetini düşürmek iki adımlıdır', (a, d) => {
+      const g = d.existing ? severityDowngrade(a.kind, a.severity, d.existing.severity) : null;
+      return g && d.existing ? `şiddet düşürülüyor: ${d.existing.subject} ${g.from ? SEVERITY_WORD_TR[g.from] : 'belirsiz'} → ${SEVERITY_WORD_TR[g.to]}` : false;
+    }, {
+      question_tr: (a, d) => {
+        const g = d.existing ? severityDowngrade(a.kind, a.severity, d.existing.severity) : null;
+        return d.existing && g ? severityDowngradeQuestion(a.kind, d.existing.subject, g.from, g.to) : 'Bu kaydın şiddetini düşürmemi gerçekten istiyor musun?';
+      },
+    }),
   ],
   flag: [
     rule('koruyucu_beyan_teyidi', 'koruyucu beyanın alıntısı mesajda aynen yok — koruma düşmesin diye kaydedildi; koç bir kez teyit eder', (a, _d, ctx) =>

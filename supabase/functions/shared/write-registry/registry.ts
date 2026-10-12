@@ -59,8 +59,13 @@ import { memory_note } from './ops/memory.ts';
  * demanded numbers). Validator-only changes in the same round (no bytes): water 8–30 L is a typo
  * question, an active same-subject constraint_add is a restatement, record_update receipts show the
  * patch.
+ * v6 (2026-10-12, pre-retrial review): constraint_add has its first ASK rule — a restated LOWER
+ * severity on a severe/unknown allergen, a surgery or a severe injury is held like its removal
+ * (iki_adimli_siddet_dusurme) — so the coach's capability line for it gains "Gerekirse önce
+ * kullanıcıya sorulur." Schema bytes and the Stage A doc are unchanged apart from the version name.
+ * (v5 was never deployed: live holds are v4 either way and come back as stale_hold.)
  */
-export const SCHEMA_VERSION = 'v5';
+export const SCHEMA_VERSION = 'v6';
 
 export const REGISTRY: readonly RegOp[] = [
   // writes[] — what the user reported

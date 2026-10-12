@@ -1,0 +1,301 @@
+{
+  "key": "7cceee17f42658a12f3a52be405d67d74ef8e6ba3dcab038100333fb37805915",
+  "recorded_at": "2026-10-12T06:01:02.986Z",
+  "fixture_ids": [
+    "ho-findik-ve-sutlu-kahve"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":null,\"raw\":\"ikindi 10-15 tane fındık yedim, yanında da sütlü bir kahve\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fındık\",\"as_stated\":\"10-15 tane\",\"grams\":15,\"kcal\":94,\"protein_g\":2.3,\"carbs_g\":2.6,\"fat_g\":9.1,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"hazelnut\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"sütlü kahve\",\"as_stated\":\"sütlü bir kahve\",\"grams\":200,\"kcal\":95,\"protein_g\":5,\"carbs_g\":9,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":70,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.5}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": null,
+            "raw": "ikindi 10-15 tane fındık yedim, yanında da sütlü bir kahve",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fındık",
+                "as_stated": "10-15 tane",
+                "grams": 15,
+                "kcal": 94,
+                "protein_g": 2.3,
+                "carbs_g": 2.6,
+                "fat_g": 9.1,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "hazelnut"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "sütlü kahve",
+                "as_stated": "sütlü bir kahve",
+                "grams": 200,
+                "kcal": 95,
+                "protein_g": 5,
+                "carbs_g": 9,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 70,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.5
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12584,
+        "output_tokens": 445,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 77
+      },
+      "latency_ms": 5859,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":null,\"raw\":\"ikindi 10-15 tane fındık yedim, yanında da sütlü bir kahve\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fındık\",\"as_stated\":\"10-15 tane\",\"grams\":15,\"kcal\":94,\"protein_g\":2.3,\"carbs_g\":2.5,\"fat_g\":9.1,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"tree_nut\",\"hazelnut\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"sütlü kahve\",\"as_stated\":\"sütlü bir kahve\",\"grams\":200,\"kcal\":95,\"protein_g\":5,\"carbs_g\":8,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":70,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.5}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": null,
+            "raw": "ikindi 10-15 tane fındık yedim, yanında da sütlü bir kahve",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fındık",
+                "as_stated": "10-15 tane",
+                "grams": 15,
+                "kcal": 94,
+                "protein_g": 2.3,
+                "carbs_g": 2.5,
+                "fat_g": 9.1,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "tree_nut",
+                  "hazelnut"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.65
+              },
+              {
+                "name": "sütlü kahve",
+                "as_stated": "sütlü bir kahve",
+                "grams": 200,
+                "kcal": 95,
+                "protein_g": 5,
+                "carbs_g": 8,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 70,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.5
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12584,
+        "output_tokens": 466,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 94
+      },
+      "latency_ms": 4730,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":null,\"raw\":\"ikindi 10-15 tane fındık yedim, yanında da sütlü bir kahve\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"fındık\",\"as_stated\":\"10-15 tane\",\"grams\":15,\"kcal\":94,\"protein_g\":2.3,\"carbs_g\":2.5,\"fat_g\":9.1,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"hazelnut\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7},{\"name\":\"sütlü kahve\",\"as_stated\":\"sütlü bir kahve\",\"grams\":250,\"kcal\":95,\"protein_g\":5,\"carbs_g\":9,\"fat_g\":4,\"alcohol_g\":0,\"caffeine_mg\":80,\"preparation\":null,\"allergens\":[\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": null,
+            "raw": "ikindi 10-15 tane fındık yedim, yanında da sütlü bir kahve",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "fındık",
+                "as_stated": "10-15 tane",
+                "grams": 15,
+                "kcal": 94,
+                "protein_g": 2.3,
+                "carbs_g": 2.5,
+                "fat_g": 9.1,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "hazelnut"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.7
+              },
+              {
+                "name": "sütlü kahve",
+                "as_stated": "sütlü bir kahve",
+                "grams": 250,
+                "kcal": 95,
+                "protein_g": 5,
+                "carbs_g": 9,
+                "fat_g": 4,
+                "alcohol_g": 0,
+                "caffeine_mg": 80,
+                "preparation": null,
+                "allergens": [
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.45
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12584,
+        "output_tokens": 366,
+        "cached_tokens": 12581,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 4132,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

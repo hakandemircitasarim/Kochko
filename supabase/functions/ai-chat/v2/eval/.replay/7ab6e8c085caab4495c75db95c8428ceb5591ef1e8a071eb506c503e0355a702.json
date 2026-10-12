@@ -1,0 +1,264 @@
+{
+  "key": "7ab6e8c085caab4495c75db95c8428ceb5591ef1e8a071eb506c503e0355a702",
+  "recorded_at": "2026-10-12T06:01:37.639Z",
+  "fixture_ids": [
+    "r3-final2-9a-cok-fazla-yedim-pasta"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":{\"category\":\"binge\",\"severity\":\"low\",\"evidence_quote\":\"bugün çok fazla yedim ya, az önce 3 dilim pasta yedim\"},\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":\"21:10\",\"raw\":\"az önce 3 dilim pasta yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"pasta\",\"as_stated\":\"3 dilim\",\"grams\":360,\"kcal\":1150,\"protein_g\":15,\"carbs_g\":150,\"fat_g\":55,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"egg\",\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.55}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": {
+            "category": "binge",
+            "severity": "low",
+            "evidence_quote": "bugün çok fazla yedim ya, az önce 3 dilim pasta yedim"
+          },
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": "21:10",
+            "raw": "az önce 3 dilim pasta yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "pasta",
+                "as_stated": "3 dilim",
+                "grams": 360,
+                "kcal": 1150,
+                "protein_g": 15,
+                "carbs_g": 150,
+                "fat_g": 55,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten",
+                  "egg",
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.55
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12773,
+        "output_tokens": 404,
+        "cached_tokens": 12332,
+        "reasoning_tokens": 101
+      },
+      "latency_ms": 4763,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":{\"category\":\"binge\",\"severity\":\"low\",\"evidence_quote\":\"bugün çok fazla yedim ya, az önce 3 dilim pasta yedim\"},\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":null,\"raw\":\"az önce 3 dilim pasta yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"pasta\",\"as_stated\":\"3 dilim\",\"grams\":360,\"kcal\":1260,\"protein_g\":15,\"carbs_g\":150,\"fat_g\":66,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"egg\",\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.5}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": {
+            "category": "binge",
+            "severity": "low",
+            "evidence_quote": "bugün çok fazla yedim ya, az önce 3 dilim pasta yedim"
+          },
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": null,
+            "raw": "az önce 3 dilim pasta yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "pasta",
+                "as_stated": "3 dilim",
+                "grams": 360,
+                "kcal": 1260,
+                "protein_g": 15,
+                "carbs_g": 150,
+                "fat_g": 66,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten",
+                  "egg",
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.5
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12773,
+        "output_tokens": 380,
+        "cached_tokens": 12770,
+        "reasoning_tokens": 79
+      },
+      "latency_ms": 4830,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"report\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"self_harm\":false,\"ed_signal\":{\"category\":\"binge\",\"severity\":\"low\",\"evidence_quote\":\"bugün çok fazla yedim ya, az önce 3 dilim pasta yedim\"},\"tripwire_readings\":[]},\"writes\":[{\"op\":\"meal_log\",\"day\":\"today\",\"meal_type\":\"snack\",\"time_local\":null,\"raw\":\"az önce 3 dilim pasta yedim\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"pasta\",\"as_stated\":\"3 dilim\",\"grams\":300,\"kcal\":1050,\"protein_g\":12,\"carbs_g\":135,\"fat_g\":51,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"egg\",\"milk\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.55}]}],\"record_ops\":[],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"medium\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "report",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "self_harm": false,
+          "ed_signal": {
+            "category": "binge",
+            "severity": "low",
+            "evidence_quote": "bugün çok fazla yedim ya, az önce 3 dilim pasta yedim"
+          },
+          "tripwire_readings": []
+        },
+        "writes": [
+          {
+            "op": "meal_log",
+            "day": "today",
+            "meal_type": "snack",
+            "time_local": null,
+            "raw": "az önce 3 dilim pasta yedim",
+            "status": "new",
+            "venue": null,
+            "replaces": null,
+            "items": [
+              {
+                "name": "pasta",
+                "as_stated": "3 dilim",
+                "grams": 300,
+                "kcal": 1050,
+                "protein_g": 12,
+                "carbs_g": 135,
+                "fat_g": 51,
+                "alcohol_g": 0,
+                "caffeine_mg": 0,
+                "preparation": null,
+                "allergens": [
+                  "gluten",
+                  "egg",
+                  "milk"
+                ],
+                "may_contain": [],
+                "reference_key": null,
+                "confidence": 0.55
+              }
+            ]
+          }
+        ],
+        "record_ops": [],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "medium"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12773,
+        "output_tokens": 368,
+        "cached_tokens": 12770,
+        "reasoning_tokens": 67
+      },
+      "latency_ms": 4399,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

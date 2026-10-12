@@ -152,6 +152,7 @@
           { "path": "decision.writes[op=mood_log]", "count": 0 },
           { "path": "decision.writes[op=mood_log].value", "eq": null, "quantifier": "all" }
         ], "why": "Söylenmeyen puan uydurulmaz (kural 4)." },
+        { "path": "decision.clarify.topic", "not_contains_any": ["puan", "skor", "1-5", "1–5", "1-10", "1–10", "1 ile 5", "1 ile 10", "üzerinden", "kaç verir"], "why": "Puan sorulmaz da (kural 4): v8'de geçen tekrarların hepsi clarify ile 1–5 / 1–10 puan istiyordu." },
         { "path": "decision.safety.self_harm", "flag": false },
         { "path": "decision.reply_route.contract", "eq": "coach" },
         { "path": "decision.plan_action.op", "eq": "none" }

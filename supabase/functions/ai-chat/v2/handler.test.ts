@@ -17,7 +17,7 @@
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleDecision, sampleMeal } from '../../shared/write-registry/samples.ts';
 import { CANNED_SAFETY, REQUIRED_SAFETY_LINE, resolveTripwires, scanTripwires } from '../../shared/safety-tripwires.ts';
-import { validateDecision } from '../../shared/write-registry/mod.ts';
+import { SCHEMA_VERSION, validateDecision } from '../../shared/write-registry/mod.ts';
 import { STAGE_A_MIN_REPAIR_MS, STAGE_A_REPAIR_TIMEOUT_MS } from './budgets.ts';
 import { clientLive, clientReload, V1_KEYS } from './client-parsers.test.ts';
 import { coachModel } from './coach.ts';
@@ -27,7 +27,7 @@ import { COACH_UNAVAILABLE_TR, RECEIPTS_BELOW_TR, SAFE_FALLBACK_VARIANTS, SUGGES
 import {
   actionsExecutedOf, ALLERGEN_MENTION_ISSUE, allergenMentionLine, allergenMentionOf, betterOf, BUSY_LINE, buildRepairRequest, extraFacts,
   handleV2Turn, honestCrashResponse, honestFallbackText, MISSED_WRITE_REPAIR_LINE, newTurnState, NOTHING_TO_UNDO_LINE, receiptFactLines,
-  STAGE_A_FAILED_LINE, STAGE_A_FALLBACK_V1_CODES, STAGE_B_FAILED_HELD_LINE, STAGE_B_FAILED_LINE, STAGE_B_FAILED_NOTHING_LINE,
+  STAGE_A_FAILED_LINE, STAGE_A_FALLBACK_V1_CODES, STAGE_A_OPEN_HOLD_ISSUE, STAGE_B_FAILED_HELD_LINE, STAGE_B_FAILED_LINE, STAGE_B_FAILED_NOTHING_LINE,
   STAGE_B_FAILED_WRITTEN_HELD_LINE, TASK_MODE_HINT_UNKNOWN, UNANCHORED_QUESTION_FORBIDDEN_ISSUE, undoTargetOf, v1OnlyReason, type TurnState,
 } from './handler.ts';
 import { MISSED_WRITE_ALSO_LINE, MISSED_WRITE_LINE } from './facts.ts';
@@ -312,6 +312,30 @@ for (const [label, stageA, code] of [
     assertEquals(t.rec.journal.map((j) => j.kind), ['claim', 'fail']);
   });
 }
+
+Deno.test('Stage A timeout while a v2 hold is OPEN → fail-closed (never v1: it cannot see the hold), quota exempt, the hold untouched', async () => {
+  // review 2026-10-12: an "evet" to an allergy-removal hold that timed out went to v1, which could act on
+  // the v2 question outside the hold machinery. The seeded KVKK erase hold (pw-1) is v1's own too.
+  const withHold = (expires_at: string) => seededTurnInput((t) => {
+    t.pending_writes.push({
+      id: 'pw-r', user_id: USER, op: 'constraint_retract', status: 'pending', created_at: '2026-10-07T11:25:00Z', expires_at,
+      hold_class: 'safety', reason_code: 'iki_adimli_kaldirma', schema_version: SCHEMA_VERSION,
+      payload: { v: 2, op: 'constraint_retract', schema_version: SCHEMA_VERSION, args: { op: 'constraint_retract', target: null, evidence_quote: 'fıstık alerjim geçti', note: null }, refs: [{ path: 'target', table: 'user_constraints', id: 'uc-1' }] },
+    });
+  });
+  const t = await turn({ message: 'evet', idempotency_key: 'k-hold' }, { stageA: (req) => failedOutcome(req, 'timeout'), turnInput: await withHold('2026-10-07T13:00:00Z') });
+  assertEquals(t.out.kind, 'response');
+  assertEquals(t.env!.message, STAGE_A_FAILED_LINE);
+  assertEquals(t.rec.persisted[0].quotaClass, 'exempt', 'a fail-closed turn is never charged');
+  assertEquals(t.commit.rpcCalls.length, 0, 'the hold is neither confirmed, discarded nor closed');
+  assertEquals(t.rec.coachInputs.length, 0);
+  const row = t.rec.turnLogs.find((r) => r.stage === 'tripwire')!;
+  assertEquals(row.finish_reason, 'stage_a_failed_open_hold');
+  assert(issueCodes(row).includes(STAGE_A_OPEN_HOLD_ISSUE));
+  // An expired hold keeps nothing open: the ordinary hand-over to v1 again.
+  const expired = await turn({ message: 'evet' }, { stageA: (req) => failedOutcome(req, 'timeout'), turnInput: await withHold('2026-10-07T11:29:00Z') });
+  assertEquals(expired.out.kind, 'fallback_v1');
+});
 
 Deno.test('an accepted ED signal (verbatim user quote) escalates the durable tier', async () => {
   const msg = 'yedikten sonra parmağımı boğazıma sokuyorum';
