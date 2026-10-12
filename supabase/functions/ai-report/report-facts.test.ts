@@ -77,3 +77,11 @@ Deno.test('diff#9: water target — plan, then profile, else a default flagged u
   assertEquals(resolveWaterTarget(null, 2.6), { liters: 2.6, known: true });
   assertEquals(resolveWaterTarget(0, null), { liters: 2.5, known: false });
 });
+
+Deno.test('pre-retrial #3: the daily report scores water against the NEWEST day plan first, the profile only as fallback (like ai-chat/v2 facts.ts)', () => {
+  const src = Deno.readTextFileSync(new URL('./index.ts', import.meta.url));
+  assert(src.includes(".from('daily_plans').select('plan_type, calorie_target_min, calorie_target_max, protein_target_g, water_target_liters')"), 'the plan read lost water_target_liters');
+  assert(src.includes(".order('version', { ascending: false }).limit(1)"), 'the plan read is not the newest version');
+  assert(src.includes('resolveWaterTarget(plan?.water_target_liters, profileWaterTargetLiters)'), 'water is not scored plan-first');
+  assertEquals(src.split('= resolveWaterTarget(').length - 1, 1, 'a second water-target path appeared');
+});

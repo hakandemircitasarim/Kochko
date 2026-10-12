@@ -31,9 +31,13 @@ import { estimateTokens } from './tokens.ts';
  * 2026-10-12 (SCHEMA v7, re-trial lane U): doc 3350 → 3365. record_delete's not_when line names the one
  * constraint it may undo (a just-added one, behind a safety confirmation) — measured doc ≈3360 (+12);
  * the schema share (+19, evidence_quote) stays inside its own ceiling and the total's.
+ * 2026-10-12 (SCHEMA v8, pre-retrial #3): doc 3365 → 3370. record_delete's restore_replaced line
+ * ("geri al / düzeltmeyi geri al" true; "sil / hiç olmadı / yanlış kayıt" false, +25) minus the trims
+ * (record_update's not_when, "belirli" twice, −18) — measured doc ≈3367; schema ≈5207 (+18) stays
+ * inside its own ceiling and the total's.
  */
 export const STAGE_A_REGISTRY_BUDGET = {
-  doc: { floor: 2000, ceiling: 3365 },
+  doc: { floor: 2000, ceiling: 3370 },
   schema: { ceiling: 5300 },
   total: { ceiling: 8650 },
 } as const;

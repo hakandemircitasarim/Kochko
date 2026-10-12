@@ -109,7 +109,7 @@ Deno.test('budget: an outcome code cannot total exactly gives NO remaining numbe
   assertStringIncludes(line, '675 kcal (az önceki değişiklikten önceki toplam; yeni toplam hesaplanamadı, toplam ya da kalan sayısı verme)');
   assert(!line.includes('alt sınıra'), line);
   // A delete of one of today's meals: uncertain too.
-  const del = turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış', evidence_quote: null }] }), commit());
+  const del = turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış', evidence_quote: null, restore_replaced: false }] }), commit());
   assertEquals(del.certain, false);
 });
 
@@ -356,7 +356,7 @@ Deno.test('a held value shows its numbers (old → new) and is asked about what 
 Deno.test('the facts speak without the pipeline words the coach echoed in the trial ("bu turdaki kayıtlar", "koda göre", "makbuz")', async () => {
   const ti = await seededTurnInput();
   const certain = renderBudgetLine(budgetFacts(ti, turnIntakeDelta(ti, decision({ writes: [mealWrite([['ızgara tavuk', 400, 45]])] }), commit({ receipts: [MEAL_OK] }))));
-  const uncertain = renderBudgetLine(budgetFacts(ti, turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış', evidence_quote: null }] }), commit())));
+  const uncertain = renderBudgetLine(budgetFacts(ti, turnIntakeDelta(ti, decision({ record_ops: [{ op: 'delete', ref: 'm3', reason: 'yanlış', evidence_quote: null, restore_replaced: false }] }), commit())));
   for (const text of [certain, uncertain, MISSED_WRITE_LINE, MISSED_WRITE_ALSO_LINE]) {
     for (const w of ['bu turdaki kayıtlar', 'koda göre', 'makbuz', 'sistem']) assert(!text.includes(w), `${w} in: ${text}`);
   }

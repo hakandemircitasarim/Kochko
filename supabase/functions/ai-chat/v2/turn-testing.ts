@@ -305,7 +305,7 @@ export interface FakeDepsOptions {
    */
   coach?: (n: number, input: CoachInput) => CoachReply | Response;
   /** The luna judge's answers by call (default: clean). */
-  judge?: (n: number) => { violation: boolean; items: unknown[] } | Response;
+  judge?: (n: number) => { violation: boolean; items: unknown[]; name_only?: Array<{ id: string; verdict: string }> } | Response;
   /** Replace the T7 port (tests proving the code-owned lines survive ANY port). */
   postcheck?: PostcheckPort;
   /** The prose judge's scope (default 'always'; live.ts runs LIVE_JUDGE_SCOPE — seam tests pass it). */
@@ -333,10 +333,11 @@ export function fakeDeps(o: FakeDepsOptions = {}): { deps: V2Deps; rec: Recorder
   // ONE fake Responses transport for both models, routed by the strict schema name in the body.
   const stageB = fakeResponses((call) => {
     const format = (call.body.text as Record<string, unknown> | undefined)?.format as Record<string, unknown> | undefined;
-    if (format?.name === 'kochko_judge_v1') {
+    if (format?.name === 'kochko_judge_v2') {
       rec.judgeCalls.push(call.body);
       const a = o.judge ? o.judge(rec.judgeCalls.length) : { violation: false, items: [] };
-      return a instanceof Response ? a : responsesBody(a);
+      // The strict judge schema (v2) requires name_only[]: a scripted answer without it has no per-item verdicts.
+      return a instanceof Response ? a : responsesBody({ name_only: [], ...a });
     }
     rec.coachCalls.push(call.body);
     const a = o.coach ? o.coach(rec.coachCalls.length, rec.coachInputs[rec.coachInputs.length - 1]) : coachReply(DEFAULT_COACH_TEXT);

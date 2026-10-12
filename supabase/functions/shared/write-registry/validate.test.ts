@@ -312,7 +312,7 @@ Deno.test('meal: "1 muz daha" 10 minutes after a banana is a NEW write — no na
 // ─── refs: only what was rendered this turn ──────────────────────────────────
 
 Deno.test('ref not in the rendered set → REJECT (never guessed): delete m99, replaces d9, retract c9', () => {
-  const del = one('record_ops', { op: 'delete', ref: 'm99', reason: 'sil', evidence_quote: null });
+  const del = one('record_ops', { op: 'delete', ref: 'm99', reason: 'sil', evidence_quote: null, restore_replaced: false });
   assertEquals(del.verdict, 'REJECT');
   assertEquals(del.issues[0].code, 'ref_listede_yok');
   assertEquals(del.issues[0].failure_class, 'invalid_ref');
@@ -324,13 +324,13 @@ Deno.test('ref not in the rendered set → REJECT (never guessed): delete m99, r
 Deno.test('refs: wrong kind / wrong record type / already undone / later write on the same field → REJECT', () => {
   assertEquals(one('writes', water({ replaces: 'm12' })).issues[0].code, 'ref_turu');
   assertEquals(one('writes', water({ replaces: 'd4' })).issues[0].code, 'ref_hedefi', 'd4 is sleep, not water');
-  assertEquals(one('record_ops', { op: 'delete', ref: 'd5', reason: 'x', evidence_quote: null }).issues[0].code, 'zaten_geri_alindi');
-  const later = one('record_ops', { op: 'delete', ref: 'd6', reason: 'x', evidence_quote: null });
+  assertEquals(one('record_ops', { op: 'delete', ref: 'd5', reason: 'x', evidence_quote: null, restore_replaced: false }).issues[0].code, 'zaten_geri_alindi');
+  const later = one('record_ops', { op: 'delete', ref: 'd6', reason: 'x', evidence_quote: null, restore_replaced: false });
   assertEquals(later.verdict, 'REJECT');
   assert(codes(later).includes('sonraki_yazma_var'));
   // A stored constraint is not undone by record_delete: only the user's newest constraint_add is
   // (RenderedRef.undo_add) — an older one stays constraint_retract's, with its own two-step bar.
-  const spine = one('record_ops', { op: 'delete', ref: 'c1', reason: 'x', evidence_quote: null });
+  const spine = one('record_ops', { op: 'delete', ref: 'c1', reason: 'x', evidence_quote: null, restore_replaced: false });
   assertEquals(spine.verdict, 'REJECT');
   assertEquals(spine.issues[0].code, 'kisit_yalniz_son_ekleme', 'an older safety row is not deletable here');
   assertEquals(spine.issues[0].failure_class, 'not_deletable');
@@ -338,7 +338,7 @@ Deno.test('refs: wrong kind / wrong record type / already undone / later write o
 });
 
 Deno.test('final2#2: "geri al" after a water log deletes exactly d3 — the dinner is untouched', () => {
-  const d = validateDecision(sampleDecision({ intent: { primary: 'correction', is_hypothetical: false, about_other_person: false }, record_ops: [{ op: 'delete', ref: 'd3', reason: 'yanlış', evidence_quote: null }] }), sampleContext({ user_message: 'yok o yanlış geri al' }));
+  const d = validateDecision(sampleDecision({ intent: { primary: 'correction', is_hypothetical: false, about_other_person: false }, record_ops: [{ op: 'delete', ref: 'd3', reason: 'yanlış', evidence_quote: null, restore_replaced: false }] }), sampleContext({ user_message: 'yok o yanlış geri al' }));
   assertEquals(d.verdicts.length, 1);
   assertEquals(d.verdicts[0].verdict, 'COMMIT');
   assertEquals(d.verdicts[0].target_ref, 'd3');
@@ -350,7 +350,8 @@ Deno.test('final2#2: "geri al" after a water log deletes exactly d3 — the dinn
 const YESTERDAY_W: RenderedRef = { kind: 'd', target: 'weight', op: 'body_weight', day: '2026-10-05', summary_tr: 'tartı: 81,6 kg', snapshot: { value: 81.6 } };
 const TODAY_W = (extra: Partial<RenderedRef> = {}): RenderedRef =>
   ({ kind: 'd', target: 'weight', op: 'body_weight', day: SAMPLE_TODAY, summary_tr: 'tartı: 88 kg', snapshot: { value: 88 }, ...extra });
-const del = (ref: string, evidence_quote: string | null = null) => ({ op: 'delete', ref, reason: 'geri al', evidence_quote });
+/** "geri al" → restore_replaced true (it only matters on a correction ref); a plain "sil" passes false. */
+const del = (ref: string, evidence_quote: string | null = null, restore_replaced = true) => ({ op: 'delete', ref, reason: 'geri al', evidence_quote, restore_replaced });
 const delCtx = (msg: string, refs: Record<string, RenderedRef>) => sampleContext({ user_message: msg, refs: { ...SAMPLE_REFS, ...refs } });
 
 Deno.test('record_delete: a message about "bu sabah" deleting YESTERDAY\'s weigh-in is held with a question naming it (final2 collateral)', () => {
@@ -377,6 +378,32 @@ Deno.test('record_delete: the last turn\'s own write of today is the one-step un
   // A quote the user never wrote is not a deletion request: asked, never committed.
   const fake = one('record_ops', del('d9', 'dünkü kaydı da sil'), delCtx(msg, { d9: TODAY_W({ last_turn: true }) }));
   assertEquals([fake.verdict, fake.issues[0]?.code], ['ASK', 'silme_alintisi']);
+});
+
+Deno.test('pre-retrial #3: restore_replaced is the MODEL\'s reading ("geri al" vs "sil"); code keeps it only on a correction ref', () => {
+  const msg = 'aslında hiç yemedim, sil';
+  const corr = TODAY_W({ last_turn: true, correction: true });
+  // A correction undone ("düzeltmeyi geri al") → the writer brings the replaced record back.
+  const undo = one('record_ops', del('d9', null, true), delCtx('düzeltmeyi geri al', { d9: corr }));
+  assertEquals([undo.verdict, undo.derived.restores_replaced], ['COMMIT', true]);
+  assertEquals(undo.row?.restores_replaced, true, 'the derived flag rides on the row the writer gets');
+  // The same correction DELETED ("hiç olmadı, sil") → nothing comes back.
+  const gone = one('record_ops', del('d9', null, false), delCtx(msg, { d9: corr }));
+  assertEquals([gone.verdict, gone.derived.restores_replaced], ['COMMIT', false]);
+  // On a record that is not a correction the flag means nothing and is ignored.
+  const plain = one('record_ops', del('d9', null, true), delCtx('geri al', { d9: TODAY_W({ last_turn: true }) }));
+  assertEquals([plain.verdict, plain.derived.restores_replaced], ['COMMIT', false]);
+  // The strict shape requires it (no silent default from the model).
+  const missing = one('record_ops', { op: 'delete', ref: 'd9', reason: 'x', evidence_quote: null }, delCtx(msg, { d9: corr }));
+  assertEquals([missing.verdict, missing.issues[0]?.code, missing.issues[0]?.path], ['REJECT', 'alan_eksik', 'restore_replaced']);
+  // A held correction delete says which way it goes.
+  const heldUndo = one('record_ops', del('d9', null, true), delCtx('geri al', { d9: TODAY_W({ correction: true }) }));
+  assertEquals(heldUndo.question_tr, 'Bugünkü tartı düzeltmesini (88 kg) geri almamı istiyor musun? Düzeltmeden önceki kayıt geri gelir.');
+  const heldDel = one('record_ops', del('d9', null, false), delCtx(msg, { d9: TODAY_W({ correction: true }) }));
+  assertEquals(heldDel.question_tr, 'Bugünkü 88 kg tartını silmemi istiyor musun? Düzeltmeden önceki kayıt da geri gelmez.');
+  // "önceki değerine döndür" of a correction is the replaced value: restore_metric derives true there only.
+  assertEquals(one('record_ops', { op: 'restore_metric', ref: 'd9', reason: 'x' }, delCtx('geri al', { d9: corr })).derived.restores_replaced, true);
+  assertEquals(one('record_ops', { op: 'restore_metric', ref: 'd9', reason: 'x' }, delCtx('geri al', { d9: TODAY_W({ last_turn: true }) })).derived.restores_replaced, false);
 });
 
 Deno.test('record_restore_metric takes a write back through the same writer: the same remote-record bar', () => {

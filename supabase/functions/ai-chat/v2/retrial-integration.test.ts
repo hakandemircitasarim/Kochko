@@ -183,7 +183,7 @@ Deno.test('SEAM U × C: undoing a correction — SİLİNDİ + GERİ GETİRİLDİ
   const msg = 'son düzeltmeyi geri al';
   const decision = sampleDecision({
     intent: { primary: 'correction', is_hypothetical: false, about_other_person: false },
-    record_ops: [{ op: 'delete', ref: lastMeal, reason: 'düzeltmeyi geri al', evidence_quote: 'düzeltmeyi geri al' }],
+    record_ops: [{ op: 'delete', ref: lastMeal, reason: 'düzeltmeyi geri al', evidence_quote: 'düzeltmeyi geri al', restore_replaced: true }],
   });
   const reversed = [
     { write_id: 'r1', table: 'meal_logs', row_id: 'ml-3', ref: 'm40', field_set: ['is_deleted'], before: { is_deleted: false }, after: { is_deleted: true } },
@@ -233,7 +233,7 @@ Deno.test('SEAM U × S: "dünkü tartıyı sil" — a verbatim quote (v7) and ye
   const msg = 'dünkü tartıyı sil';
   const decision = sampleDecision({
     intent: { primary: 'correction', is_hypothetical: false, about_other_person: false },
-    record_ops: [{ op: 'delete', ref: yesterdayWeight, reason: 'dünkü tartı', evidence_quote: 'dünkü tartıyı sil' }],
+    record_ops: [{ op: 'delete', ref: yesterdayWeight, reason: 'dünkü tartı', evidence_quote: 'dünkü tartıyı sil', restore_replaced: false }],
   });
   const t = await turn({ message: msg }, { turnInput: ti, stageA: (req) => parsedOutcome(decision, req), coach: () => coachReply('Dünkü 70,4 kg tartını silmemi istiyor musun?') });
   assertEquals(t.commit.rpcCalls.map((c) => c.name), ['v2_hold_open'], 'no w_record_delete on the asking turn');

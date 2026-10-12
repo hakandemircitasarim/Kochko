@@ -98,7 +98,7 @@ Deno.test('trial: a meal record_update receipt renders the PATCH kcal, old → n
 });
 
 Deno.test('trial: undo / delete receipts quote the USER summary — no "[model]" tag', () => {
-  const del = validateChannelItems('record_ops', [{ op: 'delete', ref: 'm1', reason: 'geri al', evidence_quote: 'geri al' }], trialCtx('geri al'))[0];
+  const del = validateChannelItems('record_ops', [{ op: 'delete', ref: 'm1', reason: 'geri al', evidence_quote: 'geri al', restore_replaced: false }], trialCtx('geri al'))[0];
   const line = receiptLine(del, { today: SAMPLE_TODAY, refs: trialCtx('geri al').refs })!;
   assertEquals(line, 'Kayıt geri alındı: lahmacun (2 dilim ~200 g) 500 kcal; ayran (bir ayran ~250 g) 90 kcal · toplam 590 kcal');
 });
@@ -110,7 +110,7 @@ const dm = (field: string, before: unknown, after: unknown, row = 'dm-today') =>
 const prof = (before: number, after: number, derived = false) =>
   ({ table: 'profiles', row_id: 'u', ref: null, field_set: ['weight_kg'], before: { weight_kg: before }, after: { weight_kg: after }, ...(derived ? { derived: true } : {}) });
 const undoV = (ref: string, refs: Record<string, RenderedRef>) =>
-  validateChannelItems('record_ops', [{ op: 'delete', ref, reason: 'geri al', evidence_quote: null }], sampleContext({ user_message: 'geri al', refs: { ...SAMPLE_REFS, ...refs } }))[0];
+  validateChannelItems('record_ops', [{ op: 'delete', ref, reason: 'geri al', evidence_quote: null, restore_replaced: false }], sampleContext({ user_message: 'geri al', refs: { ...SAMPLE_REFS, ...refs } }))[0];
 const W88: RenderedRef = { kind: 'd', target: 'weight', op: 'body_weight', day: SAMPLE_TODAY, last_turn: true, summary_tr: 'tartı: 88 kg', snapshot: { value: 88 } };
 
 Deno.test('undo receipt: undoing a weight correction says 88 → 82 — the value LEFT, not the removed one (final2 turn 13)', () => {
@@ -136,7 +136,7 @@ Deno.test('undo receipt: nothing left that day is said plainly; a re-derived pro
   assertEquals(gone, 'Kayıt geri alındı — tartı 88 kg kaldırıldı; bugün için tartı kaydı kalmadı · profildeki kilo 81,6 kg');
   // Yesterday's weigh-in removed: restore_previous rewinds the profile to 78,2, the sync row to the latest weigh-in (80).
   const yRef: RenderedRef = { kind: 'd', target: 'weight', op: 'body_weight', day: '2026-10-05', summary_tr: 'tartı: 81,6 kg', snapshot: { value: 81.6 } };
-  const yv = validateConfirmedHold('record_delete', { op: 'delete', ref: 'd8', reason: 'x', evidence_quote: null }, sampleContext({ user_message: 'evet', refs: { ...SAMPLE_REFS, d8: yRef } }))!;
+  const yv = validateConfirmedHold('record_delete', { op: 'delete', ref: 'd8', reason: 'x', evidence_quote: null, restore_replaced: false }, sampleContext({ user_message: 'evet', refs: { ...SAMPLE_REFS, d8: yRef } }))!;
   const y = receiptLine(yv, { today: SAMPLE_TODAY, refs: { ...SAMPLE_REFS, d8: yRef }, reversed: [prof(81.6, 78.2), dm('weight_kg', 81.6, null, 'dm-y'), prof(78.2, 80, true)] });
   assertEquals(y, 'Kayıt geri alındı — tartı 81,6 kg kaldırıldı; dün için tartı kaydı kalmadı · profildeki kilo 80 kg');
 });

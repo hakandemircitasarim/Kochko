@@ -1,0 +1,180 @@
+{
+  "key": "df0ac765abdcf12828fff4a7b0149710bc7040b213592ba975acdcec511f2d72",
+  "recorded_at": "2026-10-12T14:16:21.490Z",
+  "fixture_ids": [
+    "pre3-tarti-duzeltmesini-geri-al"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"d12\",\"reason\":\"Kullanıcı son tartı düzeltmesini geri almak istiyor.\",\"evidence_quote\":\"yok yok, o düzeltmeyi geri al\",\"restore_replaced\":true}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "d12",
+            "reason": "Kullanıcı son tartı düzeltmesini geri almak istiyor.",
+            "evidence_quote": "yok yok, o düzeltmeyi geri al",
+            "restore_replaced": true
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12850,
+        "output_tokens": 226,
+        "cached_tokens": 12847,
+        "reasoning_tokens": 36
+      },
+      "latency_ms": 4813,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"d12\",\"reason\":\"kullanıcı son tartı düzeltmesini geri almak istiyor\",\"evidence_quote\":\"yok yok, o düzeltmeyi geri al\",\"restore_replaced\":true}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "d12",
+            "reason": "kullanıcı son tartı düzeltmesini geri almak istiyor",
+            "evidence_quote": "yok yok, o düzeltmeyi geri al",
+            "restore_replaced": true
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12850,
+        "output_tokens": 216,
+        "cached_tokens": 12447,
+        "reasoning_tokens": 26
+      },
+      "latency_ms": 2908,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"delete\",\"ref\":\"d12\",\"reason\":\"kullanıcı son tartı düzeltmesini geri almak istiyor\",\"evidence_quote\":\"yok yok, o düzeltmeyi geri al\",\"restore_replaced\":true}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":false,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "delete",
+            "ref": "d12",
+            "reason": "kullanıcı son tartı düzeltmesini geri almak istiyor",
+            "evidence_quote": "yok yok, o düzeltmeyi geri al",
+            "restore_replaced": true
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": false,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12850,
+        "output_tokens": 188,
+        "cached_tokens": 12847,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3108,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

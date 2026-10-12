@@ -141,7 +141,14 @@ interface StepBase {
 
 export type CommitStep =
   | (StepBase & { kind: 'rpc'; rpc: WriterRpc; payload: Record<string, unknown>; replaces: TargetSpec | null; pendingId: string | null })
-  | (StepBase & { kind: 'record_delete'; target: TargetSpec; reason: string; pendingId?: string | null })
+  | (StepBase & {
+    kind: 'record_delete'; target: TargetSpec; reason: string; pendingId?: string | null;
+    /**
+     * The writer brings a correction's replaced record back (115 p_opts.restore_replaced). The op's
+     * derived restores_replaced: the model's restore_replaced, kept only on a correction ref (records.ts).
+     */
+    restoreReplaced: boolean;
+  })
   | (StepBase & { kind: 'adapter'; op: string; row: Record<string, unknown>; replaces: TargetSpec | null; pendingId: string | null; refRow: RefMapTarget | null })
   | (StepBase & { kind: 'hold_open'; holdOp: string; payload: HoldPayloadV2; opts: HoldOpenOptions })
   | (StepBase & { kind: 'erase_hold'; scope: 'memory' | 'account' })
@@ -439,7 +446,10 @@ function writeStep(v: WriteVerdict, refs: TurnRefs, today: string, pendingId: st
     return { kind: 'adapter', op: patchOp, row: patch, replaces: target, pendingId, refRow: null, verdict: v };
   }
   if (v.op === 'record_delete' || v.op === 'record_restore_metric') {
-    return { kind: 'record_delete', target: targetOf(v.args.ref, refs), reason: str(v.args.reason) ?? '', pendingId, verdict: v };
+    return {
+      kind: 'record_delete', target: targetOf(v.args.ref, refs), reason: str(v.args.reason) ?? '', pendingId, verdict: v,
+      restoreReplaced: v.derived?.restores_replaced === true,
+    };
   }
   const replaces = typeof v.args.replaces === 'string' ? targetOf(v.args.replaces, refs) : null;
   if (RPC_OPS[v.op]) return { kind: 'rpc', rpc: RPC_OPS[v.op], payload: rpcPayloadFor(v.op, row, today), replaces, pendingId, verdict: v };
@@ -795,7 +805,7 @@ async function runStep(step: CommitStep, plan: CommitPlan, ports: CommitPorts, m
       markWrite();
       const r = await callRpc<RecordOpOk>(ports, V2_RPC.recordDelete, {
         p_user: plan.userId, p_turn_id: plan.turnId, p_target: target,
-        p_opts: { max_age_days: 7, pipeline: 'v2', reason: undoReason(step.reason) },
+        p_opts: { max_age_days: 7, pipeline: 'v2', reason: undoReason(step.reason), restore_replaced: step.restoreReplaced },
       }, ['record_delete']);
       // The delete is its own transaction, so a confirmed hold is closed right after it (like a held correction).
       if (pendingId) await closeHold(ports, plan, pendingId, r.ok, r.ok ? res.ref : null, r.ok ? null : r.failure_class);

@@ -106,7 +106,7 @@ export interface StageBScript {
   /** Coach replies in call order (the last one repeats). A Response is sent as is (errors, refusals). */
   coach: Array<CoachReply | Response>;
   /** Judge answers in call order (the last one repeats). */
-  judge?: Array<{ violation: boolean; items: unknown[] } | Response>;
+  judge?: Array<{ violation: boolean; items: unknown[]; name_only?: Array<{ id: string; verdict: string }> } | Response>;
 }
 
 /** One transport for both models, routed by the strict schema name in the request body. */
@@ -116,9 +116,10 @@ export function stageBTransport(script: StageBScript) {
   const pick = <T>(list: T[], i: number): T => list[Math.min(i, list.length - 1)];
   const fake = fakeResponses((call) => {
     const name = ((call.body.text as Record<string, unknown> | undefined)?.format as Record<string, unknown> | undefined)?.name;
-    if (name === 'kochko_judge_v1') {
+    if (name === 'kochko_judge_v2') {
       const a = pick(script.judge ?? [{ violation: false, items: [] }], j++);
-      return a instanceof Response ? a : responsesBody(a);
+      // The strict judge schema (v2) requires name_only[]: a scripted answer without it has no per-item verdicts.
+      return a instanceof Response ? a : responsesBody({ name_only: [], ...a });
     }
     const a = pick(script.coach, c++);
     return a instanceof Response ? a : responsesBody(a);
@@ -126,7 +127,7 @@ export function stageBTransport(script: StageBScript) {
   return {
     transport: fake.transport,
     calls: fake.calls,
-    coachCalls: () => fake.calls.filter((x) => ((x.body.text as Record<string, unknown>)?.format as Record<string, unknown>)?.name !== 'kochko_judge_v1'),
-    judgeCalls: () => fake.calls.filter((x) => ((x.body.text as Record<string, unknown>)?.format as Record<string, unknown>)?.name === 'kochko_judge_v1'),
+    coachCalls: () => fake.calls.filter((x) => ((x.body.text as Record<string, unknown>)?.format as Record<string, unknown>)?.name !== 'kochko_judge_v2'),
+    judgeCalls: () => fake.calls.filter((x) => ((x.body.text as Record<string, unknown>)?.format as Record<string, unknown>)?.name === 'kochko_judge_v2'),
   };
 }

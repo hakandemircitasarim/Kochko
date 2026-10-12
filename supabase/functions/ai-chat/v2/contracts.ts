@@ -222,6 +222,12 @@ export interface PostcheckLog {
    * judge, not blocked outright (invariant_hits then lists the tag hits only). Absent = none.
    */
   name_only_hits?: string[][];
+  /**
+   * Per attempt (aligned with `judge`): the name-only hits the judge EXPLICITLY cleared by its per-item
+   * verdict (excluded_mention) — the only way one goes out. Logged on its own so the shadow can review
+   * every clear before any widening. Absent = none.
+   */
+  name_only_cleared?: string[][];
   /** What the judge flagged on a 'violation' verdict, per attempt (clipped) — why a draft was regenerated. */
   judge_items?: { attempt: number; name: string; kind: string; constraint: string; reason: string }[];
 }

@@ -11,8 +11,9 @@
  *      (on the protective path: today's ready-made safety reply), naming only the constraints of
  *      what was withheld (food → allergens, exercise → injuries). A hit only the NAME dictionary
  *      makes while the item's tags are clean passes only when the port's prose judge called this
- *      exact reply clean (judgeClearedFinal); a tag hit never does. The default port (postcheck.ts)
- *      already enforces this with its ONE regen; this re-check only fires when a port did not.
+ *      exact reply clean AND cleared that very item with its per-item exclusion verdict
+ *      (nameOnlyClearedFinal; logged as 'name_only_cleared'); a tag hit never does. The default port
+ *      (postcheck.ts) already enforces this with its ONE regen; this re-check only fires when a port did not.
  *   2. The code-owned lines, appended LAST and only when missing, never removing a character:
  *        112 / specialist referral when the tripwire resolution demands it (safetyLines: judged by the
  *        TEXT — the code-owned 112 line itself, never a mere "112" — and never by the model's
@@ -104,15 +105,17 @@ export type SuggestionCheck =
  * the spine is unreadable are unverifiable (no list goes out — fail-closed). No suggestions: nothing
  * to check here (the prose is the judge's, postcheck.ts).
  *
- * `nameOnlyCleared`: the independent prose judge read THIS reply and called it clean, so a hit only
- * the name dictionary made (the item's own tags clean — isNameOnlyViolation, e.g. "ızgara tavuk,
- * deniz ürünü olmadan") is not a violation. A tag hit always is, whatever the judge said.
+ * `nameOnlyCleared`: the suggestion NAMES the independent prose judge explicitly cleared on THIS reply
+ * with its per-item verdict (excluded_mention — e.g. "ızgara tavuk, deniz ürünü olmadan"). Only a hit
+ * the name dictionary alone made (the item's own tags clean — isNameOnlyViolation) on such a name is
+ * dropped; every other name-only hit and every tag hit stays a violation, whatever the judge said overall.
  */
-export function suggestionCheck(reply: CoachReply, profile: SafetyProfile, opts: { nameOnlyCleared?: boolean } = {}): SuggestionCheck {
+export function suggestionCheck(reply: CoachReply, profile: SafetyProfile, opts: { nameOnlyCleared?: ReadonlySet<string> } = {}): SuggestionCheck {
   if (!hasSuggestions(reply)) return { ok: true };
   if (profile.unknown) return { ok: false, reason: 'unverified' };
   const all = suggestionViolations(reply, profile);
-  const violations = opts.nameOnlyCleared ? all.filter((v) => !isNameOnlyViolation(v)) : all;
+  const cleared = opts.nameOnlyCleared;
+  const violations = cleared?.size ? all.filter((v) => !(isNameOnlyViolation(v) && cleared.has(v.name))) : all;
   return violations.length > 0 ? { ok: false, reason: 'violation', violations } : { ok: true };
 }
 
@@ -427,16 +430,31 @@ function usableReply(v: unknown): CoachReply | null {
 }
 
 /**
- * Did the port's prose judge read the reply it returned and call it clean? Only then may a
- * name-dictionary-only hit go out (suggestionCheck nameOnlyCleared). Read off the port's own log: the
- * last judge verdict belongs to the returned reply exactly when the outcome is 'first' or 'regen'
- * (postcheck.ts pushes one verdict per check, in order). No log, a code-authored reply or any other
- * verdict → not cleared (fail-closed). A TAG hit never depends on this.
+ * Did the port's prose judge read the reply it returned and call it clean overall? Read off the port's
+ * own log: the last judge verdict belongs to the returned reply exactly when the outcome is 'first' or
+ * 'regen' (postcheck.ts pushes one verdict per check, in order). No log, a code-authored reply or any
+ * other verdict → false (fail-closed). On its own it clears NOTHING (nameOnlyClearedFinal).
  */
 export function judgeClearedFinal(out: unknown): boolean {
   if (!isRec(out) || out.codeAuthored === true || !isRec(out.log)) return false;
   const judge = Array.isArray(out.log.judge) ? out.log.judge : [];
   return (out.log.outcome === 'first' || out.log.outcome === 'regen') && judge.length > 0 && judge[judge.length - 1] === 'clean';
+}
+
+/**
+ * The suggestion names the port's judge EXPLICITLY cleared on the reply it returned (its per-item
+ * excluded_mention verdict, log.name_only_cleared — one entry per check, aligned with log.judge), and
+ * only when that same check was clean overall (judgeClearedFinal). A misaligned or missing log, a
+ * code-authored reply or any other verdict → nothing cleared (fail-closed). A TAG hit never depends on this.
+ */
+export function nameOnlyClearedFinal(out: unknown): Set<string> {
+  if (!judgeClearedFinal(out)) return new Set();
+  const log = (out as { log: Record<string, unknown> }).log;
+  const judge = log.judge as unknown[];
+  const per = Array.isArray(log.name_only_cleared) ? log.name_only_cleared : [];
+  if (per.length !== judge.length) return new Set();
+  const last = per[per.length - 1];
+  return new Set(Array.isArray(last) ? last.filter((s): s is string => typeof s === 'string') : []);
 }
 
 /**
@@ -458,7 +476,14 @@ export function applyGuarantees(
     issues.push('guarantee_unusable_reply');
   }
   const profile = safetyProfileOf(input.turnInput, input.decision);
-  const check = suggestionCheck(reply, profile, { nameOnlyCleared: judgeClearedFinal(out) });
+  const cleared = codeAuthored ? new Set<string>() : nameOnlyClearedFinal(out);
+  const check = suggestionCheck(reply, profile, { nameOnlyCleared: cleared });
+  // A name-only hit that goes out ONLY because the judge cleared it item by item: its own issue code, so
+  // the shadow reviews every such clear (pre-retrial #3) — never folded into "no issue".
+  if (check.ok && cleared.size > 0 && !profile.unknown
+    && suggestionViolations(reply, profile).some((v) => isNameOnlyViolation(v) && cleared.has(v.name))) {
+    issues.push('name_only_cleared');
+  }
   if (!check.ok) {
     issues.push(`guarantee_suggestion_${check.reason}`);
     reply = input.tripwire.kind === 'protective'

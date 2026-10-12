@@ -1,4 +1,4 @@
-YAZILABİLİR KAYITLAR (şema kochko_understand_v7)
+YAZILABİLİR KAYITLAR (şema kochko_understand_v8)
 Sayıları sen verirsin; kod yalnız "Kod:" aritmetiğini yapar ve fiziksel aralığı denetler, hiçbir sayını sessizce değiştirmez. Her yazma ayrı denetlenir.
 day: today | yesterday | YYYY-MM-DD; en fazla 7 gün geri, gelecek yok.
 Ortak alanlar: diğer tarihler YYYY-MM-DD, saatler HH:MM. as_stated ve raw kullanıcının sözleri, aynen ("2 çimdik"). evidence_quote kullanıcının mesajından AYNEN alıntı. Kayıt düzeltmenin tek yolu record_ops update; yazmalardaki replaces hep null.
@@ -95,10 +95,11 @@ AÇIKÇA hesabın ve tüm verilerin ya da yalnız koç hafızasının silinmesi 
 ## record_ops[] — kayıtları ref ile geri al / düzelt
 
 ### delete
-KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i). Değil: eski kısıt (constraint_retract; son turda eklenen kısıt burada), bekleyen (pending_ops), plan taslağı (plan_action).
+KAYITLAR’daki bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i). Değil: eski kısıt (constraint_retract; son turda eklenen kısıt burada), bekleyen (pending_ops), plan taslağı (plan_action).
+- restore_replaced: "geri al / düzeltmeyi geri al" true; "sil / hiç olmadı / yanlış kayıt" false
 
 ### update
-KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir öğüne binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur. Değil: aynı kaydı yeni yazma olarak eklemek (çift sayım).
+KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir öğüne binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur.
 - evidence_quote: suspicious ise null
 - patch: kaydın düzeltilmiş TAM hâli, ref’in kayıt türündeki op ile
 İki adım: suspicious bekletilir, koç bir kez sorar; reddedilen şüphe yeniden önerilmez.
@@ -126,7 +127,7 @@ AÇIK SÖZLER’deki bir sözün sonucu ("dün akşam 8’den sonra yemedim"). D
 - recipe_save: Bir tarifi kaydetme isteği. Alanlar: kcal: porsiyon başına.
 - periodic_state: Geçici bir dönemin (ramazan, hastalık, sınav, seyahat, hamilelik…) bugün başlaması ya da bitmesi; yarın başlayacak dönem henüz yazılmaz. Alanlar: state: none = dönem bitti.
 - target_change: Açıkça istenen ya da kabul edilen kalori programı (bakım, mini cut, plato stratejisi, telafi, MVD günü); "bakıma geçmem gerekir mi?" sorusu değil. Alanlar: program: maintenance_start=bakım kalorisine geçiş · mini_cut=2–4 hafta kısa açık · plateau_strategy=plato stratejisi · recovery=fazla yeme sonrası 2 gün hafif açık · mvd=bugün yalnız temel hedefler; strategy_id: yalnız plateau_strategy’de; weeks: yalnız mini_cut’ta (2–4); excess_kcal: telafide fazlalık tahminin.
-- restore_metric (record_ops): Bir günlük metriği belirli bir yazmadan önceki değerine döndürme isteği.
+- restore_metric (record_ops): Bir günlük metriği bir yazmadan önceki değerine döndürme isteği.
 
 ## Diğer alanlar
 - safety.ed_signal.category: illness_vomiting = hastalık/zehirlenme kusması, YB sinyali değil

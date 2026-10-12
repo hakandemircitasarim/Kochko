@@ -1,0 +1,320 @@
+{
+  "key": "dd2f19fd3ee39ab6a55eeefb00603ab5a1b9d574a8fcded2024fd55f5bf34cb4",
+  "recorded_at": "2026-10-12T14:16:35.423Z",
+  "fixture_ids": [
+    "r3-final2-6-nugget-kaydini-ref-ile-duzelt"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"user_correction\",\"reason\":\"6 küçük nuggetın toplamı yaklaşık 100 grammış; 1700 kcal olamaz\",\"evidence_quote\":\"persembe aksamki nugget kaydi 1700 kalori olmus, olamaz. 6 tane kucuk nuggetti, toplam 100 gram falan\",\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane küçük nugget, toplam 100 gram falan\",\"grams\":100,\"kcal\":250,\"protein_g\":15,\"carbs_g\":18,\"fat_g\":13,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.75},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":15,\"kcal\":17,\"protein_g\":0.2,\"carbs_g\":4,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "user_correction",
+            "reason": "6 küçük nuggetın toplamı yaklaşık 100 grammış; 1700 kcal olamaz",
+            "evidence_quote": "persembe aksamki nugget kaydi 1700 kalori olmus, olamaz. 6 tane kucuk nuggetti, toplam 100 gram falan",
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "6 tane küçük nugget, toplam 100 gram falan",
+                  "grams": 100,
+                  "kcal": 250,
+                  "protein_g": 15,
+                  "carbs_g": 18,
+                  "fat_g": 13,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [
+                    "gluten",
+                    "egg"
+                  ],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.75
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 15,
+                  "kcal": 17,
+                  "protein_g": 0.2,
+                  "carbs_g": 4,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.45
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12877,
+        "output_tokens": 552,
+        "cached_tokens": 12447,
+        "reasoning_tokens": 92
+      },
+      "latency_ms": 6490,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"user_correction\",\"reason\":\"6 küçük nuggetın toplamı yaklaşık 100 grammış; 1708 kcal olamaz.\",\"evidence_quote\":\"persembe aksamki nugget kaydi 1700 kalori olmus, olamaz. 6 tane kucuk nuggetti, toplam 100 gram falan\",\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane küçük tavuk nugget yedim ketçapla, toplam 100 gram falan\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane küçük, toplam 100 gram falan\",\"grams\":100,\"kcal\":260,\"protein_g\":15,\"carbs_g\":18,\"fat_g\":14,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":15,\"kcal\":15,\"protein_g\":0.2,\"carbs_g\":3.5,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "user_correction",
+            "reason": "6 küçük nuggetın toplamı yaklaşık 100 grammış; 1708 kcal olamaz.",
+            "evidence_quote": "persembe aksamki nugget kaydi 1700 kalori olmus, olamaz. 6 tane kucuk nuggetti, toplam 100 gram falan",
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "perşembe akşam 6 tane küçük tavuk nugget yedim ketçapla, toplam 100 gram falan",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "6 tane küçük, toplam 100 gram falan",
+                  "grams": 100,
+                  "kcal": 260,
+                  "protein_g": 15,
+                  "carbs_g": 18,
+                  "fat_g": 14,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [
+                    "gluten",
+                    "egg"
+                  ],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.7
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 15,
+                  "kcal": 15,
+                  "protein_g": 0.2,
+                  "carbs_g": 3.5,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.45
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12877,
+        "output_tokens": 533,
+        "cached_tokens": 12874,
+        "reasoning_tokens": 65
+      },
+      "latency_ms": 5946,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"user_correction\",\"reason\":\"6 küçük nuggetın toplamı yaklaşık 100 grammış; 1708 kcal olamaz\",\"evidence_quote\":\"persembe aksamki nugget kaydi 1700 kalori olmus, olamaz. 6 tane kucuk nuggetti, toplam 100 gram falan\",\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"6 tane küçük nugget, toplam 100 gram falan, ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"6 tane küçük nugget, toplam 100 gram falan\",\"grams\":100,\"kcal\":240,\"protein_g\":14,\"carbs_g\":16,\"fat_g\":13,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.75},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":15,\"kcal\":17,\"protein_g\":0.2,\"carbs_g\":4,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.5}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "user_correction",
+            "reason": "6 küçük nuggetın toplamı yaklaşık 100 grammış; 1708 kcal olamaz",
+            "evidence_quote": "persembe aksamki nugget kaydi 1700 kalori olmus, olamaz. 6 tane kucuk nuggetti, toplam 100 gram falan",
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "6 tane küçük nugget, toplam 100 gram falan, ketçapla",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "6 tane küçük nugget, toplam 100 gram falan",
+                  "grams": 100,
+                  "kcal": 240,
+                  "protein_g": 14,
+                  "carbs_g": 16,
+                  "fat_g": 13,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [
+                    "gluten"
+                  ],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.75
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 15,
+                  "kcal": 17,
+                  "protein_g": 0.2,
+                  "carbs_g": 4,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.5
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12877,
+        "output_tokens": 454,
+        "cached_tokens": 12874,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 5098,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

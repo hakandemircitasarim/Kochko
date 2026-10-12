@@ -11,12 +11,22 @@
 --     o yazmadan ÖNCEKİ (bayat) değere sarıyordu — kalan en son tartıya değil.
 --
 -- BU MİGRASYON (eklemeli; motor _v2_reverse_rows ve yazıcı RPC'ler DEĞİŞMEZ):
---   1. _v2_record_op — ref ile silmede (metrik yazması d#/w# ya da kayıt m#…) çapanın grubundaki CANLI
---      record_delete satırları meta.reason='replaced' ise onlar da geri alınır: düzeltmeyi geri almak = yeni
---      kaydı kaldırmak + yerine geçtiği kaydı geri getirmek. Bu, istemci undo düğmesinin {write_id} grup
---      kapsamıyla aynı sonuçtur. İSTİSNA: çağrının kendisi bir düzeltmeyse (p_opts.reason='replaced', yazıcı
---      RPC'lerin replaces yolu) eski davranış sürer — düzeltmenin düzeltmesi yalnız son kaydı değiştirir;
---      öğünde eski kaydı da canlandırmak çift sayım olurdu.
+--   1. _v2_record_op — ref ile silmede (metrik yazması d#/w# ya da kayıt m#…) çağıran AÇIKÇA isterse
+--      (p_opts.restore_replaced = true) çapanın grubundaki CANLI record_delete satırları meta.reason='replaced'
+--      ise onlar da geri alınır: düzeltmeyi geri almak = yeni kaydı kaldırmak + yerine geçtiği kaydı geri
+--      getirmek ("geri al / düzeltmeyi geri al"). Bu, istemci undo düğmesinin {write_id} grup kapsamıyla aynı
+--      sonuçtur. İstenmezse (varsayılan) yalnız kayıt gider, yerine geçtiği kayıt silinmiş kalır ("aslında hiç
+--      yemedim, sil" — 2 dilim pide geri GELMEMELİ; ön-yeniden-deneme-3 incelemesi). Kararı model verir
+--      (record_delete.restore_replaced), kod yalnız bir düzeltme ref'inde geçirir (records.ts derive).
+--      İSTİSNA: çağrının kendisi bir düzeltmeyse (p_opts.reason='replaced', yazıcı RPC'lerin replaces yolu)
+--      eski davranış sürer — düzeltmenin düzeltmesi yalnız son kaydı değiştirir; öğünde eski kaydı da
+--      canlandırmak çift sayım olurdu.
+--   1b. Tartının profil satırı türetilmiştir (2. madde onu kalan en son tartıya eşitler): daha yeni bir
+--      TARTININ profil satırı canlıyken daha eski bir tartıyı geri almak/geri getirmek motorun later_write
+--      kuralına takılıyordu (bugünkü 82 canlıyken dünkü 81,6 onaylandıktan sonra bile silinemiyordu). Yalnız
+--      engelleyen sonraki yazmaların HEPSİ bir tartı grubunun profil satırı ya da bir eşitleme satırıysa, o
+--      profil satırı denetimsiz (force) geri alınır; ardından eşitleme profili yine en son tartıya getirir.
+--      Sonraki yazma tartı DEĞİLSE (ör. elle yazılmış profil kilosu) later_write aynen işler.
 --   2. _v2_latest_weight + _v2_profile_weight_sync — bir geri alma/geri getirme tartıya dokunduysa
 --      (weight_history ya da weight_kg alanı) profiles.weight_kg kalan EN SON tartıya eşitlenir; değer
 --      değişirse bu da aynı grupta bir defter satırıdır (meta.derived='profile_weight_latest'), yani o
@@ -26,10 +36,9 @@
 --      kalmadıysa profil geri almanın bıraktığı değerde kalır. Düzeltme yolunda (reason='replaced')
 --      eşitleme yapılmaz: aynı işlemdeki yeni yazma profili kendisi yazar.
 --
--- BİLİNEN SINIRLAR (değişmedi, güvenli tarafta): daha yeni bir tartının profil satırı canlıyken daha
--- eski bir tartıyı geri almak motorun 'later_write' kuralına takılır (hiçbir şey değişmez, koç söyler).
--- Adaptör op'larının (antrenman, takviye…) düzeltmesi iki ayrı grupta yazılır (adapter.ts withReplacement);
--- onların "düzeltmeyi geri al"ı eski kaydı geri getirmez — kayıt geri getirme yine w_record_restore'dur.
+-- BİLİNEN SINIRLAR (değişmedi, güvenli tarafta): adaptör op'larının (antrenman, takviye…) düzeltmesi iki
+-- ayrı grupta yazılır (adapter.ts withReplacement); onların "düzeltmeyi geri al"ı eski kaydı geri getirmez —
+-- kayıt geri getirme yine w_record_restore'dur.
 --
 -- Yalnız service_role (fonksiyonlar 108'deki SECURITY DEFINER RPC'lerin içinde çalışır). DOWN:
 --   DROP FUNCTION IF EXISTS public._v2_profile_weight_sync(uuid, uuid, text, uuid, text, text), public._v2_latest_weight(uuid);
@@ -73,12 +82,13 @@ BEGIN
                             'needs_review', false, 'derived', true);
 END $$;
 
--- ─── 3. Kimlikle silme / geri getirme çekirdeği (108'in gövdesi + iki ek, "115:" yorumlu) ─────────
--- p_target: {"ref":"m12"} (kayıt ya da metrik yazması — kendisi + yan etkileri; çapanın grubu bir
---           düzeltmeyse yerine geçtiği kaydın 'replaced' silmeleri de) veya
+-- ─── 3. Kimlikle silme / geri getirme çekirdeği (108'in gövdesi + ekler, "115:" yorumlu) ──────────
+-- p_target: {"ref":"m12"} (kayıt ya da metrik yazması — kendisi + yan etkileri; restore_replaced ise ve
+--           çapanın grubu bir düzeltmeyse yerine geçtiği kaydın 'replaced' silmeleri de) veya
 --           {"write_id":"<uuid>"} (o mantıksal yazmanın TÜM grubu — istemci undo düğmesi, "geri al").
 -- p_action: 'delete' | 'restore'. p_opts: force, max_age_days (7), expect_kind ('m' / 'd,w'),
---           expect_op ('water_log'), pipeline, reason ('replaced' = çağıran bir düzeltme yazıyor).
+--           expect_op ('water_log'), pipeline, reason ('replaced' = çağıran bir düzeltme yazıyor),
+--           restore_replaced (boolean, varsayılan false: düzeltmenin yerine geçtiği kaydı geri getir).
 CREATE OR REPLACE FUNCTION public._v2_record_op(
   p_user uuid, p_turn_id uuid, p_target jsonb, p_action text, p_group uuid, p_opts jsonb
 ) RETURNS jsonb LANGUAGE plpgsql SET search_path = public AS $$
@@ -105,8 +115,13 @@ DECLARE
   v_op       text := CASE p_action WHEN 'delete' THEN 'record_delete' WHEN 'restore' THEN 'record_restore' END;
   -- 115: bu çağrı bir yazıcının replaces yolu mu (düzeltme yazılıyor) yoksa kullanıcının geri alması mı.
   v_supersede boolean := coalesce(v_opts ->> 'reason', '') = 'replaced';
+  -- 115: düzeltmenin yerine geçtiği kayıt geri gelsin mi ("geri al" evet, "sil / hiç olmadı" hayır).
+  v_restore_replaced boolean := coalesce((v_opts ->> 'restore_replaced')::boolean, false);
   v_rows     jsonb;
   v_sync     jsonb;
+  v_all_ids  uuid[];
+  v_prof_ids uuid[];
+  v_forced   jsonb;
 BEGIN
   IF v_op IS NULL THEN PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'action', 'value', p_action)); END IF;
   IF p_user IS NULL OR p_turn_id IS NULL THEN PERFORM _v2_fail('invalid_value', jsonb_build_object('path', 'identity')); END IF;
@@ -165,12 +180,13 @@ BEGIN
       IF v_anchor.created_at < now() - make_interval(days => v_max_age + 1) THEN
         PERFORM _v2_fail('too_old', jsonb_build_object('ref', v_ref, 'max_age_days', v_max_age));
       END IF;
-      -- 115: grup bir düzeltmeyse (aynı grupta canlı 'replaced' silmeleri) onlar da geri alınır: yerine
-      -- geçilen kayıt geri gelir. Çağrı kendisi bir düzeltmeyse (v_supersede) yalnız bu yazma gider.
+      -- 115: grup bir düzeltmeyse (aynı grupta canlı 'replaced' silmeleri) ve çağıran istediyse
+      -- (restore_replaced) onlar da geri alınır: yerine geçilen kayıt geri gelir. İstenmediyse ya da çağrı
+      -- kendisi bir düzeltmeyse (v_supersede) yalnız bu yazma gider.
       SELECT array_agg(id) INTO v_ids FROM turn_writes
       WHERE user_id = p_user AND group_id = v_anchor.group_id AND undone_at IS NULL
         AND ((op NOT IN ('record_delete', 'record_restore') AND (id = v_anchor.id OR NOT is_primary))
-             OR (NOT v_supersede AND op = 'record_delete' AND meta ->> 'reason' = 'replaced'));
+             OR (NOT v_supersede AND v_restore_replaced AND op = 'record_delete' AND meta ->> 'reason' = 'replaced'));
     ELSE
       v_cur := _v2_row_state(v_table, v_row);
       IF v_cur IS NULL THEN PERFORM _v2_fail('row_missing', jsonb_build_object('ref', v_ref)); END IF;
@@ -186,11 +202,11 @@ BEGIN
         AND before IS NULL AND undo_mode = 'soft_delete' AND undone_at IS NULL
       ORDER BY seq DESC LIMIT 1;
       IF FOUND THEN
-        -- 115: öğün düzeltmesinin geri alınması eski öğünü de geri getirir (yukarıdaki kuralın aynısı).
+        -- 115: öğün düzeltmesinin geri alınması istendiyse eski öğün de geri gelir (yukarıdaki kuralın aynısı).
         SELECT array_agg(id) INTO v_ids FROM turn_writes
         WHERE user_id = p_user AND group_id = v_anchor.group_id AND undone_at IS NULL
           AND ((op NOT IN ('record_delete', 'record_restore') AND (id = v_anchor.id OR NOT is_primary))
-               OR (NOT v_supersede AND op = 'record_delete' AND meta ->> 'reason' = 'replaced'));
+               OR (NOT v_supersede AND v_restore_replaced AND op = 'record_delete' AND meta ->> 'reason' = 'replaced'));
       ELSE
         -- Defterin hiç görmediği satır (uygulama ekranı, v2 öncesi geçmiş — ör. 1708 kcal nugget):
         -- doğrudan soft-delete; silmenin kendisi defterde, geri getirilebilir.
@@ -250,7 +266,48 @@ BEGIN
     PERFORM _v2_fail('already_undone', jsonb_build_object('ref', v_ref));
   END IF;
 
+  -- 115: tartının profil satırı türetilmiştir (aşağıdaki eşitleme). Seçilen bir profiles.weight_kg satırını
+  -- engelleyen (motorun later_write denetimiyle aynı tanım: aynı satır/alan, daha sonra, canlı, geri alma
+  -- değil, bu çağrının kendi satırlarından değil) yazmaların HEPSİ bir tartı grubunun profil satırı ya da bir
+  -- eşitleme satırıysa o profil satırı ayrıca, denetimsiz geri alınır; eşitleme profili en son tartıya getirir.
+  -- Tartı olmayan tek bir sonraki yazma bile varsa ya da profil kilosu defter dışında değiştiyse (şu anki
+  -- değer en son canlı defter satırının bıraktığı değer değil) satır normal yoldan gider, later_write işler.
+  v_all_ids := v_ids;
+  IF NOT v_supersede AND NOT v_force THEN
+    SELECT array_agg(l.id) INTO v_prof_ids FROM turn_writes l
+    WHERE l.id = ANY(v_ids) AND l.user_id = p_user AND l.table_name = 'profiles' AND l.field_set = ARRAY['weight_kg']
+      AND l.undo_mode = 'restore_previous'
+      AND (SELECT p.weight_kg::numeric FROM profiles p WHERE p.id = l.row_id) IS NOT DISTINCT FROM (
+        SELECT (z.after ->> 'weight_kg')::numeric FROM turn_writes z
+        WHERE z.user_id = p_user AND z.table_name = 'profiles' AND z.row_id = l.row_id AND z.undone_at IS NULL
+          AND 'weight_kg' = ANY(z.field_set)
+        ORDER BY z.seq DESC LIMIT 1)
+      AND EXISTS (
+        SELECT 1 FROM turn_writes x
+        WHERE x.user_id = p_user AND x.table_name = 'profiles' AND x.row_id = l.row_id AND x.seq > l.seq
+          AND x.undone_at IS NULL AND x.reverses IS NULL AND x.field_set && l.field_set AND NOT (x.id = ANY(v_ids)))
+      AND NOT EXISTS (
+        SELECT 1 FROM turn_writes x
+        WHERE x.user_id = p_user AND x.table_name = 'profiles' AND x.row_id = l.row_id AND x.seq > l.seq
+          AND x.undone_at IS NULL AND x.reverses IS NULL AND x.field_set && l.field_set AND NOT (x.id = ANY(v_ids))
+          AND coalesce(x.meta ->> 'derived', '') <> 'profile_weight_latest'
+          AND NOT EXISTS (
+            SELECT 1 FROM turn_writes y
+            WHERE y.user_id = p_user AND y.group_id = x.group_id AND y.undone_at IS NULL AND y.reverses IS NULL
+              AND (y.table_name = 'weight_history' OR (y.table_name = 'daily_metrics' AND 'weight_kg' = ANY(y.field_set)))));
+    IF v_prof_ids IS NOT NULL THEN
+      v_ids := ARRAY(SELECT unnest(v_ids) EXCEPT SELECT unnest(v_prof_ids));
+    END IF;
+  END IF;
+
   v_result := _v2_reverse_rows(p_user, p_turn_id, v_ids, v_op, p_group, v_force, v_meta);
+  IF v_prof_ids IS NOT NULL THEN
+    v_forced := _v2_reverse_rows(p_user, p_turn_id, v_prof_ids, v_op, p_group, true, v_meta || jsonb_build_object('derived_profile', true));
+    v_result := jsonb_build_object(
+      'rows', coalesce(v_result -> 'rows', '[]'::jsonb) || coalesce(v_forced -> 'rows', '[]'::jsonb),
+      'changed', coalesce((v_result ->> 'changed')::integer, 0) + coalesce((v_forced ->> 'changed')::integer, 0));
+  END IF;
+  v_ids := v_all_ids;
   IF coalesce((v_result ->> 'changed')::integer, 0) = 0 THEN
     PERFORM _v2_fail('already_undone', jsonb_build_object('ref', v_ref, 'reason', 'nothing_changed'));
   END IF;

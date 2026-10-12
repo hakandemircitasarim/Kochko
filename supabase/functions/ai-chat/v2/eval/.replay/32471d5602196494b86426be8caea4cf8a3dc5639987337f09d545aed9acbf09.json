@@ -1,0 +1,321 @@
+{
+  "key": "32471d5602196494b86426be8caea4cf8a3dc5639987337f09d545aed9acbf09",
+  "recorded_at": "2026-10-12T14:16:19.110Z",
+  "fixture_ids": [
+    "owner-supheli-kayit-onayla-duzelt"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"user_correction\",\"reason\":\"6 nuggetin normal boy olduğu belirtildi\",\"evidence_quote\":\"evet düzelt, normal boy 6 nuggetti\",\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"normal boy 6 nugget\",\"grams\":180,\"kcal\":480,\"protein_g\":27,\"carbs_g\":30,\"fat_g\":27,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[\"gluten\",\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":15,\"kcal\":17,\"protein_g\":0.2,\"carbs_g\":4,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.45}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "user_correction",
+            "reason": "6 nuggetin normal boy olduğu belirtildi",
+            "evidence_quote": "evet düzelt, normal boy 6 nuggetti",
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "normal boy 6 nugget",
+                  "grams": 180,
+                  "kcal": 480,
+                  "protein_g": 27,
+                  "carbs_g": 30,
+                  "fat_g": 27,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [
+                    "gluten",
+                    "egg"
+                  ],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.7
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 15,
+                  "kcal": 17,
+                  "protein_g": 0.2,
+                  "carbs_g": 4,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.45
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12934,
+        "output_tokens": 502,
+        "cached_tokens": 12931,
+        "reasoning_tokens": 83
+      },
+      "latency_ms": 7141,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"user_correction\",\"reason\":\"6 nuggetin normal boy olduğu belirtildi; önceki 900 g ve 1708 kcal kaydı fazla yüksek.\",\"evidence_quote\":\"evet düzelt, normal boy 6 nuggetti\",\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"normal boy 6 nugget\",\"grams\":180,\"kcal\":486,\"protein_g\":27,\"carbs_g\":31,\"fat_g\":29,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"kızartılmış\",\"allergens\":[\"gluten\",\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.65},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":30,\"kcal\":30,\"protein_g\":0,\"carbs_g\":7,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.5}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "user_correction",
+            "reason": "6 nuggetin normal boy olduğu belirtildi; önceki 900 g ve 1708 kcal kaydı fazla yüksek.",
+            "evidence_quote": "evet düzelt, normal boy 6 nuggetti",
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "normal boy 6 nugget",
+                  "grams": 180,
+                  "kcal": 486,
+                  "protein_g": 27,
+                  "carbs_g": 31,
+                  "fat_g": 29,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": "kızartılmış",
+                  "allergens": [
+                    "gluten",
+                    "egg"
+                  ],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.65
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 30,
+                  "kcal": 30,
+                  "protein_g": 0,
+                  "carbs_g": 7,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.5
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12934,
+        "output_tokens": 649,
+        "cached_tokens": 0,
+        "reasoning_tokens": 214
+      },
+      "latency_ms": 14503,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"m12\",\"basis\":\"user_correction\",\"reason\":\"6 tavuk nugget normal boymuş; önceki 900 g ve 1708 kcal kaydı fazla yüksek\",\"evidence_quote\":\"evet düzelt, normal boy 6 nuggetti\",\"patch\":{\"op\":\"meal_log\",\"day\":\"2026-10-01\",\"meal_type\":\"dinner\",\"time_local\":null,\"raw\":\"perşembe akşam 6 tane tavuk nugget yemiştim ketçapla\",\"status\":\"new\",\"venue\":null,\"replaces\":null,\"items\":[{\"name\":\"tavuk nugget\",\"as_stated\":\"normal boy 6 nugget\",\"grams\":120,\"kcal\":340,\"protein_g\":18,\"carbs_g\":24,\"fat_g\":20,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":\"kızartılmış\",\"allergens\":[\"gluten\",\"egg\"],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.7},{\"name\":\"ketçap\",\"as_stated\":\"ketçapla\",\"grams\":15,\"kcal\":17,\"protein_g\":0.2,\"carbs_g\":4,\"fat_g\":0,\"alcohol_g\":0,\"caffeine_mg\":0,\"preparation\":null,\"allergens\":[],\"may_contain\":[],\"reference_key\":null,\"confidence\":0.55}]}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "m12",
+            "basis": "user_correction",
+            "reason": "6 tavuk nugget normal boymuş; önceki 900 g ve 1708 kcal kaydı fazla yüksek",
+            "evidence_quote": "evet düzelt, normal boy 6 nuggetti",
+            "patch": {
+              "op": "meal_log",
+              "day": "2026-10-01",
+              "meal_type": "dinner",
+              "time_local": null,
+              "raw": "perşembe akşam 6 tane tavuk nugget yemiştim ketçapla",
+              "status": "new",
+              "venue": null,
+              "replaces": null,
+              "items": [
+                {
+                  "name": "tavuk nugget",
+                  "as_stated": "normal boy 6 nugget",
+                  "grams": 120,
+                  "kcal": 340,
+                  "protein_g": 18,
+                  "carbs_g": 24,
+                  "fat_g": 20,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": "kızartılmış",
+                  "allergens": [
+                    "gluten",
+                    "egg"
+                  ],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.7
+                },
+                {
+                  "name": "ketçap",
+                  "as_stated": "ketçapla",
+                  "grams": 15,
+                  "kcal": 17,
+                  "protein_g": 0.2,
+                  "carbs_g": 4,
+                  "fat_g": 0,
+                  "alcohol_g": 0,
+                  "caffeine_mg": 0,
+                  "preparation": null,
+                  "allergens": [],
+                  "may_contain": [],
+                  "reference_key": null,
+                  "confidence": 0.55
+                }
+              ]
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12934,
+        "output_tokens": 651,
+        "cached_tokens": 12931,
+        "reasoning_tokens": 215
+      },
+      "latency_ms": 11313,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

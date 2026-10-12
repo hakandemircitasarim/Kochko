@@ -113,7 +113,7 @@ export const SAMPLE_WRITES: Readonly<Record<string, Record<string, unknown>>> = 
   periodic_state: { op: 'periodic_state', state: 'exam', end_date: '2026-10-20', note: null },
   target_change: { op: 'target_change', program: 'mvd', strategy_id: null, weeks: null, excess_kcal: null, reason: 'çok yoğun gün' },
   data_erase_request: { op: 'data_erase_request', scope: 'memory', evidence_quote: 'hafızanı sıfırla' },
-  record_delete: { op: 'delete', ref: 'd3', reason: 'yanlış kayıt', evidence_quote: null },
+  record_delete: { op: 'delete', ref: 'd3', reason: 'yanlış kayıt', evidence_quote: null, restore_replaced: false },
   record_update: {
     op: 'update', ref: 'm12', basis: 'user_correction', reason: '6 küçük nugget ~100 g', evidence_quote: '6 küçük nuggetti 100 gram falan',
     patch: sampleMeal([{ name: 'tavuk nugget', as_stated: '6 küçük', grams: 100, kcal: 290, protein_g: 15, carbs_g: 18, fat_g: 17 }], { day: '2026-10-02', raw: '6 küçük nugget, 100 gram' }),

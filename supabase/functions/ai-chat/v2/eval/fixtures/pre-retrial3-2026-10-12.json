@@ -1,0 +1,66 @@
+{
+  "group": "pre-retrial3-2026-10-12",
+  "defaults": { "source": "review:pre-retrial3", "tags": ["pre-retrial3", "tuning", "record_ops"] },
+  "fixtures": [
+    {
+      "id": "pre3-duzeltme-sonrasi-hic-yemedim-sil",
+      "persona": "final2",
+      "package": "A",
+      "title": "Düzeltilmiş bir öğün (2 dilim → 1 dilim) için ‘aslında hiç yemedim, sil’: son turun düzeltmesi silinir ve restore_replaced=false — düzeltmeden önceki 2 dilim GERİ GELMEZ.",
+      "note": "Ön-yeniden-deneme-3 incelemesi: migrasyon 115 bir düzeltmenin ref ile her silinişinde yerine geçtiği kaydı canlandırıyordu; 'hiç yemedim, sil' sonrası eski öğün geri geliyordu. 'geri al / düzeltmeyi geri al' ile 'sil / hiç olmadı' arasındaki farkı model söyler (record_delete.restore_replaced), kod yalnız düzeltme ref'inde uygular.",
+      "turn_input": {
+        "now": { "local_date": "2026-10-12", "weekday_tr": "Pazartesi", "local_time": "13:40" },
+        "records": [
+          { "ref": "m51", "kind": "meal", "day": "2026-10-12", "line": "bugün öğle · \"pardon 1 dilimdi\" → su böreği 1 dilim ~120 g 290 kcal", "last_turn": true, "correction": true }
+        ],
+        "today": { "kcal": 290, "meals_logged": 1 },
+        "history": [
+          { "role": "user", "content": "öğlen 2 dilim su böreği yedim" },
+          { "role": "assistant", "content": "Öğle yemeğini kaydettim: 2 dilim su böreği, yaklaşık 580 kcal.", "receipts": ["Öğün kaydedildi — su böreği 2 dilim ~580 kcal"] },
+          { "role": "user", "content": "pardon 1 dilimdi" },
+          { "role": "assistant", "content": "Düzelttim: 1 dilim su böreği, yaklaşık 290 kcal.", "receipts": ["Kayıt düzeltildi — su böreği 2 dilim → 1 dilim (~290 kcal)"] }
+        ]
+      },
+      "message": "aslında hiç yemedim onu, sil",
+      "expect": [
+        { "path": "decision.record_ops[op=delete].ref", "eq": "m51", "why": "Silinen, son turun düzeltilmiş öğünüdür." },
+        { "path": "decision.record_ops[op=delete].restore_replaced", "eq": false, "quantifier": "all", "why": "‘Hiç yemedim, sil’ bir silmedir: düzeltmeden önceki 2 dilim geri gelmemeli." },
+        { "path": "decision.record_ops[op=update]", "count": 0, "why": "Öğün yenmedi; yeni porsiyonla düzeltme değil." },
+        { "path": "decision.writes[op=meal_log]", "count": 0 },
+        { "path": "validation.verdicts[op=record_delete].verdict", "eq": "COMMIT", "why": "Son turun bugünkü kendi yazması: tek adım." }
+      ]
+    },
+    {
+      "id": "pre3-tarti-duzeltmesini-geri-al",
+      "persona": "final2",
+      "package": "A",
+      "title": "82 → ‘pardon 88’di’ düzeltmesinden sonra ‘yok yok, o düzeltmeyi geri al’: düzeltmenin kendisi geri alınır ve önceki 82 geri gelir (restore_replaced=true ya da restore_metric).",
+      "note": "Ön-yeniden-deneme-3 incelemesi: 'düzeltmeyi geri al' önceki kaydı geri getirmeli (yeniden deneme final2: 82 hiç geri gelmemişti); aynı ref'in 'sil'inden ayrımı modelin restore_replaced okumasıdır.",
+      "turn_input": {
+        "now": { "local_date": "2026-10-12", "weekday_tr": "Pazartesi", "local_time": "08:15" },
+        "records": [
+          { "ref": "d12", "kind": "weight", "day": "2026-10-12", "line": "bugün tartı: 88 kg (\"pardon 88'di\")", "last_turn": true, "correction": true }
+        ],
+        "history": [
+          { "role": "user", "content": "bu sabah 82 kiloydum" },
+          { "role": "assistant", "content": "Bugünkü tartını kaydettim: 82 kg.", "receipts": ["Tartı kaydedildi — 82 kg"] },
+          { "role": "user", "content": "pardon 88'di" },
+          { "role": "assistant", "content": "Düzelttim: bugünkü tartın 88 kg.", "receipts": ["Kayıt düzeltildi — tartı 82 → 88 kg"] }
+        ]
+      },
+      "message": "yok yok, o düzeltmeyi geri al",
+      "expect": [
+        { "any_of": [
+          { "path": "decision.record_ops[op=delete].ref", "eq": "d12" },
+          { "path": "decision.record_ops[op=restore_metric].ref", "eq": "d12" }
+        ], "why": "Geri alınan, son turun düzeltme yazmasıdır." },
+        { "any_of": [
+          { "path": "decision.record_ops[op=delete].restore_replaced", "eq": true, "quantifier": "all" },
+          { "path": "decision.record_ops[op=restore_metric].ref", "eq": "d12" }
+        ], "why": "Düzeltmeyi geri almak düzeltmeden önceki 82'yi geri getirir; ‘sil’ değildir." },
+        { "path": "decision.writes[op=body_weight]", "count": 0, "why": "82 yeni bir tartı olarak yeniden yazılmaz (çift kayıt)." },
+        { "path": "validation.verdicts[op=record_delete].verdict", "ne": "REJECT", "quantifier": "all" }
+      ]
+    }
+  ]
+}

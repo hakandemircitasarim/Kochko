@@ -103,6 +103,12 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * not_when line), so stageAPrefix 13975 → 14005 (U's +30 on top of S's +80; +110 over v9's 13895 in
  * all). The prefix is ~99 % cached: ≈ $0,00002 per turn at terra's cached-input price. No prompt
  * bytes were changed by the integration itself.
+ * 2026-10-12 (SCHEMA_VERSION v8, pre-retrial #3 review): record_delete gains restore_replaced — the
+ * model says whether a correction is UNDONE (the replaced record comes back) or DELETED ("hiç yemedim,
+ * sil": nothing comes back); 115 had revived the replaced record on every ref delete. The strict field
+ * (+57 schema chars ≈ +18) and its doc line (+25) were partly paid for by trimming the doc (record_update's
+ * not_when line, taught three more times in the prefix; "belirli" twice): measured prefix ≈14027 (+26),
+ * so stageAPrefix 14005 → 14030 (+25, within the brief's +30). Rules and few-shots unchanged (prompt v10).
  */
 export const PROMPT_BUDGETS = {
   // 2026-10-12 (constitution v3, re-trial lane C): the coach owns its own mistakes, does not re-word a
@@ -115,5 +121,5 @@ export const PROMPT_BUDGETS = {
   understandRules: [900, 2115],
   understandFewShots: [1500, 3350],
   exemplars: [1100, 2400],
-  stageAPrefix: [9000, 14005],
+  stageAPrefix: [9000, 14030],
 } as const satisfies Record<string, readonly [number, number]>;

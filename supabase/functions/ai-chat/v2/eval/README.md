@@ -189,7 +189,7 @@ açık `null` temizler). `_` ile başlayan dosyalar fixture değildir.
 
 `turn_input`: `now{local_date, weekday_tr, local_time, tz}`, `tier`, `profile`,
 `spine[{ref c#, kind, subject_id, display_tr, severity, whose, active, body_parts, note}]`,
-`records[{ref, kind, day, line, last_turn, undone?, later_write_on_same_field?, suspicion_declined?}]`
+`records[{ref, kind, day, line, last_turn, undone?, later_write_on_same_field?, suspicion_declined?, correction?, confirmed_hold?}]`
 (`kind`: meal | water | workout | sleep | weight | supplement | mood | steps | venue | profile | life_event | lab | food_pref),
 `today`, `pending[{ref p#, op, line, expires_at?, replies_since?}]`, `commitments[{ref k#}]`,
 `draft{ref dft#}`, `history[{role, content, receipts}]`, `gates`, `image`,

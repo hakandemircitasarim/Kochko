@@ -260,22 +260,38 @@ Deno.test('115: undo by ref takes the anchor group\'s replaced deletes (never on
   // Same signature as 108 (CREATE OR REPLACE must replace, not overload).
   assert(fn.includes('p_user uuid, p_turn_id uuid, p_target jsonb, p_action text, p_group uuid, p_opts jsonb'), 'signature drifted from 108');
   assert(fn.includes("v_supersede boolean := coalesce(v_opts ->> 'reason', '') = 'replaced';"), 'the supersede path is not told apart');
-  // Both delete-by-ref branches (metric write anchor, record row anchor) include the replaced deletes.
-  const inclusions = fn.split("OR (NOT v_supersede AND op = 'record_delete' AND meta ->> 'reason' = 'replaced')").length - 1;
-  assertEquals(inclusions, 2, 'both ref branches must take the replaced deletes');
+  // pre-retrial #3: the replaced record comes back only when the caller asks (the model's restore_replaced on a
+  // correction ref, records.ts) — default false, so "hiç yemedim, sil" leaves the replaced meal deleted.
+  assert(fn.includes("v_restore_replaced boolean := coalesce((v_opts ->> 'restore_replaced')::boolean, false);"), 'restore_replaced must default to false');
+  // Both delete-by-ref branches (metric write anchor, record row anchor) include the replaced deletes — only on request.
+  const inclusions = fn.split("OR (NOT v_supersede AND v_restore_replaced AND op = 'record_delete' AND meta ->> 'reason' = 'replaced')").length - 1;
+  assertEquals(inclusions, 2, 'both ref branches must take the replaced deletes when asked');
+  assert(!fn.includes("OR (NOT v_supersede AND op = 'record_delete'"), 'an ungated replaced-delete inclusion is left');
+  // An older weigh-in's profile row skips later_write only when every later write is a weigh-in's (or a sync row)
+  // and the profile still holds the ledger's newest value; it is reversed with force, then re-synced.
+  assert(/v_prof_ids[\s\S]*?profile_weight_latest[\s\S]*?weight_history[\s\S]*?_v2_reverse_rows\(p_user, p_turn_id, v_prof_ids, v_op, p_group, true/.test(fn), 'profile later_write exemption missing');
+  assert(fn.includes('IF NOT v_supersede AND NOT v_force THEN'), 'the exemption must stay off the supersede / force paths');
   assert(/IF NOT v_supersede AND EXISTS \([\s\S]*?_v2_profile_weight_sync\(/.test(fn), 'the profile sync must skip the supersede path');
   assert(fn.includes("'reversed', v_rows"), 'the sync row must reach reversed[]');
   // The ledger invariant: a live reversal row's own target is undone again.
   assert(/UPDATE turn_writes o SET undone_at = now\(\)[\s\S]*?r\.reverses IS NOT NULL[\s\S]*?o\.id = r\.reverses/.test(fn), 'reversal-chain invariant missing');
   // Every other code line of the body is 108's: a line that is neither in 108 nor one of the 115 additions
-  // (supersede flag, replaced inclusion, chain invariant, profile sync, reversed rows) is an accidental edit.
+  // (supersede / restore flags, replaced inclusion, profile exemption, chain invariant, profile sync,
+  // reversed rows) is an accidental edit.
   const m108 = sql('108_turn_writes.sql');
   const old = grab(m108, /(CREATE OR REPLACE FUNCTION public\._v2_record_op\([\s\S]*?\nEND \$\$;)/, '108 _v2_record_op');
   const oldLines = new Set(old.split('\n').map((l) => l.trim()));
   const added = fn.split('\n').map((l) => l.trim()).filter((l) => l !== '' && !l.startsWith('--') && !oldLines.has(l));
-  const ADDITION = /v_supersede|v_rows|v_sync|turn_writes o SET|FROM turn_writes l, turn_writes r|l\.reverses IS NOT NULL|r\.id = l\.reverses|o\.id = r\.reverses|AND \(\(op NOT IN|e ->> 'table'|jsonb_array_elements\(v_rows\)/;
+  const ADDITION = new RegExp([
+    'v_supersede|v_restore_replaced|v_rows|v_sync|turn_writes o SET|FROM turn_writes l, turn_writes r|l\\.reverses IS NOT NULL|r\\.id = l\\.reverses',
+    'o\\.id = r\\.reverses|AND \\(\\(op NOT IN|e ->> \'table\'|jsonb_array_elements\\(v_rows\\)',
+    // the profile later_write exemption (its own block: x = a blocking write, y = its group's weigh-in row, z = the newest)
+    'v_all_ids|v_prof_ids|v_forced|v_result|\\bl\\.(id|row_id|seq|undo_mode|field_set)|\\b[xyz]\\.|FROM turn_writes [xyz]\\b|ORDER BY z\\.seq',
+    '^SELECT 1 FROM turn_writes|^AND (NOT )?EXISTS \\($|^END IF;$|^IF v_prof_ids IS NOT NULL THEN$|^IF NOT v_supersede AND NOT v_force THEN$',
+    'profile_weight_latest|weight_history|\'changed\', coalesce',
+  ].join('|'));
   assertEquals(added.filter((l) => !ADDITION.test(l)), [], 'an unexpected change to 108\'s _v2_record_op body');
-  assert(added.length <= 22, `115 changed more of 108's body than its additions (${added.length} lines)`);
+  assert(added.length <= 58, `115 changed more of 108's body than its additions (${added.length} lines)`);
   for (const l of ['_v2_fail(\'not_deletable\'', "_v2_fail('replaced'", '_v2_reverse_rows(p_user, p_turn_id, v_ids, v_op, p_group, v_force, v_meta)']) {
     assert(old.includes(l) && fn.includes(l), `108 behaviour lost: ${l}`);
   }

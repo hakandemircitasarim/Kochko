@@ -1218,7 +1218,7 @@ function coachRow(
         code: 'postcheck', path: null, outcome: null, value: log.outcome, judge: log.judge, judge_fail_reasons: log.judge_fail_reasons,
         regens: log.regens, invariant_hits: log.invariant_hits, budget_exhausted: log.budget_exhausted,
         referral_flag_mismatch: log.referral_flag_mismatch, code_notes: final.codeNotes.map((n) => n.kind),
-        name_only_hits: log.name_only_hits ?? [], judge_items: log.judge_items ?? [],
+        name_only_hits: log.name_only_hits ?? [], name_only_cleared: log.name_only_cleared ?? [], judge_items: log.judge_items ?? [],
       },
       ...[...stage.issues, ...final.issues, ...turnIssues].map((code) => ({ code, path: null, outcome: null })),
     ],

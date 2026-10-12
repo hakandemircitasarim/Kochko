@@ -11,7 +11,13 @@
  *      A TAG hit (the model's own allergens / may_contain / loads) always blocks. A hit only the NAME
  *      dictionary makes while the tags are clean (isNameOnlyViolation) is blind to negation — live
  *      2026-10-12, a regen named its dish "… deniz ürünü olmadan" and got a code refusal — so it is
- *      sent to the judge, with the matched word named, and blocks unless the judge calls it clean.
+ *      sent to the judge, with the matched word named and an id (n1, n2…), and the judge returns a
+ *      verdict PER ITEM (strict schema, name_only[]). Only an item the judge explicitly calls an
+ *      exclusion / absent mention (excluded_mention) is cleared; touches, unsure, a missing or
+ *      duplicated-and-conflicting verdict, an item the judge also lists as a violation, a failed judge —
+ *      all stay a hard block. The overall 'clean' verdict never clears a name-only hit by itself
+ *      (pre-retrial #3 review: "karides güveç" with allergens: [] would otherwise pass on a judge that
+ *      erred once). Clears are logged per attempt (log.name_only_cleared) and as their own issue code.
  *   2. Prose judge (§7.2 nesir yargıcı): for a user with a severe constraint, an independent
  *      gpt-6-luna strict-schema call reads the prose for a food/exercise the lists missed (the hidden
  *      allergen: "mayonezli sandviç" with nothing in suggested_foods). Fail-closed: a judge error,
@@ -76,11 +82,18 @@ export interface JudgeRequest {
   profile: SafetyProfile;
   /**
    * Suggestions whose NAME carries a word the dictionary ties to one of the user's constraints while
-   * their tags are clean (isNameOnlyViolation): the judge is asked to decide them explicitly.
+   * their tags are clean (isNameOnlyViolation): the judge decides each one explicitly, by its id.
    */
-  nameOnly?: { name: string; constraints: string[] }[];
+  nameOnly?: NameOnlyHint[];
   /** What is left of the turn's budget for this call (postcheck also stops waiting at this point). */
   timeoutMs?: number;
+}
+
+/** One name-only suggestion the judge must decide (`id` = n1, n2… in the order of the reply's lists). */
+export interface NameOnlyHint {
+  id: string;
+  name: string;
+  constraints: string[];
 }
 
 export interface JudgeItem {
@@ -90,20 +103,32 @@ export interface JudgeItem {
   reason: string;
 }
 
+/**
+ * The judge's per-item verdict on a name-only suggestion. ONLY excluded_mention can clear it: the name
+ * mentions the ingredient as removed / absent ("… olmadan", "-sız") and the rest does not touch it.
+ */
+export const NAME_ONLY_VERDICTS = ['excluded_mention', 'touches', 'unsure'] as const;
+export interface JudgeNameOnlyVerdict {
+  id: string;
+  verdict: string;
+}
+
 export type JudgeOutcome =
-  | { status: 'ok'; violation: boolean; items: JudgeItem[]; ms: number }
+  /** name_only absent = no per-item verdict was given: nothing is cleared (fail-closed). */
+  | { status: 'ok'; violation: boolean; items: JudgeItem[]; name_only?: JudgeNameOnlyVerdict[]; ms: number }
   | { status: 'failed'; reason: string; ms: number };
 
 /** Injected for tests; production uses lunaJudge(). */
 export type ProseJudge = (req: JudgeRequest) => Promise<JudgeOutcome>;
 
 export const JUDGE_SCHEMA: StructuredSchema = {
-  name: 'kochko_judge_v1',
+  // v2 (pre-retrial #3): name_only[] — one explicit verdict per AYRICA KARAR VER item, by id.
+  name: 'kochko_judge_v2',
   strict: true,
   schema: {
     type: 'object',
     additionalProperties: false,
-    required: ['violation', 'items'],
+    required: ['violation', 'items', 'name_only'],
     properties: {
       violation: { type: 'boolean' },
       items: {
@@ -120,6 +145,18 @@ export const JUDGE_SCHEMA: StructuredSchema = {
           },
         },
       },
+      name_only: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['id', 'verdict'],
+          properties: {
+            id: { type: 'string' },
+            verdict: { type: 'string', enum: [...NAME_ONLY_VERDICTS] },
+          },
+        },
+      },
     },
   },
 };
@@ -132,6 +169,7 @@ export const JUDGE_INSTRUCTIONS = [
   '- Yalnızca ÖNERİ sayılır: kişinin yediğini anmak, bir yiyeceğin alerjen içerdiği için önerilmediğini söylemek ya da kaçınılacaklar listesi vermek öneri değildir.',
   '- Önerinin adı bir malzemenin çıkarıldığını söylüyorsa ("… olmadan", "-sız") o malzeme adına bakarak öneride sayılmaz; yemeğin geri kalanının kısıta dokunup dokunmadığına bak.',
   '- Emin değilsen violation = true; her ihlal için items listesine adını, türünü, hangi kısıta dokunduğunu ve tek cümlelik gerekçeyi yaz.',
+  '- AYRICA KARAR VER altındaki HER öneri için name_only listesine kimliğiyle (n1, n2…) tek karar yaz: excluded_mention = ad o malzemeyi yalnızca çıkarılmış ya da olmayan olarak anıyor ve önerinin geri kalanı kısıta dokunmuyor; touches = öneri kısıta dokunuyor (adındaki malzeme gerçekten içinde); unsure = emin değilsin. AYRICA KARAR VER yoksa name_only boş kalır.',
 ].join('\n');
 
 export function judgeUserText(r: JudgeRequest): string {
@@ -143,9 +181,9 @@ export function judgeUserText(r: JudgeRequest): string {
   lines.push(`- Yiyecekler: ${r.suggested_foods.length ? r.suggested_foods.map((f) => `${f.name} [${[...f.allergens, ...f.may_contain].join(', ') || 'etiket yok'}]`).join('; ') : 'yok'}`);
   lines.push(`- Hareketler: ${r.suggested_exercises.length ? r.suggested_exercises.map((e) => `${e.name} [${e.loads.join(', ') || 'yük yok'}]`).join('; ') : 'yok'}`);
   if (r.nameOnly?.length) {
-    lines.push('', 'AYRICA KARAR VER');
+    lines.push('', 'AYRICA KARAR VER (her biri için name_only)');
     for (const n of r.nameOnly) {
-      lines.push(`- "${n.name}": adında ${n.constraints.join(', ')} ile ilgili bir sözcük geçiyor ama etiketleri temiz. Bu öneri o kısıta gerçekten dokunuyor mu, yoksa ad yalnızca çıkarılan bir malzemeyi mi anıyor?`);
+      lines.push(`- ${n.id} · "${n.name}": adında ${n.constraints.join(', ')} ile ilgili bir sözcük geçiyor ama etiketleri temiz. Bu öneri o kısıta gerçekten dokunuyor mu, yoksa ad yalnızca çıkarılan bir malzemeyi mi anıyor?`);
     }
   }
   lines.push('', 'KOÇUN CEVABI', r.reply);
@@ -169,7 +207,7 @@ export function lunaJudge(deps: {
   return async (req) => {
     const started = Date.now();
     try {
-      const r = await call<{ violation: boolean; items: JudgeItem[] }>({
+      const r = await call<{ violation: boolean; items: JudgeItem[]; name_only?: JudgeNameOnlyVerdict[] }>({
         model: deps.model ?? judgeModel(),
         effort: 'low',
         input: [{ role: 'system', content: JUDGE_INSTRUCTIONS }, { role: 'user', content: judgeUserText(req) }],
@@ -184,7 +222,10 @@ export function lunaJudge(deps: {
       const ms = Date.now() - started;
       if (r.kind !== 'parsed') return { status: 'failed', reason: r.kind === 'error' ? r.error.class : r.kind, ms };
       const items = Array.isArray(r.value.items) ? r.value.items.filter((i) => isRec(i) && typeof i.name === 'string') : [];
-      return { status: 'ok', violation: r.value.violation === true || items.length > 0, items, ms };
+      const nameOnly = Array.isArray(r.value.name_only)
+        ? r.value.name_only.filter((n) => isRec(n) && typeof n.id === 'string' && typeof n.verdict === 'string')
+        : [];
+      return { status: 'ok', violation: r.value.violation === true || items.length > 0, items, name_only: nameOnly, ms };
     } catch (e) {
       return { status: 'failed', reason: ((e as Error)?.message ?? 'error').slice(0, 120), ms: Date.now() - started };
     }
@@ -212,8 +253,30 @@ export function referralFlagMismatch(input: CoachInput, reply: CoachReply): bool
 export function emptyPostcheckLog(outcome: PostcheckOutcome): PostcheckLog {
   return {
     outcome, invariant_hits: [], judge: [], judge_fail_reasons: [], regens: 0, budget_exhausted: false, referral_flag_mismatch: false, code_notes: [],
-    name_only_hits: [], judge_items: [],
+    name_only_hits: [], name_only_cleared: [], judge_items: [],
   };
+}
+
+const sameName = (a: string, b: string) => a.trim().toLocaleLowerCase('tr') === b.trim().toLocaleLowerCase('tr');
+
+/**
+ * The name-only suggestions the judge EXPLICITLY cleared, by name: every verdict it gave for the item's
+ * id is excluded_mention (at least one), and it did not also list that suggestion as a violation. A
+ * name that also belongs to an item that was not cleared stays blocked (two suggestions, one name).
+ * Anything else — no verdict, touches, unsure, a failed judge — clears nothing.
+ */
+export function clearedNameOnly(hints: readonly NameOnlyHint[], judge: JudgeOutcome | null): Set<string> {
+  if (!judge || judge.status !== 'ok') return new Set();
+  const verdicts = judge.name_only ?? [];
+  const cleared = new Set<string>();
+  const blocked = new Set<string>();
+  for (const h of hints) {
+    const mine = verdicts.filter((v) => v.id === h.id);
+    const ok = mine.length > 0 && mine.every((v) => v.verdict === 'excluded_mention') && !judge.items.some((i) => sameName(i.name, h.name));
+    (ok ? cleared : blocked).add(h.name);
+  }
+  for (const n of blocked) cleared.delete(n);
+  return cleared;
 }
 
 // ─── judge scope ───────────────────────────────────────────────────────────────────────────────────
@@ -247,8 +310,9 @@ export function judgeReason(
 }
 
 /** What the name dictionary matched on a name-only hit, in the user's words (for the judge's question). */
-function nameOnlyHint(v: SuggestionViolation): { name: string; constraints: string[] } {
+function nameOnlyHint(v: SuggestionViolation, i: number): NameOnlyHint {
   return {
+    id: `n${i + 1}`,
     name: v.name,
     constraints: [...new Set([...v.allergens.map((a) => vocabLabel(a.allergen)), ...v.injuries.map((i) => regionLabel(i.region))])],
   };
@@ -287,7 +351,7 @@ export interface PostcheckDeps {
 }
 
 interface Check {
-  /** The violations that block this reply: every tag hit, and the name-only hits the judge did not clear. */
+  /** The violations that block this reply: every tag hit, and the name-only hits the judge did not clear item by item. */
   violations: SuggestionViolation[];
   unverified: boolean;
   judge: JudgeOutcome | null;
@@ -301,7 +365,7 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
   const remaining = deps.remainingMs ?? (() => Infinity);
   const failedJudge = (reason: string): JudgeOutcome => ({ status: 'failed', reason, ms: 0 });
 
-  const runJudge = async (reply: CoachReply, nameOnly: SuggestionViolation[]): Promise<JudgeOutcome> => {
+  const runJudge = async (reply: CoachReply, hints: NameOnlyHint[]): Promise<JudgeOutcome> => {
     if (!deps.judge) return failedJudge('no_judge');
     const left = remaining();
     if (left < MIN_JUDGE_CALL_MS) {
@@ -310,7 +374,7 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
     }
     const req: JudgeRequest = {
       reply: reply.reply, suggested_foods: reply.suggested_foods, suggested_exercises: reply.suggested_exercises, profile,
-      ...(nameOnly.length ? { nameOnly: nameOnly.map(nameOnlyHint) } : {}),
+      ...(hints.length ? { nameOnly: hints } : {}),
       ...(Number.isFinite(left) ? { timeoutMs: left } : {}),
     };
     // A judge that throws synchronously is a failed judge too (never an escape from "never throws").
@@ -324,16 +388,17 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
     const structural = suggestionCheck(reply, profile);
     const all = !structural.ok && structural.reason === 'violation' ? structural.violations : [];
     const unverified = !structural.ok && structural.reason === 'unverified';
-    // A tag hit is the model's own statement and blocks; a name-only hit is the judge's to decide.
+    // A tag hit is the model's own statement and blocks; a name-only hit is the judge's to decide, item by item.
     const tagHits = all.filter((v) => !isNameOnlyViolation(v));
     const nameOnly = all.filter(isNameOnlyViolation);
+    const hints = nameOnly.map(nameOnlyHint);
     log.invariant_hits.push(tagHits.map((v) => v.name));
     log.name_only_hits!.push(nameOnly.map((v) => v.name));
     const judgeIt = !unverified && profile.needsJudge && !crisis && reply.reply.trim() !== ''
       && (nameOnly.length > 0 || judgeReason(input, reply, profile, deps.judgeScope ?? 'always') !== null);
     let judge: JudgeOutcome | null = null;
     if (judgeIt) {
-      judge = await runJudge(reply, nameOnly);
+      judge = await runJudge(reply, hints);
       log.judge.push(judge.status === 'failed' ? 'failed' : judge.violation ? 'violation' : 'clean');
       if (judge.status === 'failed') log.judge_fail_reasons.push(judge.reason);
       if (judge.status === 'ok' && judge.violation) {
@@ -344,8 +409,11 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
     } else {
       log.judge.push('skipped');
     }
+    // Only the judge's explicit per-item exclusion verdict clears a name-only hit — never the overall 'clean'.
+    const cleared = clearedNameOnly(hints, judge);
+    log.name_only_cleared!.push(nameOnly.filter((v) => cleared.has(v.name)).map((v) => v.name));
+    const violations = all.filter((v) => !(isNameOnlyViolation(v) && cleared.has(v.name)));
     const judgeClean = judge !== null && judge.status === 'ok' && !judge.violation;
-    const violations = judgeClean ? tagHits : all;
     const judgeBad = judge !== null && !judgeClean;
     return { violations, unverified, judge, bad: unverified || violations.length > 0 || judgeBad };
   };

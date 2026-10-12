@@ -401,7 +401,7 @@ Deno.test('a constraint added last turn is "(son tur)" in KISITLAR and the one c
   const r = turnRefs(ti).rendered[c];
   assertEquals([r.undo_add, r.last_turn], [true, true]);
   assertStringIncludes(renderTurnInput(ti), `${c} · alerji · sesame · şiddeti belirtilmemiş (son tur)`);
-  const del = [{ op: 'delete', ref: c, reason: 'geri al', evidence_quote: 'geri al' }];
+  const del = [{ op: 'delete', ref: c, reason: 'geri al', evidence_quote: 'geri al', restore_replaced: false }];
   assertEquals(validateChannelItems('record_ops', del, validationContext(ti, 'geri al', NOW)).map((v) => v.verdict), ['ASK']);
   // A meal written in a LATER turn: the add is no longer the newest write turn → constraint_retract's job.
   t.turn_writes.unshift(tw({ id: 'w-meal', seq: 60, op: 'meal_log', table_name: 'meal_logs', row_id: 'ml-3', group_id: 'g-m', turn_id: 't-next', created_at: '2026-10-07T10:30:00Z' }));

@@ -66,6 +66,10 @@ export interface RecordLine {
   undone?: boolean;
   later_write_on_same_field?: boolean;
   suspicion_declined?: boolean;
+  /** The record's live write is a correction (record_delete restore_replaced matters only here). */
+  correction?: boolean;
+  /** The record's live write was confirmed through a hold (record_delete asks first). */
+  confirmed_hold?: boolean;
 }
 
 export interface PendingLine { ref: string; op: string; line: string; expires_at?: string; replies_since?: number }

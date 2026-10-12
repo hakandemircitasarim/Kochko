@@ -23,6 +23,14 @@
  * A constraint (c#) is undone here only when it is the user's newest write (a just-added allergy:
  * one safety confirmation, its whole ledger group); any older constraint stays constraint_retract's,
  * with its own two-step bar.
+ *
+ * Undo vs delete of a CORRECTION (pre-retrial #3 review): migration 115 made a ref delete of a record
+ * that was itself a correction always bring back the record it replaced — so "aslında hiç yemedim,
+ * sil" after "pardon tek dilimdi" revived the 2-slice meal. The two sentences differ only in meaning,
+ * so the MODEL says which one it read (restore_replaced: "geri al / düzeltmeyi geri al" → true,
+ * "sil / hiç olmadı / yanlış kayıt" → false) and code checks it: derive() keeps it only when the ref
+ * really is a correction (RenderedRef.correction) — anywhere else it is meaningless and ignored — and
+ * the writer revives the replaced record only on that derived true (115 p_opts.restore_replaced).
  */
 import { f, op, rule, MAX_BACK_DAYS, type ValidationContext } from '../dsl.ts';
 import { PATCH_OPS_BY_TARGET, type RenderedRef, UNDO_REF_KINDS } from '../refs.ts';
@@ -33,13 +41,13 @@ function tooOld(ref: string, ctx: ValidationContext): boolean {
   return typeof day === 'string' && daysBetween(day, ctx.today) > MAX_BACK_DAYS;
 }
 
-const tooOldRule = <A extends { ref: string }>() =>
-  rule<A, Record<string, never>>('cok_eski_kayit', `${MAX_BACK_DAYS} günden eski kayıt sohbetten değiştirilemez`, (a, _d, ctx) => tooOld(a.ref, ctx), {
+const tooOldRule = <A extends { ref: string }, D = Record<string, never>>() =>
+  rule<A, D>('cok_eski_kayit', `${MAX_BACK_DAYS} günden eski kayıt sohbetten değiştirilemez`, (a, _d, ctx) => tooOld(a.ref, ctx), {
     failure_class: 'too_old',
   });
 
-const laterWriteRule = <A extends { ref: string }>() =>
-  rule<A, Record<string, never>>('sonraki_yazma_var', 'aynı alana daha sonra yazılmış; geri almak sonrakini ezer', (a, _d, ctx) =>
+const laterWriteRule = <A extends { ref: string }, D = Record<string, never>>() =>
+  rule<A, D>('sonraki_yazma_var', 'aynı alana daha sonra yazılmış; geri almak sonrakini ezer', (a, _d, ctx) =>
     ctx.refs[a.ref]?.later_write_on_same_field === true, { failure_class: 'conflict' });
 
 // ─── record_delete: the code-owned question that names the record ─────────────────────────────────
@@ -84,11 +92,15 @@ function valueTr(r: RenderedRef): string | null {
   return s ? capLen(s, 80) : null;
 }
 
+/** Said after a correction's delete question when the record it replaced stays deleted. */
+export const REPLACED_STAYS_TR = 'Düzeltmeden önceki kayıt da geri gelmez.';
+
 /**
  * The ONE question a held record_delete asks, naming the record: "Dünkü 81,6 kg tartını silmemi istiyor
- * musun?" — a correction says what comes back. Registry text (code-owned), from the rendered ref only.
+ * musun?" — a correction says whether the record it replaced comes back (`restoresReplaced`, the op's
+ * derived restores_replaced). Registry text (code-owned), from the rendered ref only.
  */
-export function undoQuestionTr(r: RenderedRef | undefined, today: string): string {
+export function undoQuestionTr(r: RenderedRef | undefined, today: string, restoresReplaced = true): string {
   if (!r) return 'Bu kaydı silmemi istiyor musun?';
   const adj = dayAdjTr(r.day, today);
   const lead = (rest: string) => (adj ? `${adj} ${rest}` : capFirst(rest));
@@ -98,13 +110,24 @@ export function undoQuestionTr(r: RenderedRef | undefined, today: string): strin
     const s = r.user_summary_tr ?? r.summary_tr ?? 'kısıt';
     return `Az önce eklenen ${s} kaydını geri almamı istiyor musun? Güvenlik filtrelerin buna göre değişecek.`;
   }
-  if (r.correction) {
+  if (r.correction && restoresReplaced) {
     return `${lead(`${label} düzeltmesini${value ? ` (${value})` : ''}`)} geri almamı istiyor musun? Düzeltmeden önceki kayıt geri gelir.`;
   }
+  const tail = r.correction ? ` ${REPLACED_STAYS_TR}` : '';
   // A water ref is the day's value; the undo takes back its latest write, not the whole day.
-  if (r.target === 'water') return `${lead('son su kaydını')} geri almamı istiyor musun?${value ? ` (${value})` : ''}`;
-  if (r.target === 'weight' && typeof r.snapshot?.value === 'number') return `${lead(`${shortNum(r.snapshot.value)} kg tartını`)} silmemi istiyor musun?`;
-  return `${lead(`${label} kaydını${value ? ` (${value})` : ''}`)} silmemi istiyor musun?`;
+  if (r.target === 'water') return `${lead('son su kaydını')} geri almamı istiyor musun?${value ? ` (${value})` : ''}${tail}`;
+  if (r.target === 'weight' && typeof r.snapshot?.value === 'number') return `${lead(`${shortNum(r.snapshot.value)} kg tartını`)} silmemi istiyor musun?${tail}`;
+  return `${lead(`${label} kaydını${value ? ` (${value})` : ''}`)} silmemi istiyor musun?${tail}`;
+}
+
+/**
+ * What the writer is told to do with a correction's replaced record. Only a CORRECTION ref can bring
+ * one back (RenderedRef.correction); anywhere else the model's restore_replaced means nothing and is
+ * ignored. record_restore_metric ("önceki değerine döndür") always means the value before the write —
+ * for a correction that is the replaced record's value.
+ */
+export function restoresReplaced(ref: string, wanted: boolean, ctx: ValidationContext): boolean {
+  return wanted && ctx.refs[ref]?.correction === true;
 }
 
 /** The one-step undo: the previous turn's own write, of today, that the user had not confirmed through a hold. */
@@ -116,13 +139,18 @@ function isLocalUndo(r: RenderedRef | undefined, today: string): boolean {
  * re-trial 2026-10-12: a message about "bu sabah" deleted yesterday's confirmed weigh-in in one step.
  * Every op that takes a record back by ref (delete, restore_metric) asks first unless it is the local undo.
  */
+interface UndoDerived {
+  /** The writer brings the correction's replaced record back (restoresReplaced). */
+  restores_replaced: boolean;
+}
+
 const remoteUndoRule = <A extends { ref: string }>() =>
-  rule<A, Record<string, never>>('uzak_kayit_silme', 'son turun bugünkü kendi yazması değilse (eski tur, başka gün ya da onayla yazılmış kayıt) silmeden önce sorulur', (a, _d, ctx) => {
+  rule<A, UndoDerived>('uzak_kayit_silme', 'son turun bugünkü kendi yazması değilse (eski tur, başka gün ya da onayla yazılmış kayıt) silmeden önce sorulur', (a, _d, ctx) => {
     const r = ctx.refs[a.ref];
     if (!r || r.kind === 'c' || isLocalUndo(r, ctx.today)) return false;
     const why = r.confirmed_hold === true ? 'kullanıcının onayıyla yazılmış kayıt' : r.day !== ctx.today ? 'başka güne ait kayıt' : 'son turun yazması değil';
     return `${a.ref}: ${why}`;
-  }, { question_tr: (a, _d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today) });
+  }, { question_tr: (a, d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today, d.restores_replaced) });
 
 export const record_delete = op({
   type: 'record_delete',
@@ -130,16 +158,18 @@ export const record_delete = op({
   channel: 'record_ops',
   envelope: 'undo',
   title_tr: 'Kaydı geri al/sil',
-  when_tr: 'KAYITLAR’daki belirli bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i).',
+  when_tr: 'KAYITLAR’daki bir kaydı geri alma/silme isteği ("vazgeçtim, onu geri al" → son turdaki yazmanın ref’i).',
   not_when_tr: 'eski kısıt (constraint_retract; son turda eklenen kısıt burada), bekleyen (pending_ops), plan taslağı (plan_action).',
   fields: {
     ref: f.ref(UNDO_REF_KINDS),
     reason: f.text({ max: 120 }),
     evidence_quote: f.text({ nullable: true, max: 160 }),
+    restore_replaced: f.bool({ tr: '"geri al / düzeltmeyi geri al" true; "sil / hiç olmadı / yanlış kayıt" false' }),
   },
+  derive: (a, ctx): UndoDerived => ({ restores_replaced: restoresReplaced(a.ref, a.restore_replaced === true, ctx) }),
   capability_tr: 'Gösterilen belirli bir kaydı geri almak (yalnızca son 7 gün).',
   writes: { rpc: 'w_record_undo', tables: ['turn_writes'], undo: 'none', hold_op: 'record_delete' },
-  invariants: ['soft_delete_only', 'group_side_effects_undone', 'remote_delete_asked', 'undo_restores_replaced'],
+  invariants: ['soft_delete_only', 'group_side_effects_undone', 'remote_delete_asked', 'undo_restores_replaced_only_when_asked'],
 }).rules({
   hard: [
     tooOldRule(),
@@ -157,11 +187,11 @@ export const record_delete = op({
     // the message. null = no quote claimed — the one-step local undo still stands on its own.
     rule('silme_alintisi', 'evidence_quote verildiyse kullanıcının mesajında aynen geçmeli', (a, _d, ctx) =>
       isLocalUndo(ctx.refs[a.ref], ctx.today) && a.evidence_quote !== null && !isVerbatimQuote(a.evidence_quote, ctx.user_message),
-    { question_tr: (a, _d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today), evidence: true }),
+    { question_tr: (a, d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today, d.restores_replaced), evidence: true }),
     // Undoing a just-added allergy/injury changes the safety filters: always one safety confirmation.
     rule('son_eklenen_kisit', 'en son eklenen kısıtın geri alınması her zaman bir güvenlik onayıyla yapılır', (a, _d, ctx) =>
       ctx.refs[a.ref]?.kind === 'c' && `${a.ref}: az önce eklenen kısıtın geri alınması`,
-    { question_tr: (a, _d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today) }),
+    { question_tr: (a, d, ctx) => undoQuestionTr(ctx.refs[a.ref], ctx.today, d.restores_replaced) }),
   ],
 });
 
@@ -173,7 +203,9 @@ export const record_update = op({
   envelope: 'undo',
   title_tr: 'Kaydı düzelt',
   when_tr: 'KAYITLAR’daki bir kaydın içeriği yanlışsa: kullanıcı düzeltiyorsa basis=user_correction; sen fark ettiysen (küçük bir öğüne binlerce kcal) basis=suspicious — kod önce kullanıcıya sordurur.',
-  not_when_tr: 'aynı kaydı yeni yazma olarak eklemek (çift sayım).',
+  // SCHEMA v8 (budget for record_delete.restore_replaced): no not_when line — "a correction is not added
+  // again as a new write (double count)" is already taught three times in the same cached prefix: the doc
+  // header ("Kayıt düzeltmenin tek yolu record_ops update…"), understand rule 6 and the ref_ile_duzeltme few-shot.
   fields: {
     ref: f.ref(['m', 'd', 'w', 's', 't', 'e', 'l', 'f']),
     basis: f.enum({
@@ -225,11 +257,13 @@ export const record_restore_metric = op({
   channel: 'record_ops',
   envelope: 'undo',
   title_tr: 'Metriği önceki değerine döndür',
-  when_tr: 'Bir günlük metriği belirli bir yazmadan önceki değerine döndürme isteği.',
+  when_tr: 'Bir günlük metriği bir yazmadan önceki değerine döndürme isteği.',
   fields: {
     ref: f.ref(['d']),
     reason: f.text({ max: 120 }),
   },
+  // "Önceki değer" of a correction write is the value it replaced: the writer brings that one back.
+  derive: (a, ctx): UndoDerived => ({ restores_replaced: restoresReplaced(a.ref, true, ctx) }),
   tier: 'rare',
   capability_tr: 'Bir günlük metriği belirli bir yazmadan önceki değerine döndürmek.',
   writes: { rpc: 'w_record_undo', tables: ['daily_metrics', 'turn_writes'], undo: 'none', hold_op: 'record_restore_metric' },

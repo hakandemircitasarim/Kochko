@@ -72,6 +72,8 @@ export function renderedRefsFor(ti: FixtureTurnInput): RenderedRefs {
       ...(r.undone ? { undone: true } : {}),
       ...(r.later_write_on_same_field ? { later_write_on_same_field: true } : {}),
       ...(r.suspicion_declined ? { suspicion_declined: true } : {}),
+      ...(r.correction ? { correction: true } : {}),
+      ...(r.confirmed_hold ? { confirmed_hold: true } : {}),
     };
   }
   for (const c of ti.spine ?? []) {

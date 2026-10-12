@@ -1,0 +1,210 @@
+{
+  "key": "d2719068c94c7768a76bca66898fab67f95ec8cf7c462609a9877131cd95d63c",
+  "recorded_at": "2026-10-12T14:16:25.846Z",
+  "fixture_ids": [
+    "r3-diff-5-su-duzeltmesi-ogle-yemegini-silmez"
+  ],
+  "responses": [
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"d4\",\"basis\":\"user_correction\",\"reason\":\"Su kaydı tek içiş değil, bugünün toplamı 2 litre olarak düzeltildi\",\"evidence_quote\":\"su yanlış, düzelt: bugünün toplamı 2 litre\",\"patch\":{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugünün toplamı 2 litre\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "d4",
+            "basis": "user_correction",
+            "reason": "Su kaydı tek içiş değil, bugünün toplamı 2 litre olarak düzeltildi",
+            "evidence_quote": "su yanlış, düzelt: bugünün toplamı 2 litre",
+            "patch": {
+              "op": "water_log",
+              "day": "today",
+              "as_stated": "bugünün toplamı 2 litre",
+              "quantity": 2,
+              "unit": "litre",
+              "other_ml_each": null,
+              "mode": "set_day_total",
+              "replaces": null
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12773,
+        "output_tokens": 245,
+        "cached_tokens": 12447,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3565,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"d4\",\"basis\":\"user_correction\",\"reason\":\"Bugünün su toplamı 2 litre olarak düzeltildi\",\"evidence_quote\":\"su yanlış, düzelt: bugünün toplamı 2 litre\",\"patch\":{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugünün toplamı 2 litre\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "d4",
+            "basis": "user_correction",
+            "reason": "Bugünün su toplamı 2 litre olarak düzeltildi",
+            "evidence_quote": "su yanlış, düzelt: bugünün toplamı 2 litre",
+            "patch": {
+              "op": "water_log",
+              "day": "today",
+              "as_stated": "bugünün toplamı 2 litre",
+              "quantity": 2,
+              "unit": "litre",
+              "other_ml_each": null,
+              "mode": "set_day_total",
+              "replaces": null
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12773,
+        "output_tokens": 238,
+        "cached_tokens": 12770,
+        "reasoning_tokens": 0
+      },
+      "latency_ms": 3223,
+      "model_served": "gpt-5.6-terra"
+    },
+    {
+      "ok": true,
+      "status": 200,
+      "kind": "parsed",
+      "text": "{\"intent\":{\"primary\":\"correction\",\"is_hypothetical\":false,\"about_other_person\":false},\"safety\":{\"acute_medical\":false,\"acute_evidence_quote\":null,\"self_harm\":false,\"ed_signal\":null,\"tripwire_readings\":[]},\"writes\":[],\"record_ops\":[{\"op\":\"update\",\"ref\":\"d4\",\"basis\":\"user_correction\",\"reason\":\"Bugünkü su toplamı 2 litre olarak düzeltildi\",\"evidence_quote\":\"su yanlış, düzelt: bugünün toplamı 2 litre\",\"patch\":{\"op\":\"water_log\",\"day\":\"today\",\"as_stated\":\"bugünün toplamı 2 litre\",\"quantity\":2,\"unit\":\"litre\",\"other_ml_each\":null,\"mode\":\"set_day_total\",\"replaces\":null}}],\"pending_ops\":[],\"commitment_ops\":[],\"plan_action\":{\"op\":\"none\",\"plan_type\":null,\"draft_ref\":null},\"simulation\":null,\"clarify\":null,\"reply_route\":{\"contract\":\"coach\",\"effort_hint\":\"low\"},\"self_check\":{\"reported_new_facts\":true,\"not_written_reason\":null}}",
+      "decision": {
+        "intent": {
+          "primary": "correction",
+          "is_hypothetical": false,
+          "about_other_person": false
+        },
+        "safety": {
+          "acute_medical": false,
+          "acute_evidence_quote": null,
+          "self_harm": false,
+          "ed_signal": null,
+          "tripwire_readings": []
+        },
+        "writes": [],
+        "record_ops": [
+          {
+            "op": "update",
+            "ref": "d4",
+            "basis": "user_correction",
+            "reason": "Bugünkü su toplamı 2 litre olarak düzeltildi",
+            "evidence_quote": "su yanlış, düzelt: bugünün toplamı 2 litre",
+            "patch": {
+              "op": "water_log",
+              "day": "today",
+              "as_stated": "bugünün toplamı 2 litre",
+              "quantity": 2,
+              "unit": "litre",
+              "other_ml_each": null,
+              "mode": "set_day_total",
+              "replaces": null
+            }
+          }
+        ],
+        "pending_ops": [],
+        "commitment_ops": [],
+        "plan_action": {
+          "op": "none",
+          "plan_type": null,
+          "draft_ref": null
+        },
+        "simulation": null,
+        "clarify": null,
+        "reply_route": {
+          "contract": "coach",
+          "effort_hint": "low"
+        },
+        "self_check": {
+          "reported_new_facts": true,
+          "not_written_reason": null
+        }
+      },
+      "refusal": null,
+      "issues": [],
+      "usage": {
+        "input_tokens": 12773,
+        "output_tokens": 334,
+        "cached_tokens": 12770,
+        "reasoning_tokens": 94
+      },
+      "latency_ms": 4838,
+      "model_served": "gpt-5.6-terra"
+    }
+  ]
+}

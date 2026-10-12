@@ -77,8 +77,16 @@ import { memory_note } from './ops/memory.ts';
  *     confirmation), so its not_when line reads "eski kısıt (constraint_retract; son turda eklenen
  *     kısıt burada)". record_delete holds are pending_writes.op 'record_delete'.
  *   Open v6 holds come back as stale_hold.
+ * v8 (2026-10-12, pre-retrial #3 review): record_delete gains restore_replaced (boolean) — undoing a
+ *   correction ("geri al / düzeltmeyi geri al" → true) brings back the record it replaced; deleting it
+ *   ("sil / hiç olmadı / yanlış kayıt" → false) leaves both gone. 115 had revived the replaced record on
+ *   every ref delete. derive() keeps the flag only on a correction ref (restores_replaced); the writer
+ *   gets it as p_opts.restore_replaced. record_restore_metric derives true on a correction (its "önceki
+ *   değer" is the replaced one). Doc: the field line; paid for by dropping "belirli" from both ops'
+ *   when lines and record_update's not_when line (its "no double count" is taught by the doc header,
+ *   rule 6 and a few-shot in the same prefix). Open v7 holds come back as stale_hold.
  */
-export const SCHEMA_VERSION = 'v7';
+export const SCHEMA_VERSION = 'v8';
 
 export const REGISTRY: readonly RegOp[] = [
   // writes[] — what the user reported

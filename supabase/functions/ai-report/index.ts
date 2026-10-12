@@ -187,12 +187,16 @@ async function generateDailyReport(userId: string, date?: string, force = false)
   // NO budget data fed. Compute from the canonical weekly_calorie_budget + this
   // week's actual intake (week-to-date including today).
   let weeklyBudgetStatus: string | null = null;
-  let waterTargetLiters: number | null = null;
+  // The PROFILE water target is only the fallback: the day's target is the newest daily_plans version's
+  // water_target_liters (planRes above) — resolveWaterTarget(plan, profile) below, the same order as the
+  // chat's facts (ai-chat/v2/facts.ts budgetFacts: plan, else profile). Re-checked 2026-10-12 (pre-retrial #3
+  // review flagged this line); named for what it is so it is not mistaken for the scoring target again.
+  let profileWaterTargetLiters: number | null = null;
   let usualMeals: unknown = null; // final2#17: profiles.meal_count_preference
   {
     const { data: budgetProfile } = await supabaseAdmin.from('profiles').select('weekly_calorie_budget, water_target_liters, meal_count_preference').eq('id', userId).maybeSingle();
     const weeklyBudget = budgetProfile?.weekly_calorie_budget as number | null;
-    waterTargetLiters = (budgetProfile?.water_target_liters as number | null) ?? null;
+    profileWaterTargetLiters = (budgetProfile?.water_target_liters as number | null) ?? null;
     usualMeals = budgetProfile?.meal_count_preference ?? null;
     if (weeklyBudget && weeklyBudget > 0) {
       const rd = new Date(reportDate + 'T00:00:00Z');
@@ -237,7 +241,7 @@ async function generateDailyReport(userId: string, date?: string, force = false)
     const proTarget = Number(plan?.protein_target_g) || 0;
     // Prefer the DAY'S plan target (what the dashboard shows) over the profile default.
     // diff#9: the 2.5 L default still scores, but is marked unknown so the prompt doesn't call it theirs.
-    const water = resolveWaterTarget(plan?.water_target_liters, waterTargetLiters);
+    const water = resolveWaterTarget(plan?.water_target_liters, profileWaterTargetLiters);
     const waterTarget = water.liters;
     const frac = (v: number) => Math.max(0, Math.min(1, v));
     const hasMetrics = !!metrics;
