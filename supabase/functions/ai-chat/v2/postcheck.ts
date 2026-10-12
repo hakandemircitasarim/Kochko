@@ -8,12 +8,17 @@
  *      anything not explicitly mild) = ∅, and every suggested exercise's (loads ∪ name dictionary) ∩
  *      injured regions = ∅ — shared/safety-invariants.ts, the dictionaries only ADD hits. A spine that
  *      could not be read makes any suggestion list unverifiable: no list goes out (fail-closed).
+ *      A TAG hit (the model's own allergens / may_contain / loads) always blocks. A hit only the NAME
+ *      dictionary makes while the tags are clean (isNameOnlyViolation) is blind to negation — live
+ *      2026-10-12, a regen named its dish "… deniz ürünü olmadan" and got a code refusal — so it is
+ *      sent to the judge, with the matched word named, and blocks unless the judge calls it clean.
  *   2. Prose judge (§7.2 nesir yargıcı): for a user with a severe constraint, an independent
  *      gpt-6-luna strict-schema call reads the prose for a food/exercise the lists missed (the hidden
  *      allergen: "mayonezli sandviç" with nothing in suggested_foods). Fail-closed: a judge error,
  *      timeout, refusal or malformed answer counts as a violation.
  *   3. On a violation: ONE regeneration naming the excluded items; if that still fails (or cannot
- *      run), a code-authored safe fallback that suggests nothing and keeps every other notice. Two
+ *      run), a code-authored safe fallback that suggests nothing, names only the constraints of what
+ *      was withheld (food → allergens, exercise → injuries) and keeps every other notice. Two
  *      consecutive turns never get the same fallback sentence.
  *   4. Mandatory lines (guarantees.ts mandatoryLines — the SAME function the handler runs again after
  *      any port, so nothing here is the only place a safety line lives): 112 / specialist referral,
@@ -26,21 +31,27 @@
  * A judge that cannot run inside it counts as failed (fail-closed) and a regen that cannot start
  * goes straight to the fallback — on the protective path the ready-made safety reply.
  *
- * Deliberate cost/latency decision (§3.3): for a user with a severe constraint EVERY reply with
- * prose is judged (one gpt-6-luna call, ~0.5–1.5 s), not only replies whose lists are non-empty —
- * code has no food/exercise lexicon to tell "a food name appears" (§7.2 (a)), and the hidden
- * allergen the judge exists for is exactly the one no list or dictionary names. A luna outage
- * therefore turns these users' replies into the safe fallback (fail-closed); log.judge records every
- * failure so the shadow can alert on it. Narrowing this is a protection removal (§7: shadow proof).
+ * Judge scope, a cost/latency decision (§3.3). 'always' (the default; eval, tests): EVERY reply with
+ * prose of a severe-constraint user is judged. Production runs 'suggestions' (LIVE_JUDGE_SCOPE,
+ * live.ts; the 2026-10-12 re-trial fix round: p50 13–14 s, the judge + its regen on the critical
+ * path of every turn, a motivation reply with no food in it regenerated): the judge runs
+ * when the reply carries a suggestion list, when Stage A read the message as one that asks for
+ * advice (a question, a "yesem?", a plan — the model's reading, not a keyword), or when the prose
+ * NAMES one of the user's own allergens / a move loading an injured region (the dictionaries, add-
+ * only: they can trigger a judge call, never clear anything). What it gives up: a food suggested in
+ * the prose of a report/chat reply, missing from the lists, whose name carries no dictionary word —
+ * the constitution's "every suggestion goes into the list" is then the only protection. The
+ * structural invariant, the name-only hits, the fail-closed judge and every code-owned line are
+ * unchanged. log.judge records 'skipped' per attempt, so the shadow sees how often it ran.
  */
 import type { CoachInput, CoachReply, CoachRun, PostcheckLog, PostcheckOutcome, PostcheckOutput, PostcheckRequest, RegenNote } from './contracts.ts';
 import { MIN_COACH_CALL_MS, MIN_JUDGE_CALL_MS, withinBudget } from './budgets.ts';
 import { vocabLabel } from './facts.ts';
 import {
-  failedReplyFor, mandatoryLines, regionLabel, requiredCategories, safeFallbackReply, type SafetyProfile, safetyProfileOf, suggestionCheck,
-  unverifiedFallbackReply, withCodeNotes,
+  failedReplyFor, hasSuggestions, mandatoryLines, regionLabel, requiredCategories, safeFallbackReply, type SafetyProfile, safetyProfileOf,
+  suggestionCheck, unverifiedFallbackReply, withCodeNotes,
 } from './guarantees.ts';
-import type { SuggestionViolation } from '../../shared/safety-invariants.ts';
+import { isNameOnlyViolation, proseDictionaryHits, type SuggestionViolation } from '../../shared/safety-invariants.ts';
 import { hasRequiredSafetyLine } from '../../shared/safety-tripwires.ts';
 import { MODELS, respond, type StructuredSchema, type Transport } from '../../shared/openai.ts';
 import type { CodeNote } from '../../shared/v2-db-types.ts';
@@ -63,6 +74,11 @@ export interface JudgeRequest {
   suggested_foods: CoachReply['suggested_foods'];
   suggested_exercises: CoachReply['suggested_exercises'];
   profile: SafetyProfile;
+  /**
+   * Suggestions whose NAME carries a word the dictionary ties to one of the user's constraints while
+   * their tags are clean (isNameOnlyViolation): the judge is asked to decide them explicitly.
+   */
+  nameOnly?: { name: string; constraints: string[] }[];
   /** What is left of the turn's budget for this call (postcheck also stops waiting at this point). */
   timeoutMs?: number;
 }
@@ -114,17 +130,24 @@ export const JUDGE_INSTRUCTIONS = [
   '- Yiyecek: kısıttaki alerjeni içeren ya da içerebilecek her şey (sos, hamur, kaplama, yağ, çapraz bulaşma riski yüksek yemekler dahil). Önerilen öğünün malzemelerini düşün; adında alerjen geçmese de içinde olabilir.',
   '- Hareket: sakat bölgeye yük bindiren her şey. Bölgesi bilinmeyen sakatlıkta yük bindiren her hareketi şüpheli say.',
   '- Yalnızca ÖNERİ sayılır: kişinin yediğini anmak, bir yiyeceğin alerjen içerdiği için önerilmediğini söylemek ya da kaçınılacaklar listesi vermek öneri değildir.',
+  '- Önerinin adı bir malzemenin çıkarıldığını söylüyorsa ("… olmadan", "-sız") o malzeme adına bakarak öneride sayılmaz; yemeğin geri kalanının kısıta dokunup dokunmadığına bak.',
   '- Emin değilsen violation = true; her ihlal için items listesine adını, türünü, hangi kısıta dokunduğunu ve tek cümlelik gerekçeyi yaz.',
 ].join('\n');
 
-function judgeUserText(r: JudgeRequest): string {
+export function judgeUserText(r: JudgeRequest): string {
   const lines = ['KİŞİNİN KISITLARI'];
-  if (r.profile.severeAllergens.length) lines.push(`- Ciddi alerjiler: ${r.profile.severeAllergens.map(vocabLabel).join(', ')}`);
-  if (r.profile.injuredRegions.length) lines.push(`- Sakat bölgeler: ${r.profile.injuredRegions.map(regionLabel).join(', ')}`);
+  if (r.profile.severeAllergens.length) lines.push(`- Ciddi alerjiler: ${[...new Set(r.profile.severeAllergens.map(vocabLabel))].join(', ')}`);
+  if (r.profile.injuredRegions.length) lines.push(`- Sakat bölgeler: ${[...new Set(r.profile.injuredRegions.map(regionLabel))].join(', ')}`);
   if (r.profile.unlocated.length) lines.push(`- Bölgesi bilinmeyen sakatlık/ameliyat: ${r.profile.unlocated.join(', ')}`);
   lines.push('', 'KOÇUN ÖNERİ LİSTESİ (etiketlerle)');
   lines.push(`- Yiyecekler: ${r.suggested_foods.length ? r.suggested_foods.map((f) => `${f.name} [${[...f.allergens, ...f.may_contain].join(', ') || 'etiket yok'}]`).join('; ') : 'yok'}`);
   lines.push(`- Hareketler: ${r.suggested_exercises.length ? r.suggested_exercises.map((e) => `${e.name} [${e.loads.join(', ') || 'yük yok'}]`).join('; ') : 'yok'}`);
+  if (r.nameOnly?.length) {
+    lines.push('', 'AYRICA KARAR VER');
+    for (const n of r.nameOnly) {
+      lines.push(`- "${n.name}": adında ${n.constraints.join(', ')} ile ilgili bir sözcük geçiyor ama etiketleri temiz. Bu öneri o kısıta gerçekten dokunuyor mu, yoksa ad yalnızca çıkarılan bir malzemeyi mi anıyor?`);
+    }
+  }
   lines.push('', 'KOÇUN CEVABI', r.reply);
   return lines.join('\n');
 }
@@ -187,8 +210,54 @@ export function referralFlagMismatch(input: CoachInput, reply: CoachReply): bool
 // ─── the T7 pipeline ───────────────────────────────────────────────────────────────────────────────
 
 export function emptyPostcheckLog(outcome: PostcheckOutcome): PostcheckLog {
-  return { outcome, invariant_hits: [], judge: [], judge_fail_reasons: [], regens: 0, budget_exhausted: false, referral_flag_mismatch: false, code_notes: [] };
+  return {
+    outcome, invariant_hits: [], judge: [], judge_fail_reasons: [], regens: 0, budget_exhausted: false, referral_flag_mismatch: false, code_notes: [],
+    name_only_hits: [], judge_items: [],
+  };
 }
+
+// ─── judge scope ───────────────────────────────────────────────────────────────────────────────────
+
+export type JudgeScope = 'always' | 'suggestions';
+
+/** What production runs (live.ts): see the header, "Judge scope". */
+export const LIVE_JUDGE_SCOPE: JudgeScope = 'suggestions';
+
+/** Stage A's reading of the message: does it ask for something a coach answers with advice? */
+const ADVICE_INTENTS: ReadonlySet<string> = new Set(['question', 'hypothetical', 'plan']);
+
+/**
+ * Why a reply would be judged under 'suggestions' scope (null = it is not): it carries a suggestion
+ * list ('lists'); Stage A read the message as a question, a "yesem?" or a plan ('asked' — the model's
+ * reading, never a keyword); or the prose names one of the user's own allergens / a move loading an
+ * injured region ('prose' — the dictionaries, which can only ADD this judge call). 'always' scope
+ * judges every reply ('always').
+ */
+export function judgeReason(
+  input: Pick<CoachInput, 'decision'>, reply: CoachReply, profile: SafetyProfile, scope: JudgeScope = 'always',
+): 'always' | 'lists' | 'asked' | 'prose' | null {
+  if (scope === 'always') return 'always';
+  if (hasSuggestions(reply)) return 'lists';
+  const d = input.decision;
+  const intent = isRec(d.intent) && typeof d.intent.primary === 'string' ? d.intent.primary : null;
+  const route = isRec(d.reply_route) ? d.reply_route.contract : null;
+  if ((intent !== null && ADVICE_INTENTS.has(intent)) || isRec(d.simulation) || route === 'plan') return 'asked';
+  const net = proseDictionaryHits(reply.reply, profile);
+  return net.allergens.length + net.regions.length > 0 ? 'prose' : null;
+}
+
+/** What the name dictionary matched on a name-only hit, in the user's words (for the judge's question). */
+function nameOnlyHint(v: SuggestionViolation): { name: string; constraints: string[] } {
+  return {
+    name: v.name,
+    constraints: [...new Set([...v.allergens.map((a) => vocabLabel(a.allergen)), ...v.injuries.map((i) => regionLabel(i.region))])],
+  };
+}
+
+const clip = (s: unknown, max: number): string => {
+  const t = typeof s === 'string' ? s.trim() : '';
+  return t.length > max ? `${t.slice(0, max - 1)}…` : t;
+};
 
 export interface PostcheckResult extends PostcheckOutput {
   /** reply.reply + the port's mandatory lines, appended last. */
@@ -205,11 +274,11 @@ export interface PostcheckDeps {
   /** null = no judge configured; a severe-constraint reply then cannot be confirmed (fail-closed). */
   judge: ProseJudge | null;
   /**
-   * 'always' (default): every reply of a severe-constraint user is judged — the only reading of
-   * "yemek ya da egzersiz adı geçen her cevap" that catches a food the lists missed. 'suggestions':
-   * only replies with a non-empty suggestion list (latency escape hatch, weaker).
+   * 'always' (default): every reply of a severe-constraint user is judged. 'suggestions' (production,
+   * LIVE_JUDGE_SCOPE): only a reply judgeReason() names — a suggestion list, a message Stage A read as
+   * asking for advice, or prose naming the user's own constraint. A name-only hit is judged in either.
    */
-  judgeScope?: 'always' | 'suggestions';
+  judgeScope?: JudgeScope;
   /**
    * Milliseconds left of the turn's ONE budget (coach + judge + regen). Undefined = unbounded.
    * ports.ts runStageB sets it: CRISIS_TIMEOUT_MS on the protective path (§7.2 "6 sn'yi aşarsa hazır cevap").
@@ -218,6 +287,7 @@ export interface PostcheckDeps {
 }
 
 interface Check {
+  /** The violations that block this reply: every tag hit, and the name-only hits the judge did not clear. */
   violations: SuggestionViolation[];
   unverified: boolean;
   judge: JudgeOutcome | null;
@@ -231,7 +301,7 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
   const remaining = deps.remainingMs ?? (() => Infinity);
   const failedJudge = (reason: string): JudgeOutcome => ({ status: 'failed', reason, ms: 0 });
 
-  const runJudge = async (reply: CoachReply): Promise<JudgeOutcome> => {
+  const runJudge = async (reply: CoachReply, nameOnly: SuggestionViolation[]): Promise<JudgeOutcome> => {
     if (!deps.judge) return failedJudge('no_judge');
     const left = remaining();
     if (left < MIN_JUDGE_CALL_MS) {
@@ -240,6 +310,7 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
     }
     const req: JudgeRequest = {
       reply: reply.reply, suggested_foods: reply.suggested_foods, suggested_exercises: reply.suggested_exercises, profile,
+      ...(nameOnly.length ? { nameOnly: nameOnly.map(nameOnlyHint) } : {}),
       ...(Number.isFinite(left) ? { timeoutMs: left } : {}),
     };
     // A judge that throws synchronously is a failed judge too (never an escape from "never throws").
@@ -247,24 +318,48 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
     return await withinBudget(call, left, () => failedJudge('timeout'));
   };
 
+  let attempt = 0;
   const check = async (reply: CoachReply): Promise<Check> => {
+    attempt++;
     const structural = suggestionCheck(reply, profile);
-    const violations = !structural.ok && structural.reason === 'violation' ? structural.violations : [];
+    const all = !structural.ok && structural.reason === 'violation' ? structural.violations : [];
     const unverified = !structural.ok && structural.reason === 'unverified';
-    log.invariant_hits.push(violations.map((v) => v.name));
-    const hasSuggestions = reply.suggested_foods.length + reply.suggested_exercises.length > 0;
+    // A tag hit is the model's own statement and blocks; a name-only hit is the judge's to decide.
+    const tagHits = all.filter((v) => !isNameOnlyViolation(v));
+    const nameOnly = all.filter(isNameOnlyViolation);
+    log.invariant_hits.push(tagHits.map((v) => v.name));
+    log.name_only_hits!.push(nameOnly.map((v) => v.name));
     const judgeIt = !unverified && profile.needsJudge && !crisis && reply.reply.trim() !== ''
-      && ((deps.judgeScope ?? 'always') === 'always' || hasSuggestions);
+      && (nameOnly.length > 0 || judgeReason(input, reply, profile, deps.judgeScope ?? 'always') !== null);
     let judge: JudgeOutcome | null = null;
     if (judgeIt) {
-      judge = await runJudge(reply);
+      judge = await runJudge(reply, nameOnly);
       log.judge.push(judge.status === 'failed' ? 'failed' : judge.violation ? 'violation' : 'clean');
       if (judge.status === 'failed') log.judge_fail_reasons.push(judge.reason);
+      if (judge.status === 'ok' && judge.violation) {
+        for (const i of judge.items) {
+          log.judge_items!.push({ attempt, name: clip(i.name, 80), kind: clip(i.kind, 12), constraint: clip(i.constraint, 80), reason: clip(i.reason, 200) });
+        }
+      }
     } else {
       log.judge.push('skipped');
     }
-    const judgeBad = judge !== null && (judge.status === 'failed' || judge.violation);
+    const judgeClean = judge !== null && judge.status === 'ok' && !judge.violation;
+    const violations = judgeClean ? tagHits : all;
+    const judgeBad = judge !== null && !judgeClean;
     return { violations, unverified, judge, bad: unverified || violations.length > 0 || judgeBad };
+  };
+
+  // What the withheld suggestions were (food → allergens, exercise → injuries in the fallback's words).
+  const kinds = new Set<'food' | 'exercise'>();
+  const noteKinds = (c: Check, reply: CoachReply) => {
+    for (const v of c.violations) kinds.add(v.kind);
+    if (c.judge?.status === 'ok') for (const i of c.judge.items) if (i.kind === 'food' || i.kind === 'exercise') kinds.add(i.kind);
+    // A failed judge names nothing: what the draft suggested is what was withheld.
+    if (c.judge?.status === 'failed') {
+      if (reply.suggested_foods.length) kinds.add('food');
+      if (reply.suggested_exercises.length) kinds.add('exercise');
+    }
   };
 
   const finish = (reply: CoachReply, outcome: PostcheckOutcome, codeAuthored: boolean): PostcheckResult => {
@@ -285,12 +380,20 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
   if (c1.unverified) {
     return input.tripwire.kind === 'protective' ? failedPath() : finish(unverifiedFallbackReply(input), 'safe_fallback', true);
   }
+  noteKinds(c1, first.reply);
 
+  // One entry per item: a name-only hit the judge then flagged is named by the structure and the judge.
+  const seen = new Set<string>();
   const note: RegenNote = {
     excluded: [
       ...c1.violations.map((v) => ({ name: v.name, why: violationWhy(v) })),
       ...(c1.judge?.status === 'ok' ? c1.judge.items.map((i) => ({ name: i.name, why: i.reason || i.constraint })) : []),
-    ],
+    ].filter((x) => {
+      const k = x.name.trim().toLocaleLowerCase('tr');
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }),
     judgeFailed: c1.judge?.status === 'failed',
   };
   const left = remaining();
@@ -305,14 +408,15 @@ export async function postcheckReply(input: CoachInput, first: CoachRun, deps: P
     if (second && second.status === 'ok' && second.reply) {
       const c2 = await check(second.reply);
       if (!c2.bad) return finish(second.reply, 'regen', false);
+      noteKinds(c2, second.reply);
     }
   }
   // A protective (crisis/ED) turn falls back to its ready-made safety reply, never to a food fallback.
   if (input.tripwire.kind === 'protective') return failedPath();
-  return finish(safeFallbackReply(input, profile), 'safe_fallback', true);
+  return finish(safeFallbackReply(input, profile, kinds), 'safe_fallback', true);
 }
 
-/** postcheckReply as the T7 PostcheckPort (ports.ts stageBPorts). */
+/** postcheckReply as the T7 PostcheckPort (ports.ts stageBPorts; live.ts passes LIVE_JUDGE_SCOPE). */
 export function postcheckPort(deps: Pick<PostcheckDeps, 'judge' | 'judgeScope'>): (p: PostcheckRequest) => Promise<PostcheckOutput> {
   return (p) => postcheckReply(p.input, p.first, { ...deps, regen: p.regen, remainingMs: p.remainingMs });
 }

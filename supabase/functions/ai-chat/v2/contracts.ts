@@ -190,6 +190,13 @@ export interface PostcheckLog {
   /** The coach set referral_included but its text had no 112/referral line (code appended it). */
   referral_flag_mismatch: boolean;
   code_notes: CodeNoteKind[];
+  /**
+   * Per attempt: names only the NAME dictionary hit while the item's own tags were clean — sent to the
+   * judge, not blocked outright (invariant_hits then lists the tag hits only). Absent = none.
+   */
+  name_only_hits?: string[][];
+  /** What the judge flagged on a 'violation' verdict, per attempt (clipped) — why a draft was regenerated. */
+  judge_items?: { attempt: number; name: string; kind: string; constraint: string; reason: string }[];
 }
 
 // ─── the ports ───────────────────────────────────────────────────────────────────────────────────

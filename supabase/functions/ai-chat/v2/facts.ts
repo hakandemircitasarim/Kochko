@@ -38,6 +38,9 @@ import {
 } from '../../shared/write-registry/mod.ts';
 import { resolveDay } from '../../shared/write-registry/util.ts';
 import { allergenSpine } from '../../shared/safety-invariants.ts';
+import { hasRequiredSafetyLine } from '../../shared/safety-tripwires.ts';
+import { getLocalParts } from '../../shared/day-boundary.ts';
+import { stripMachineMarkers } from './envelope.ts';
 
 /** Block headings Stage B reads (the constitution names BU TURDA OLANLAR). */
 export const FACT_BLOCK_TITLES = {
@@ -234,6 +237,24 @@ const HOLD_OP_TR: Record<string, string> = {
 };
 
 /**
+ * The local day of the newest recent coach reply that carries a specialist referral — the code-owned
+ * ED line or the coach's own words, judged by the SAME text check the guarantees use for that line
+ * (shared/safety-tripwires.ts hasRequiredSafetyLine 'ed'; a waved-away mention does not count). Reads
+ * only the coach's replies in the loaded history window (TurnInput.history, Stage B's own window): an
+ * older referral is not a fact here, so the coach may refer once more after that many turns.
+ */
+export function lastReferralDay(ti: TurnInput): string | null {
+  for (let i = ti.history.length - 1; i >= 0; i--) {
+    const h = ti.history[i];
+    // The visible text only: the hidden "Neden?" block is not something the person was told.
+    if (h.role !== 'assistant' || !hasRequiredSafetyLine(stripMachineMarkers(h.content ?? ''), 'ed')) continue;
+    const at = Date.parse(h.created_at);
+    return Number.isFinite(at) ? getLocalParts(ti.local.tz, new Date(at)).dateStr : ti.local.date;
+  }
+  return null;
+}
+
+/**
  * KULLANICI DURUMU lines from the TurnInput (+ this turn's budget). Facts only; an empty section is
  * left out instead of printed as "yok", except constraints, whose absence is itself a safety fact.
  */
@@ -259,7 +280,15 @@ export function renderUserState(ti: TurnInput, budget: BudgetFacts | null = null
       watch: 'izleniyor', amber: 'yükselmiş (amber)', red: 'yüksek (kırmızı)', unknown: 'okunamadı',
     };
     const gated = tier === 'amber' || tier === 'red' || tier === 'unknown';
-    lines.push(`Yeme bozukluğu risk düzeyi: ${TIER_TR[tier] ?? tier}${gated ? ' (kodda hedef düşürme ve kalori açığı kapalı)' : ''}`);
+    // Live 2026-10-12 (mem): the coach quoted this line to the user ("zorlanma riski yüksek göründüğü
+    // için…") on allergy turns. The tier shapes HOW it speaks; it is never a thing to tell the person.
+    lines.push(`Yeme bozukluğu risk düzeyi: ${TIER_TR[tier] ?? tier}${gated ? ' (kodda hedef düşürme ve kalori açığı kapalı)' : ''}; iç bilgi, kişiye söyleme`);
+  }
+  // …and repeated the same referral paragraph word for word in back-to-back replies: nothing told it
+  // a referral had already been made. The fact is read off its own recent replies (lastReferralDay).
+  const referral = lastReferralDay(ti);
+  if (referral) {
+    lines.push(`Uzman yönlendirmesi: ${dayLabelTr(referral, ti.local.date)} yapıldı; yeni bir yeme bozukluğu işareti yoksa ve kişi sormadıkça tekrarlama`);
   }
 
   if (ti.constraints.length > 0) {

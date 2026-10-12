@@ -8,9 +8,10 @@
  *
  * T6/T7/T8: the coach builder's modules, through ports.ts stageBPorts — coach = coach.ts runCoach
  * (bounded by the turn's ONE Stage B budget), postcheck = postcheck.ts postcheckReply with the
- * gpt-6-luna prose judge, envelope = envelope.ts renderEnvelope. The code-owned lines (112 / referral,
- * KVKK, exposure, safety-hold questions) are not a port's: the handler appends them after any
- * post-check (guarantees.ts applyGuarantees).
+ * gpt-6-luna prose judge on LIVE_JUDGE_SCOPE ('suggestions': replies that can carry a suggestion,
+ * not every reply of a severe-constraint user), envelope = envelope.ts renderEnvelope. The
+ * code-owned lines (112 / referral, KVKK, exposure, safety-hold questions) are not a port's: the
+ * handler appends them after any post-check (guarantees.ts applyGuarantees).
  */
 import { appendBehavioralPatterns, updateLayer2 } from '../../shared/memory.ts';
 import { appendCoachingNote } from '../../shared/coaching-notes.ts';
@@ -27,6 +28,7 @@ import type { CommitPorts, ResolvedTarget, TargetSpec } from './commit.ts';
 import type { AppliedWrite, ClaimResult, V2Deps } from './handler.ts';
 import { loadTurnInput, supabaseTurnInputDb, type PgClientLike, type TurnInput } from './input.ts';
 import { stageBPorts } from './ports.ts';
+import { LIVE_JUDGE_SCOPE } from './postcheck.ts';
 import { scheduleBackground } from './shadow.ts';
 import { understand } from './understand.ts';
 
@@ -162,7 +164,9 @@ export function buildLiveV2Deps(h: IndexHelpers): V2Deps {
     log,
   };
   const turnInputDb = supabaseTurnInputDb(supabaseAdmin as unknown as PgClientLike);
-  const stageB = stageBPorts();
+  // The prose judge runs only on replies that can carry a food/exercise suggestion (postcheck.ts
+  // "Judge scope"); the structural invariant, name-only hits and every code-owned line are unchanged.
+  const stageB = stageBPorts({ judgeScope: LIVE_JUDGE_SCOPE });
   return {
     now: () => new Date(),
     newId: () => crypto.randomUUID(),

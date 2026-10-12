@@ -495,9 +495,22 @@ Deno.test('suggestion invariant: a severe-allergen suggestion → ONE regen nami
   assertEquals(postcheckOutcome(coachRowOf(t)), 'regen');
 });
 
+Deno.test('ai_turn_log: a judge violation logs WHAT the judge flagged (name, constraint, reason) and the name-only hits (re-trial: no way to tell why a draft was regenerated)', async () => {
+  const satay = coachReply('Akşam satay soslu tavuk dene.', { suggested_foods: [{ name: 'satay soslu tavuk', allergens: [], may_contain: [] }] });
+  const flagged = { violation: true, items: [{ name: 'satay soslu tavuk', kind: 'food', constraint: 'fıstık', reason: 'satay sosu yer fıstığıyla yapılır' }] };
+  const t = await turn({ message: 'akşam ne yiyeyim?' }, {
+    stageA: parsed(sampleDecision()), coach: (n) => (n === 1 ? satay : yogurt), judge: (n) => (n === 1 ? flagged : { violation: false, items: [] }),
+  });
+  assertEquals(t.env!.message, yogurt.reply);
+  const pc = (coachRowOf(t).issues as Array<Record<string, unknown>>).find((i) => i.code === 'postcheck')!;
+  assertEquals([pc.value, pc.judge], ['regen', ['violation', 'clean']]);
+  assertEquals(pc.judge_items, [{ attempt: 1, name: 'satay soslu tavuk', kind: 'food', constraint: 'fıstık', reason: 'satay sosu yer fıstığıyla yapılır' }]);
+  assertEquals([pc.invariant_hits, pc.name_only_hits], [[[], []], [[], []]], '"satay" is in no dictionary: only the judge saw it');
+});
+
 Deno.test('suggestion invariant: still violating after the regen → the safe fallback (receipts kept, no memory from the bad reply)', async () => {
   const bad = coachReply('Squat ve fıstık ezmesi!', {
-    suggested_foods: [{ name: 'fıstık ezmesi', allergens: [], may_contain: [] }],
+    suggested_foods: [{ name: 'fıstık ezmesi', allergens: ['peanut'], may_contain: [] }],
     suggested_exercises: [{ name: 'squat', loads: ['knee'] }],
     memory: [SAMPLE_WRITES.memory_note],
   });
@@ -592,7 +605,8 @@ Deno.test('a post-check port that lets a violating suggestion through: the handl
   const leaky: PostcheckPort = (p) => Promise.resolve({ reply: p.first.reply!, codeNotes: [], codeAuthored: false, log: emptyPostcheckLog('first') });
   const t = await turn({ message: 'akşam ne yiyeyim?' }, { stageA: parsed(sampleDecision()), coach: () => peanutToast, postcheck: leaky });
   assert(!t.env!.message.includes('fıstık ezmeli tost'));
-  assertStringIncludes(t.env!.message, SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin ve diz sakatlığın'));
+  assertStringIncludes(t.env!.message, SAFE_FALLBACK_VARIANTS[0]('fıstık alerjin'));
+  assert(!t.env!.message.includes('diz sakatlığın'), 'a withheld food never cites the knee (live 2026-10-12)');
   assert(issueCodes(coachRowOf(t)).includes('guarantee_suggestion_violation'));
   assert(!t.env!.message.includes('<reasoning>protein'), 'nothing of the rejected draft (its why) reaches the screen');
 });

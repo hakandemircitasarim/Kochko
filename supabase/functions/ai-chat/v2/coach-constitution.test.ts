@@ -73,6 +73,23 @@ Deno.test('constitution v2 (live trial 2026-10-11): the principles each trial de
   assert(c.includes("112'yi koşullu tek cümleyle an, sayıyı sor") && c.includes("kişiyi hemen 112'yi aramaya"));
 });
 
+Deno.test('constitution v3 (re-trial 2026-10-12): the principles each re-trial defect was traced to', () => {
+  const c = COACH_CONSTITUTION;
+  // final2#17: a wrongly deleted weigh-in was re-written and the coach said it "is there" — own it.
+  assert(c.includes('senin hatanı onarıyorsa bunu da söyle') && c.includes('hiç olmamış gibi "yerinde" deme'));
+  assert(c.includes('önceki cevabınla çelişirsen bunu an'), 'a silent contradiction of its own earlier claim (final2#13 → #15)');
+  // mem#7/#11: the lead-in re-worded the code-owned hold question ("güvenlik filtreleri" twice).
+  assert(c.includes('Güvenlik onayının sorusunu kod sona aynen ekler; soruyu da gerekçesini de'));
+  // final2#11/#14: the halal + seafood caveat in every food reply.
+  assert(c.includes('Kalıcı bir kısıtı (helal, alerji) her öneride hatırlatma') && c.includes('çapraz bulaşma riski varsa söyle'));
+  // mem#2/#2c: "zorlanma riski yüksek göründüğü için…" — the tier quoted, the referral paragraph repeated.
+  assert(c.includes('Risk düzeyi iç bilgidir, kişiye söyleme'));
+  assert(c.includes('olgularda son yönlendirmenin günü varsa yeni bir işaret olmadıkça ve kişi sormadıkça tekrarlama'));
+  assert(c.includes('bir uzmana (diyetisyen, psikolog) yönlendirmeyi kendi sesinle'), 'the referral itself stays the coach\'s duty');
+  // final2#10: the regen wrote "… deniz ürünü olmadan" into the dish name.
+  assert(c.includes('Listedeki ad yalnızca yemeğin ya da hareketin adıdır; çıkardığın malzemeyi adına değil cevaba yaz.'));
+});
+
 Deno.test('constitution: the 112 / referral line is code-owned — no claim that the model\'s flag stops it (Faz 3 review)', () => {
   // guarantees.ts judges the line by the TEXT and never reads referral_included (it is only logged):
   // telling the coach the flag prevents a second copy would be a false statement about the code.
@@ -107,6 +124,6 @@ Deno.test('coach prefix: refuses an empty capability list instead of letting the
 });
 
 Deno.test('coach cache key is per user and versioned', () => {
-  assertEquals(coachCacheKey('u1'), 'kochko-coach:v2:u1');
+  assertEquals(coachCacheKey('u1'), 'kochko-coach:v3:u1');
   assert(coachCacheKey('u1') !== coachCacheKey('u2'));
 });

@@ -150,6 +150,9 @@ export function renderRegenNote(note: RegenNote): string {
   if (note.excluded.length) {
     lines.push(`Şunlar kısıtlarla çakışıyor: ${note.excluded.map((x) => `${x.name} (${x.why})`).join('; ')}.`);
     lines.push('Bunları ve benzerlerini önermeden cevabı yeniden yaz; önerdiğin her yiyeceği ve hareketi öneri listelerine etiketleriyle yaz.');
+    // Live 2026-10-12: the regen wrote "… deniz ürünü olmadan" into the dish name and the name check
+    // refused it. The list name is the dish; what was left out belongs in the reply text.
+    lines.push('Listedeki ad yalnızca yemeğin ya da hareketin adıdır ("fırın tavuk"); neyi çıkardığını ya da neye dikkat edileceğini adına değil cevap metnine yaz.');
   }
   if (note.judgeFailed) {
     lines.push('Bağımsız denetim önceki taslağı doğrulayamadı. Kişinin alerjilerini ya da sakat bölgesini içerebilecek hiçbir yiyecek veya hareket önermeden, emin olduğun seçeneklerle yeniden yaz.');

@@ -8,7 +8,10 @@
  *      the name dictionaries ∩ severe allergens / injured regions = ∅, the user's spine plus this
  *      turn's own protective declarations). A reply that still violates it — or carries suggestions
  *      while the spine could not be read — does not go out: the code-authored safe fallback does
- *      (on the protective path: today's ready-made safety reply). The default port (postcheck.ts)
+ *      (on the protective path: today's ready-made safety reply), naming only the constraints of
+ *      what was withheld (food → allergens, exercise → injuries). A hit only the NAME dictionary
+ *      makes while the item's tags are clean passes only when the port's prose judge called this
+ *      exact reply clean (judgeClearedFinal); a tag hit never does. The default port (postcheck.ts)
  *      already enforces this with its ONE regen; this re-check only fires when a port did not.
  *   2. The code-owned lines, appended LAST and only when missing, never removing a character:
  *        112 / specialist referral when the tripwire resolution demands it (safetyLines: judged by the
@@ -31,7 +34,8 @@ import { isSafetyHold, opTitle, orderHolds, vocabLabel } from './facts.ts';
 import { turnRefs, type TurnInput } from './input.ts';
 import { quoteLine } from './stage-a-request.ts';
 import {
-  allergenSpine, checkSuggestionInvariants, injuredRegionsFromSpine, type SpineRow, type SuggestionViolation, unlocatedInjuries,
+  allergenSpine, checkSuggestionInvariants, injuredRegionsFromSpine, isNameOnlyViolation, type SpineRow, type SuggestionViolation,
+  unlocatedInjuries,
 } from '../../shared/safety-invariants.ts';
 import { hasRequiredSafetyLine, REQUIRED_SAFETY_LINE, type SafetyCategory } from '../../shared/safety-tripwires.ts';
 import { buildSupplementAllergenLine, replyWarnsAboutExposure } from '../../shared/supplement-allergens.ts';
@@ -99,13 +103,21 @@ export type SuggestionCheck =
  * §7.1 on structure: suggestions with no severe-allergen / injured-region hit pass; suggestions while
  * the spine is unreadable are unverifiable (no list goes out — fail-closed). No suggestions: nothing
  * to check here (the prose is the judge's, postcheck.ts).
+ *
+ * `nameOnlyCleared`: the independent prose judge read THIS reply and called it clean, so a hit only
+ * the name dictionary made (the item's own tags clean — isNameOnlyViolation, e.g. "ızgara tavuk,
+ * deniz ürünü olmadan") is not a violation. A tag hit always is, whatever the judge said.
  */
-export function suggestionCheck(reply: CoachReply, profile: SafetyProfile): SuggestionCheck {
+export function suggestionCheck(reply: CoachReply, profile: SafetyProfile, opts: { nameOnlyCleared?: boolean } = {}): SuggestionCheck {
   if (!hasSuggestions(reply)) return { ok: true };
   if (profile.unknown) return { ok: false, reason: 'unverified' };
-  const violations = suggestionViolations(reply, profile);
+  const all = suggestionViolations(reply, profile);
+  const violations = opts.nameOnlyCleared ? all.filter((v) => !isNameOnlyViolation(v)) : all;
   return violations.length > 0 ? { ok: false, reason: 'violation', violations } : { ok: true };
 }
+
+/** What a withheld suggestion was: food (allergens), exercise (injuries), or both/unknown (undefined). */
+export type SuggestionKinds = ReadonlySet<'food' | 'exercise'>;
 
 // ─── code-authored replies ─────────────────────────────────────────────────────────────────────────
 
@@ -113,12 +125,26 @@ export function regionLabel(id: string): string {
   return (BODY_PARTS as Record<string, string>)[id] ?? id;
 }
 
-function constraintPhrase(p: SafetyProfile): string {
+/**
+ * The constraints a withheld suggestion clashed with, named by what was withheld (live 2026-10-12: a
+ * dinner question's fallback also cited the knee). Food → allergens only, exercise → injuries only;
+ * no kind known (a judge that could not run) → every constraint, as before.
+ */
+export function constraintPhrase(p: SafetyProfile, kinds?: SuggestionKinds): string {
+  const any = !kinds || kinds.size === 0;
+  const food = any || kinds!.has('food');
+  const exercise = any || kinds!.has('exercise');
   const bits: string[] = [];
-  if (p.severeAllergens.length) bits.push(`${p.severeAllergens.map(vocabLabel).join(', ')} alerjin`);
-  if (p.injuredRegions.length) bits.push(`${p.injuredRegions.map(regionLabel).join(', ')} sakatlığın`);
-  if (!p.injuredRegions.length && p.unlocated.length) bits.push('sakatlığın');
+  // One label per allergen: a same-turn declaration is in the spine by id AND by word ('egg', 'yumurta').
+  if (food && p.severeAllergens.length) bits.push(`${[...new Set(p.severeAllergens.map(vocabLabel))].join(', ')} alerjin`);
+  if (exercise && p.injuredRegions.length) bits.push(`${[...new Set(p.injuredRegions.map(regionLabel))].join(', ')} sakatlığın`);
+  if (exercise && !p.injuredRegions.length && p.unlocated.length) bits.push('sakatlığın');
   return bits.join(' ve ') || 'kısıtların';
+}
+
+/** The kinds of the suggestions that were withheld (violation kinds), for constraintPhrase. */
+export function violationKinds(vs: readonly SuggestionViolation[]): Set<'food' | 'exercise'> {
+  return new Set(vs.map((v) => v.kind));
 }
 
 /** Two wordings: the same fallback sentence never appears in two consecutive replies (§7.1). */
@@ -158,8 +184,8 @@ function withLead(input: CoachInput, text: string): CoachReply {
   return emptyReply(lead ? `${lead} ${text}` : text);
 }
 
-export function safeFallbackReply(input: CoachInput, profile: SafetyProfile): CoachReply {
-  const c = constraintPhrase(profile);
+export function safeFallbackReply(input: CoachInput, profile: SafetyProfile, kinds?: SuggestionKinds): CoachReply {
+  const c = constraintPhrase(profile, kinds);
   const first = SAFE_FALLBACK_VARIANTS[0](c);
   return withLead(input, lastAssistant(input).includes(first) ? SAFE_FALLBACK_VARIANTS[1](c) : first);
 }
@@ -401,6 +427,19 @@ function usableReply(v: unknown): CoachReply | null {
 }
 
 /**
+ * Did the port's prose judge read the reply it returned and call it clean? Only then may a
+ * name-dictionary-only hit go out (suggestionCheck nameOnlyCleared). Read off the port's own log: the
+ * last judge verdict belongs to the returned reply exactly when the outcome is 'first' or 'regen'
+ * (postcheck.ts pushes one verdict per check, in order). No log, a code-authored reply or any other
+ * verdict → not cleared (fail-closed). A TAG hit never depends on this.
+ */
+export function judgeClearedFinal(out: unknown): boolean {
+  if (!isRec(out) || out.codeAuthored === true || !isRec(out.log)) return false;
+  const judge = Array.isArray(out.log.judge) ? out.log.judge : [];
+  return (out.log.outcome === 'first' || out.log.outcome === 'regen') && judge.length > 0 && judge[judge.length - 1] === 'clean';
+}
+
+/**
  * The handler's FINAL T7 step, after ANY post-check port: the suggestion invariant on structure, then
  * the code-owned lines appended LAST. Append-only: the port's text and notes are kept as they are; a
  * reply is replaced only when its suggestion lists break §7.1 (or it is unusable), by a code-authored
@@ -419,12 +458,12 @@ export function applyGuarantees(
     issues.push('guarantee_unusable_reply');
   }
   const profile = safetyProfileOf(input.turnInput, input.decision);
-  const check = suggestionCheck(reply, profile);
+  const check = suggestionCheck(reply, profile, { nameOnlyCleared: judgeClearedFinal(out) });
   if (!check.ok) {
     issues.push(`guarantee_suggestion_${check.reason}`);
     reply = input.tripwire.kind === 'protective'
       ? protectiveFallbackReply(input.tripwire)
-      : check.reason === 'unverified' ? unverifiedFallbackReply(input) : safeFallbackReply(input, profile);
+      : check.reason === 'unverified' ? unverifiedFallbackReply(input) : safeFallbackReply(input, profile, violationKinds(check.violations));
     codeAuthored = true;
   }
   const added = mandatoryLines(input, reply, { codeAuthored, existing: notes });

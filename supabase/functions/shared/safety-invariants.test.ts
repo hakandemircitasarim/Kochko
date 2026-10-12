@@ -11,6 +11,8 @@ import {
   checkSuggestionInvariants,
   injuredRegionsFromSpine,
   injuryLoadHit,
+  isNameOnlyViolation,
+  proseDictionaryHits,
   severeAllergenSubjects,
   unlocatedInjuries,
 } from './safety-invariants.ts';
@@ -223,4 +225,36 @@ Deno.test('T7: a reply\'s suggestion lists are checked in one call; violations n
   );
   assertEquals(v.map((x) => `${x.kind}:${x.name}`), ['food:Mayonezli ton balıklı sandviç', 'food:Köfte', 'exercise:Wall sit']);
   assertEquals(checkSuggestionInvariants({ foods: [{ name: 'Elma' }], exercises: [] }, { severeAllergens: [], injuredRegions: [] }), []);
+});
+
+Deno.test('isNameOnlyViolation: only the name dictionary hit while the tags were clean (live 2026-10-12: "… deniz ürünü olmadan")', () => {
+  const [negated, tagged, mixed, squatName, squatLoad] = checkSuggestionInvariants(
+    {
+      foods: [
+        { name: 'Izgara tavuk, deniz ürünü olmadan', allergens: [], may_contain: [] },
+        { name: 'Fırın levrek', allergens: ['fish'], may_contain: [] },
+        { name: 'Karidesli makarna', allergens: ['gluten'], may_contain: ['egg'] },
+      ],
+      exercises: [{ name: 'Squat (dizi zorlamadan)', loads: ['shoulder'] }, { name: 'Squat', loads: ['knee'] }],
+    },
+    { severeAllergens: ['deniz ürünleri', 'yumurta'], injuredRegions: ['knee'] },
+  );
+  assertEquals(negated.allergens.map((a) => a.via), ['name'], 'the dictionary cannot read the negation');
+  assertEquals(isNameOnlyViolation(negated), true);
+  assertEquals(isNameOnlyViolation(tagged), false, 'the model\'s own tag is never second-guessed');
+  assertEquals(mixed.allergens.map((a) => a.via), ['name', 'may_contain']);
+  assertEquals(isNameOnlyViolation(mixed), false, 'one tag hit makes the whole item a tag hit');
+  assertEquals([isNameOnlyViolation(squatName), isNameOnlyViolation(squatLoad)], [true, false]);
+});
+
+Deno.test('proseDictionaryHits: which of the user\'s own constraints a free text NAMES (add-only judge trigger)', () => {
+  const safety = { severeAllergens: ['fıstık', 'deniz ürünleri'], injuredRegions: ['knee'] };
+  assertEquals(proseDictionaryHits('Ara öğünde bir kaşık fıstık ezmesi iyi gider.', safety), { allergens: ['fıstık'], regions: [] });
+  assertEquals(proseDictionaryHits('Akşam fırında somon dene.', safety), { allergens: ['deniz ürünleri'], regions: [] });
+  assertEquals(proseDictionaryHits('Yarın 20 dakika koşuya çık.', safety), { allergens: [], regions: ['knee'] });
+  assertEquals(proseDictionaryHits('Bugün düşük hissetmen normal; akşam normal bir öğün ye.', safety), { allergens: [], regions: [] });
+  // A canonical id spine row ('peanut') reads the same Turkish prose.
+  assertEquals(proseDictionaryHits('Fıstık ezmeli tost ye.', { severeAllergens: ['peanut'], injuredRegions: [] }).allergens, ['peanut']);
+  assertEquals(proseDictionaryHits('', safety), { allergens: [], regions: [] });
+  assertEquals(proseDictionaryHits('Koşu yap.', { severeAllergens: [], injuredRegions: [] }), { allergens: [], regions: [] });
 });
