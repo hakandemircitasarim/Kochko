@@ -81,11 +81,21 @@ export { estimateTokens, TR_CHARS_PER_TOKEN } from '../../shared/write-registry/
  * reason only when nothing else is written). Measured: rules ≈2079, prefix ≈13888 (+32; SCHEMA v6
  * adds no tokens). Ceilings: understandRules 2050 → 2085, stageAPrefix 13860 → 13895 (+35 each, within
  * the brief's +60 allowance); few-shots unchanged.
+ * 2026-10-12 (prompt v10 + SCHEMA v7, the re-trial): "bugün 14 litre su içtim" went to the emergency
+ * contract, the first "hafif aslında" came back clarify-only, "öğlen yedim" at 09:23 became today's
+ * lunch. Fixed at principle level: rule 9 untangled (the reading rule vs the acute claim, which now
+ * carries the user's verbatim words — the schema's new acute_evidence_quote, +23 tokens), rule 10 (a
+ * restated severity is written), rule 3 (a meal time after the clock is not today) + the tetik_gercek
+ * quote and one ŞİMDİ line on aday_ayni_degil (live probes: the rule sentence alone moved 0/3 → 1/3;
+ * with the example's time 3/3). Trimmed first: the intro, rule 4/5/6/11 examples, rule 7's "soru
+ * hiçbir kaydı silmez" (duzeltme_sorusu teaches it), rule 9/10/13 wording. Measured: rules ≈2113,
+ * few-shots ≈3339, schema ≈5170, prefix ≈13971. Unavoidable raise inside the brief's +80: rules
+ * 2085 → 2115 (+30), stageAPrefix 13895 → 13975 (+80); few-shots unchanged.
  */
 export const PROMPT_BUDGETS = {
   constitution: [2400, 3600],
-  understandRules: [900, 2085],
+  understandRules: [900, 2115],
   understandFewShots: [1500, 3350],
   exemplars: [1100, 2400],
-  stageAPrefix: [9000, 13895],
+  stageAPrefix: [9000, 13975],
 } as const satisfies Record<string, readonly [number, number]>;

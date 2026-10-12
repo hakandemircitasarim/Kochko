@@ -79,6 +79,12 @@ export const REPLY_CONTRACTS = {
  * Head of the understanding envelope: before the write arrays. Field notes (`tr`) here are only
  * what the Stage A rules (ai-chat/v2/understand-prompt.ts: intent, safety reading, self-check,
  * routing) do not already say — the understand schema carries no descriptions.
+ *
+ * acute_evidence_quote (SCHEMA v7, retrial 2026-10-12): "bugün 14 litre su içtim" — no symptom, no
+ * tripwire — came back acute_medical=true and the turn went to the emergency contract. An acute
+ * claim now carries its evidence the way ed_signal does: the user's OWN words describing the
+ * symptom or event, verbatim (validate.ts safety.acute). Rule 9 of the Stage A prompt explains it;
+ * no `tr` here (the doc's "Diğer alanlar" would repeat the rule).
  */
 export const ENVELOPE_HEAD = {
   intent: f.obj({
@@ -88,6 +94,7 @@ export const ENVELOPE_HEAD = {
   }),
   safety: f.obj({
     acute_medical: f.bool(),
+    acute_evidence_quote: f.text({ nullable: true, max: 160 }),
     self_harm: f.bool(),
     ed_signal: f.obj({
       category: f.enum(ED_CATEGORIES, { tr: 'illness_vomiting = hastalık/zehirlenme kusması, YB sinyali değil' }),

@@ -254,7 +254,10 @@ export function stageASafetyOutcome(
   const safety = isRec(outcome.decision.safety) ? outcome.decision.safety : {};
   const readings = tripwireReadingsOf(outcome.decision, scan);
   const positives: StageASafetyPositive[] = [];
-  if (safety.acute_medical === true) positives.push({ category: 'emergency' });
+  // The claim's evidence (validate.ts safety.acute, SCHEMA v7): resolveTripwires does not protect on
+  // a bare acute_medical; a validation without the field (older callers) leaves it unknown = evidenced.
+  const acute = validation.safety.acute;
+  if (safety.acute_medical === true) positives.push({ category: 'emergency', ...(acute ? { evidenced: acute.accepted } : {}) });
   if (safety.self_harm === true) positives.push({ category: 'self_harm' });
   const ed = validation.safety.ed_signal;
   if (ed?.accepted && ed.escalate) positives.push({ category: 'ed', ed_severity: ed.escalate });

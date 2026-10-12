@@ -53,7 +53,7 @@ import type { ActionReceipt, TurnEnvelope } from '../../shared/contracts/turn-en
 import type { RespondUsage } from '../../shared/openai.ts';
 import type { CodeNote, QuotaClass } from '../../shared/v2-db-types.ts';
 import {
-  ERASE_HOLD_OP, SCHEMA_VERSION, validateChannelItems, validateDecision, type DecisionValidation, type ValidationContext, type Verdict,
+  ERASE_HOLD_OP, NOT_WRITTEN_REASONS, SCHEMA_VERSION, validateChannelItems, validateDecision, type DecisionValidation, type ValidationContext, type Verdict,
 } from '../../shared/write-registry/mod.ts';
 import {
   STAGE_A_LIVE_BUDGETS_MS, STAGE_A_MIN_REPAIR_MS, STAGE_A_REPAIR_TIMEOUT_MS, STAGE_A_SALVAGE_TIMEOUT_MS, stageABudgetClass,
@@ -67,7 +67,7 @@ import type {
 import { navigateOf } from './envelope.ts';
 import { vocabLabel } from './facts.ts';
 import { applyGuarantees, exposureLine, safetyLines, type GuaranteedReply } from './guarantees.ts';
-import { turnRefs, validationContext, type TurnInput } from './input.ts';
+import { canonicalConstraintSubject, turnRefs, validationContext, type TurnInput } from './input.ts';
 import { runStageB, type StageBRun } from './ports.ts';
 import { stageASafetyOutcome } from './shadow.ts';
 import { stageARepairWanted } from './stage-a-request.ts';
@@ -350,16 +350,74 @@ export function buildRepairRequest(req: UnderstandRequest, decision: unknown, v:
   return { ...req, input: [...req.input, { role: 'user', content: note }], timeoutMs };
 }
 
+/** The understanding channels whose items are the user's intents (memory[] is Stage B's). */
+const INTENT_CHANNELS: ReadonlySet<string> = new Set(['writes', 'record_ops', 'pending_ops', 'commitment_ops']);
+
+/** How many channel items (ops, not verdict parts) a decision attempted. */
+function opCount(v: DecisionValidation): number {
+  return new Set(v.verdicts.filter((x) => INTENT_CHANNELS.has(x.channel)).map((x) => `${x.channel}:${x.index}`)).size;
+}
+
+/**
+ * Ops the ORIGINAL attempted that the repair dropped with no declared reason (retrial 2026-10-12,
+ * mem "fıstık alerjim var ama hafif aslında": the first reading was rejected, the repair came back
+ * clarify-only, and betterOf adopted it — the downgrade request vanished without a hold or a word).
+ * Counted, not matched by op type: a repair may legitimately switch the op (a REJECTed "yok" that
+ * the rule wants as constraint_retract). A declared self_check.not_written_reason (a NOT_WRITTEN_REASONS
+ * id) explains the drop — the model decided, it did not lose the intent.
+ */
+export function droppedIntents(original: DecisionValidation, repaired: DecisionValidation, repairedDecision?: unknown): number {
+  const sc = isRec(repairedDecision) && isRec(repairedDecision.self_check) ? repairedDecision.self_check : null;
+  const reason = sc?.not_written_reason;
+  if (typeof reason === 'string' && Object.prototype.hasOwnProperty.call(NOT_WRITTEN_REASONS, reason)) return 0;
+  return Math.max(0, opCount(original) - opCount(repaired));
+}
+
 /**
  * Keep the repaired decision only when it is not worse than the original. A missed write counts as
  * one defect like a REJECT: a repair that writes the stated fact (even if one write is then refused —
  * the coach says why, honestly) beats an unexplained silence, and a repair that leaves the miss in
- * place still wins a tie (the latest reading of the same message).
+ * place still wins a tie (the latest reading of the same message). A dropped intent (droppedIntents)
+ * is a defect too, and a repair that dropped one never wins a tie: the original's hold path stands, or
+ * its reject surfaces honestly ("Kaydedilmedi: …"), instead of the request disappearing.
  */
-export function betterOf(a: DecisionValidation, b: DecisionValidation): 'original' | 'repaired' {
+export function betterOf(a: DecisionValidation, b: DecisionValidation, repairedDecision?: unknown): 'original' | 'repaired' {
   const defects = (v: DecisionValidation) => v.counts.REJECT + v.decision_issues.filter((i) => i.level === 'hard').length + (v.missed_write ? 1 : 0);
-  return defects(b) <= defects(a) ? 'repaired' : 'original';
+  const dropped = droppedIntents(a, b, repairedDecision);
+  const da = defects(a);
+  const db = defects(b) + dropped;
+  if (dropped > 0) return db < da ? 'repaired' : 'original';
+  return db <= da ? 'repaired' : 'original';
 }
+
+/**
+ * The decision Stage B speaks from. An emergency the code could not back — acute_medical without the
+ * user's own symptom words (validate.ts safety.acute) and no live trigger read positive, so
+ * resolveTripwires left the turn off the protective emergency path — is not spoken as one (retrial
+ * 2026-10-12: "bugün 14 litre su içtim" got the emergency contract): the coach's copy drops the acute
+ * flag, an 'emergency' route becomes 'coach', and an 'emergency_turn' not-written reason is no reason
+ * any more (an unwritten report then reads as the missed write it is — no unanchored "kaydedeyim
+ * mi?"). Everything else is the decision itself; the stored decision (ai_turn_log) is untouched.
+ */
+export function coachDecisionOf(decision: UnderstandDecision, tripwire: TripwireResolution): { decision: UnderstandDecision; unbacked: boolean } {
+  if (tripwire.kind === 'protective' && tripwire.categories.includes('emergency')) return { decision, unbacked: false };
+  const safety = isRec(decision.safety) ? decision.safety : null;
+  const route = isRec(decision.reply_route) ? decision.reply_route : null;
+  if (safety?.acute_medical !== true && route?.contract !== 'emergency') return { decision, unbacked: false };
+  const sc = isRec(decision.self_check) ? decision.self_check : null;
+  return {
+    unbacked: true,
+    decision: {
+      ...decision,
+      ...(safety ? { safety: { ...safety, acute_medical: false, acute_evidence_quote: null } } : {}),
+      ...(route?.contract === 'emergency' ? { reply_route: { ...route, contract: 'coach' } } : {}),
+      ...(sc?.not_written_reason === 'emergency_turn' ? { self_check: { ...sc, not_written_reason: null } } : {}),
+    } as UnderstandDecision,
+  };
+}
+
+/** ai_turn_log issue code (coach row): Stage A claimed an emergency the code could not back (coachDecisionOf). */
+export const EMERGENCY_UNBACKED_ISSUE = 'emergency_unbacked';
 
 /**
  * §7.1/§7.2 allergen-mention safety net. First live trial: a peanut-allergic user's "kahvaltıda fıstık
@@ -383,16 +441,20 @@ export function allergenMentionOf(ti: TurnInput, message: string): string[] {
 /**
  * The code-owned guidance line of a fail-closed allergen-mention turn. Nothing was recorded, so —
  * unlike guarantees.ts exposureLine ("kaydettiğin öğün … içeriyor") — it claims no meal and no
- * consumption: conditional, the 112 line for a severe (or severity-unknown, §7.1) allergen.
+ * consumption: CONDITIONAL from its first word (retrial 2026-10-12: "yer fıstığı. ama alerjim hafif"
+ * — a message ABOUT the allergy — was told "Mesajında … bir yiyecek geçiyor"), the 112 line for a
+ * severe (or severity-unknown, §7.1) allergen. One name per canonical allergen: a legacy 'fıstık' row
+ * next to a v2 'peanut' row is one allergen, not "fıstık, yer fıstığı" (input.ts
+ * canonicalConstraintSubject — the allergen invariant's own dictionary).
  */
 export function allergenMentionLine(ti: TurnInput, allergens: readonly string[]): string {
   const spine = allergenSpine(ti.constraints.map((c) => ({ kind: c.kind, subject: c.subject, severity: c.severity })));
   const severe = new Set(spine.severe.map((s) => s.toLocaleLowerCase('tr')));
   const isSevere = allergens.some((a) => severe.has(a.toLocaleLowerCase('tr')));
-  const labels = [...new Set(allergens.map(vocabLabel))].join(', ');
+  const labels = [...new Set(allergens.map((a) => vocabLabel(canonicalConstraintSubject('allergen', a))))].join(', ');
   return isSevere
-    ? `⚠️ Mesajında profilindeki ciddi ${labels} alerjine dokunabilecek bir yiyecek geçiyor. Bunu yediysen kendini takip et; kaşıntı, şişlik ya da nefes darlığı olursa hemen 112'yi ara.`
-    : `⚠️ Mesajında profilindeki ${labels} hassasiyetine dokunabilecek bir yiyecek geçiyor. Bunu yediysen kendini nasıl hissettiğini takip et.`;
+    ? `⚠️ Bir şey yediysen ve içinde ${labels} olabilecekse kendini takip et: profilinde ciddi alerji olarak kayıtlı. Kaşıntı, şişlik ya da nefes darlığı olursa hemen 112'yi ara.`
+    : `⚠️ Bir şey yediysen ve içinde ${labels} olabilecekse kendini nasıl hissettiğini takip et: profilinde hassasiyet olarak kayıtlı.`;
 }
 
 /** ai_turn_log issue code: the client's task_mode_hint was on no list (shared/task-mode-hints.ts) and was dropped. */
@@ -618,8 +680,10 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   // ── T5 validate (+ one repair) ──
   const refs = turnRefs(ti);
   const ctx: ValidationContext = validationContext(ti, message, now, refs);
-  let decision = outcome.decision as UnderstandDecision;
-  let validation = validateDecision(decision, ctx);
+  const original = outcome.decision as UnderstandDecision;
+  const originalValidation = validateDecision(original, ctx);
+  let decision = original;
+  let validation = originalValidation;
   let repaired = false;
   if (stageARepairWanted(validation)) {
     // On a turn with a live trigger the repair shares the class budget with the first call (the whole
@@ -629,20 +693,34 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
       const repReq = buildRepairRequest(req4, decision, validation, repairMs);
       const rep = await deps.understand(repReq);
       const trigger = [...(validation.repair.needed ? ['reject'] : []), ...(validation.missed_write ? ['missed_write'] : [])];
-      stageARows.push({ ...stageRow(tc, 'repair', rep, null, null, true), issues: [{ code: 'repair_trigger', path: null, outcome: null, value: trigger }] });
-      if (rep.status === 'parsed') {
-        const rv = validateDecision(rep.decision, ctx);
-        if (betterOf(validation, rv) === 'repaired') {
-          decision = rep.decision as UnderstandDecision;
-          validation = rv;
-          repaired = true;
-        }
+      const rv = rep.status === 'parsed' ? validateDecision(rep.decision, ctx) : null;
+      const dropped = rv ? droppedIntents(originalValidation, rv, rep.decision) : 0;
+      if (rv && betterOf(originalValidation, rv, rep.decision) === 'repaired') {
+        decision = rep.decision as UnderstandDecision;
+        validation = rv;
+        repaired = true;
       }
+      // Observability (retrial 2026-10-12: the original reject reason was lost): the repair row keeps
+      // the REPAIR's decision and its own validation issues, and says whether it was adopted.
+      const repRow = stageRow(tc, 'repair', rep, rv ? rep.decision : null, rv, true);
+      stageARows.push({
+        ...repRow,
+        issues: [
+          { code: 'repair_trigger', path: null, outcome: null, value: trigger },
+          { code: 'repair_adopted', path: null, outcome: null, value: repaired },
+          ...(dropped > 0 ? [{ code: 'dropped_intent', path: null, outcome: null, value: dropped }] : []),
+          ...(repRow.issues as Record<string, unknown>[]),
+        ],
+      });
+      // Its own timing mark: the repair call is Stage A time, never billed under v2_commit.
+      deps.mark?.('repair');
     } else {
       deps.log('[v2_turn] repair skipped: the tripwire turn\'s Stage A budget is spent', { turn_id: turnId, left_ms: repairMs });
     }
   }
-  stageARows[0] = stageRow(tc, 'understand', outcome, decision, validation, repaired);
+  // The understand row keeps the ORIGINAL decision and ITS validation issues (repaired=true: the
+  // adopted decision is the repair row's).
+  stageARows[0] = stageRow(tc, 'understand', outcome, original, originalValidation, repaired);
 
   // §7.2: on a turn with a live trigger, a reading that arrived after the class budget counts as a
   // timeout (fail-closed: today's canned protection); a positive reading always counts. The readings
@@ -721,8 +799,10 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
   }
   const extra = extraFacts({ taskModeHint: body.task_mode_hint, nudge: nudgeText });
   if (extra.issues.length) deps.log('[v2_turn] task_mode_hint dropped (not a known client hint)', { turn_id: turnId, issues: extra.issues });
+  // An emergency claim the code could not back is not spoken as one (coachDecisionOf).
+  const spoken = coachDecisionOf(decision, tripwire);
   const coachInput: CoachInput = {
-    turnInput: ti, message, decision, commit, tripwire,
+    turnInput: ti, message, decision: spoken.decision, commit, tripwire,
     history: ti.history.map((h) => ({ role: h.role, content: h.content, ...(h.action_types.length ? { receipts: h.action_types } : {}) })),
     userState: extra.lines,
     // The ADOPTED decision still misses a stated fact after the ONE repair: no hold backs a write
@@ -753,7 +833,11 @@ export async function handleV2Turn(req: Request, routedUserId: string, deps: V2D
     return { kind: 'response', response: deps.respond({ error: 'Oturum bulunamadi. Lutfen sohbeti yeniden ac.', code: 'SESSION_NOT_FOUND' }, 404) };
   }
   envelope.assistant_message_id = assistantId;
-  const turnIssues = [...extra.issues, ...(validation.missed_write ? [UNANCHORED_QUESTION_FORBIDDEN_ISSUE] : [])];
+  const turnIssues = [
+    ...extra.issues,
+    ...(validation.missed_write ? [UNANCHORED_QUESTION_FORBIDDEN_ISSUE] : []),
+    ...(spoken.unbacked ? [EMERGENCY_UNBACKED_ISSUE] : []),
+  ];
   await logRows(tc, [...stageARows, commitRow(tc, commit, validation), coachRow(tc, stage, final, tripwire, commit, taskMode, turnIssues)]);
   if (tc.idemKey) await deps.journal.commit(userId, tc.idemKey, envelope);
 
@@ -1115,7 +1199,7 @@ function coachRow(
     fallback_reason: runs.filter((r) => r.status !== 'ok').map((r) => `${r.regen ? 'regen' : 'first'}:${r.status}`).join(',') || null,
     guard_verdict: guardVerdict(t, commit),
     issues: [
-      { code: 'tripwire_outcome', path: null, outcome: null, value: t.kind },
+      { code: 'tripwire_outcome', path: null, outcome: null, value: t.kind, ...(t.log.unevidenced?.length ? { unevidenced: t.log.unevidenced } : {}) },
       {
         code: 'postcheck', path: null, outcome: null, value: log.outcome, judge: log.judge, judge_fail_reasons: log.judge_fail_reasons,
         regens: log.regens, invariant_hits: log.invariant_hits, budget_exhausted: log.budget_exhausted,

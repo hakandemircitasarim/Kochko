@@ -126,11 +126,20 @@ export const SAMPLE_WRITES: Readonly<Record<string, Record<string, unknown>>> = 
   memory_note: { op: 'memory_note', kind: 'person_note', text: 'Kısa ve net cevapları seviyor.', food: null, grams: null, confidence: 0.8 },
 };
 
-/** A full understanding envelope around the given channel items (defaults: nothing). */
+/** The empty safety reading (every key strict decoding emits), fresh per call. */
+const emptySafety = (): Record<string, unknown> => ({ acute_medical: false, acute_evidence_quote: null, self_harm: false, ed_signal: null, tripwire_readings: [] });
+
+/**
+ * A full understanding envelope around the given channel items (defaults: nothing). A `safety`
+ * OBJECT is laid over the empty reading (a test names only the keys it is about — the schema's
+ * other keys, e.g. v7's acute_evidence_quote, stay present as strict decoding would emit them);
+ * any other `safety` value replaces it as given (malformed-envelope tests).
+ */
 export function sampleDecision(parts: Partial<Record<'writes' | 'record_ops' | 'pending_ops' | 'commitment_ops', unknown[]>> & Record<string, unknown> = {}): Record<string, unknown> {
+  const safety = parts.safety;
   return {
     intent: { primary: 'report', is_hypothetical: false, about_other_person: false },
-    safety: { acute_medical: false, self_harm: false, ed_signal: null, tripwire_readings: [] },
+    safety: emptySafety(),
     writes: [],
     record_ops: [],
     pending_ops: [],
@@ -141,5 +150,6 @@ export function sampleDecision(parts: Partial<Record<'writes' | 'record_ops' | '
     reply_route: { contract: 'coach', effort_hint: 'low' },
     self_check: { reported_new_facts: false, not_written_reason: null },
     ...parts,
+    ...(typeof safety === 'object' && safety !== null && !Array.isArray(safety) ? { safety: { ...emptySafety(), ...safety } } : {}),
   };
 }

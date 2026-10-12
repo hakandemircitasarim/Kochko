@@ -17,7 +17,7 @@
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.208.0/assert/mod.ts';
 import { SAMPLE_MESSAGES, SAMPLE_WRITES, sampleDecision, sampleMeal } from '../../shared/write-registry/samples.ts';
 import { CANNED_SAFETY, REQUIRED_SAFETY_LINE, resolveTripwires, scanTripwires } from '../../shared/safety-tripwires.ts';
-import { SCHEMA_VERSION, validateDecision } from '../../shared/write-registry/mod.ts';
+import { ACUTE_EVIDENCE_CODE, SCHEMA_VERSION, validateDecision } from '../../shared/write-registry/mod.ts';
 import { STAGE_A_MIN_REPAIR_MS, STAGE_A_REPAIR_TIMEOUT_MS } from './budgets.ts';
 import { clientLive, clientReload, V1_KEYS } from './client-parsers.test.ts';
 import { coachModel } from './coach.ts';
@@ -25,7 +25,8 @@ import { quotaClassOf } from './commit.ts';
 import type { CommitResult, PostcheckOutput, PostcheckPort, TripwireResolution } from './contracts.ts';
 import { COACH_UNAVAILABLE_TR, RECEIPTS_BELOW_TR, SAFE_FALLBACK_VARIANTS, SUGGESTION_UNVERIFIED_LINE } from './guarantees.ts';
 import {
-  actionsExecutedOf, ALLERGEN_MENTION_ISSUE, allergenMentionLine, allergenMentionOf, betterOf, BUSY_LINE, buildRepairRequest, extraFacts,
+  actionsExecutedOf, ALLERGEN_MENTION_ISSUE, allergenMentionLine, allergenMentionOf, betterOf, BUSY_LINE, buildRepairRequest, coachDecisionOf, droppedIntents,
+  EMERGENCY_UNBACKED_ISSUE, extraFacts,
   handleV2Turn, honestCrashResponse, honestFallbackText, MISSED_WRITE_REPAIR_LINE, newTurnState, NOTHING_TO_UNDO_LINE, receiptFactLines,
   STAGE_A_FAILED_LINE, STAGE_A_FALLBACK_V1_CODES, STAGE_A_OPEN_HOLD_ISSUE, STAGE_B_FAILED_HELD_LINE, STAGE_B_FAILED_LINE, STAGE_B_FAILED_NOTHING_LINE,
   STAGE_B_FAILED_WRITTEN_HELD_LINE, TASK_MODE_HINT_UNKNOWN, UNANCHORED_QUESTION_FORBIDDEN_ISSUE, undoTargetOf, v1OnlyReason, type TurnState,
@@ -1012,7 +1013,8 @@ Deno.test('allergen mention + Stage A failure → fail-closed with the code-owne
   assertEquals([t.rec.understandReqs[0].budgetClass, t.rec.understandReqs[0].timeoutMs], ['tripwire', STAGE_A_LIVE_BUDGETS_MS.tripwire]);
   const line = allergenMentionLine(ti, ['fıstık']);
   assertEquals(t.env!.message, `${STAGE_A_FAILED_LINE}\n\n${line}`, 'the honest "nothing recorded" line, then the guidance LAST');
-  assertStringIncludes(line, 'ciddi fıstık alerjine');
+  assertStringIncludes(line, 'içinde yer fıstığı olabilecekse');
+  assertStringIncludes(line, 'ciddi alerji olarak kayıtlı');
   assertStringIncludes(line, "112'yi ara");
   assert(!line.includes('Kaydettim') && !line.includes('kaydettiğin'), 'nothing was recorded: the line claims no meal');
   assertEquals(t.env!.actions, []);
@@ -1046,15 +1048,32 @@ Deno.test('allergenMentionOf / allergenMentionLine: commit.ts exposuresOf\'s mat
   // A v2 canonical id ('peanut') matches through the same alias table the consumption check uses.
   const canonical = await seededTurnInput((tb) => { tb.user_constraints = tb.user_constraints.map((c) => (c.id === 'uc-1' ? { ...c, subject: 'peanut' } : c)); });
   assertEquals(allergenMentionOf(canonical, PEANUT_BREAKFAST), ['peanut']);
-  assertStringIncludes(allergenMentionLine(canonical, ['peanut']), 'ciddi yer fıstığı alerjine', 'the Turkish label of the id');
+  assertStringIncludes(allergenMentionLine(canonical, ['peanut']), 'içinde yer fıstığı olabilecekse', 'the Turkish label of the id');
   // An explicitly MILD active row: the sensitivity wording, no 112 (§7.1: only explicit mild leaves the severe set).
   const mild = await seededTurnInput((tb) => { tb.user_constraints = tb.user_constraints.map((c) => (c.id === 'uc-old' ? { ...c, active: true } : c)); });
   assertEquals(allergenMentionOf(mild, 'sütlü kahve içtim'), ['süt']);
   const mildLine = allergenMentionLine(mild, ['süt']);
-  assertStringIncludes(mildLine, 'süt hassasiyetine');
+  assertStringIncludes(mildLine, 'içinde süt ve süt ürünleri olabilecekse');
+  assertStringIncludes(mildLine, 'hassasiyet olarak kayıtlı');
   assert(!mildLine.includes('112'), mildLine);
   const none = await seededTurnInput((tb) => { tb.user_constraints = []; });
   assertEquals(allergenMentionOf(none, PEANUT_BREAKFAST), [], 'no spine → no mention');
+});
+
+Deno.test('retrial 2026-10-12: allergenMentionLine is conditional from its first word (the message may be ABOUT the allergy) and names each canonical allergen once', async () => {
+  // mem 90459414: "yer fıstığı. ama alerjim hafif, ciddi değil" (Stage A timeout) got "Mesajında … bir yiyecek
+  // geçiyor" and "fıstık, yer fıstığı" — a legacy 'fıstık' row next to trial 1's 'peanut' row.
+  const dup = await seededTurnInput((tb) => {
+    tb.user_constraints = [...tb.user_constraints, { ...tb.user_constraints.find((c) => c.id === 'uc-1')!, id: 'uc-dup', subject: 'peanut', severity: null }];
+  });
+  const hit = allergenMentionOf(dup, 'yer fıstığı. ama alerjim hafif, ciddi değil');
+  assertEquals([...hit].sort(), ['fıstık', 'peanut'], 'precondition: both rows match the message');
+  const line = allergenMentionLine(dup, hit);
+  assert(line.startsWith('⚠️ Bir şey yediysen'), line);
+  assertEquals(countOf(line, 'fıstı'), 1, `one name per canonical allergen: ${line}`);
+  assertStringIncludes(line, 'içinde yer fıstığı olabilecekse');
+  assert(!line.includes('Mesajında') && !line.includes('geçiyor'), 'claims nothing about what the message says');
+  assertStringIncludes(line, "112'yi ara");
 });
 
 Deno.test('daily cap + a message naming the user\'s own allergen → the cap text, then the code-owned guidance (no LLM, exempt) — never the bare rate-limit envelope', async () => {
@@ -1084,11 +1103,18 @@ Deno.test('missed write → the EXISTING single repair call carries the missed-w
   assertEquals(t.commit.adapter.calls.map((c) => c.op), ['constraint_add']);
   assertEquals(t.commit.adapter.calls[0].row.polarity, 'does_not_have');
   assertEquals(t.rec.coachInputs[0].facts, { unanchoredQuestionForbidden: false });
+  // Retrial 2026-10-12 observability: the understand row keeps the ORIGINAL decision and its issues; the
+  // repair row carries the repair's decision, its own issues and whether it was adopted.
   const understandRow = t.rec.turnLogs.find((r) => r.stage === 'understand')!;
-  assertEquals(understandRow.repaired, true);
-  assert(!issueCodes(understandRow).includes('missed_write'), 'the adopted decision no longer misses it');
+  assertEquals(understandRow.repaired, true, 'the adopted decision is the repair row\'s');
+  assertEquals(understandRow.decision, missed);
+  assert(issueCodes(understandRow).includes('missed_write'), 'the original miss is not overwritten');
   const repairRow = t.rec.turnLogs.find((r) => r.stage === 'repair')!;
   assertEquals((repairRow.issues as Record<string, unknown>[])[0], { code: 'repair_trigger', path: null, outcome: null, value: ['missed_write'] });
+  assertEquals((repairRow.issues as Record<string, unknown>[])[1], { code: 'repair_adopted', path: null, outcome: null, value: true });
+  assertEquals(repairRow.decision, fixed);
+  assert(!issueCodes(repairRow).includes('missed_write'), 'the adopted decision no longer misses it');
+  assert(issueCodes(repairRow).includes('verdict'), 'the repair\'s own verdicts are logged');
   assert(!issueCodes(coachRowOf(t)).includes(UNANCHORED_QUESTION_FORBIDDEN_ISSUE));
 });
 
@@ -1153,6 +1179,147 @@ Deno.test('betterOf: a missed write is one defect like a REJECT — writing the 
   assertEquals(betterOf(missed, oneReject), 'repaired', 'a tie goes to the repair: a refusal is said honestly, a silence is not');
   assertEquals(betterOf(missed, twoRejects), 'original');
   assertEquals(betterOf(missed, missed), 'repaired', 'the same miss: the latest reading stands (still flagged)');
+});
+
+// ─── retrial 2026-10-12 (lane S): dropped intents, observability, the unbacked emergency ──────────
+
+Deno.test('betterOf / droppedIntents: an op the original attempted that the repair dropped with no declared reason is a defect, and such a repair never wins a tie', async () => {
+  const ti = await seededTurnInput();
+  const ctx = validationContext(ti, 'bugün 14 litre su içtim, bir termos da çay', NOW, turnRefs(ti));
+  const v = (d: Record<string, unknown>) => validateDecision(d, ctx);
+  const ask = w('water_log', { as_stated: '14 litre', quantity: 14, unit: 'litre' });
+  const bad = w('water_log', { unit: 'other', other_ml_each: null, as_stated: 'bir termos' });
+  const good = w('water_log', { unit: 'other', other_ml_each: 500, as_stated: 'bir termos' });
+  const reported = { reported_new_facts: true, not_written_reason: null };
+  const clarifyOnly = sampleDecision({ clarify: { topic: 'hangisi', candidate_refs: [] }, self_check: reported });
+  assertEquals(v(sampleDecision({ writes: [ask] })).counts.ASK, 1, 'precondition: 8–30 L is held');
+  // mem b3d5da24's shape: a held write + a reject → the repair comes back clarify-only → the original stands.
+  const heldAndBad = v(sampleDecision({ writes: [ask, bad], self_check: reported }));
+  assertEquals(droppedIntents(heldAndBad, v(clarifyOnly), clarifyOnly), 2);
+  assertEquals(betterOf(heldAndBad, v(clarifyOnly), clarifyOnly), 'original', 'the hold path wins');
+  // One reject, the repair drops it silently: a tie the repair no longer wins — the reject surfaces.
+  const oneBad = v(sampleDecision({ writes: [bad], self_check: reported }));
+  assertEquals(betterOf(oneBad, v(clarifyOnly), clarifyOnly), 'original');
+  // …unless the repair DECLARED why it wrote nothing (a decision, not a lost intent).
+  const reasoned = sampleDecision({ clarify: { topic: 'hangisi', candidate_refs: [] }, self_check: { reported_new_facts: true, not_written_reason: 'needs_clarification' } });
+  assertEquals(droppedIntents(oneBad, v(reasoned), reasoned), 0);
+  assertEquals(betterOf(oneBad, v(reasoned), reasoned), 'repaired');
+  // A repair that FIXES the op (same count, any op) is not a drop; one that merges two rejects into one clean write still wins.
+  const fixed = sampleDecision({ writes: [good] });
+  assertEquals([droppedIntents(oneBad, v(fixed), fixed), betterOf(oneBad, v(fixed), fixed)], [0, 'repaired']);
+  const twoBad = v(sampleDecision({ writes: [bad, bad] }));
+  assertEquals(betterOf(twoBad, v(fixed), fixed), 'repaired', '0 + 1 dropped < 2 rejects');
+  // Without the repaired decision (older callers) only the counts speak — the tie rule still holds.
+  assertEquals(betterOf(oneBad, v(clarifyOnly)), 'original');
+});
+
+Deno.test('END TO END (mem b3d5da24): the repair drops the severity downgrade for a clarify — the original is kept, the safety hold opens, both rows are logged', async () => {
+  const ti = await seededTurnInput();
+  const cref = Object.entries(turnRefs(ti).rendered).find(([, r]) => r.constraint?.subject === 'peanut')![0];
+  const msg = 'fıstık alerjim var ama hafif aslında';
+  const downgrade = w('constraint_add', { subject_id: 'peanut', display_tr: 'fıstık', severity: 'mild', evidence_quote: 'fıstık alerjim var ama hafif' });
+  // A paraphrased retraction of the same row: REJECT (alıntı) → the one repair runs.
+  const badRetract = { op: 'constraint_retract', target: cref, evidence_quote: 'fıstık alerjim artık yok', note: null };
+  const original = sampleDecision({ intent: { primary: 'correction', is_hypothetical: false, about_other_person: false }, writes: [downgrade, badRetract], self_check: { reported_new_facts: true, not_written_reason: null } });
+  const clarifyOnly = sampleDecision({ clarify: { topic: 'yer fıstığı mı, Antep fıstığı mı', candidate_refs: [cref] }, self_check: { reported_new_facts: true, not_written_reason: null } });
+  const f = fakeDeps({ stageA: (req, n) => parsedOutcome(n === 1 ? original : clarifyOnly, req), coach: () => coachReply('Fıstık alerjinin şiddetini değiştirmeden önce soruyorum.') });
+  const marks: string[] = [];
+  f.deps.mark = (s) => { marks.push(s); };
+  const out = await handleV2Turn(chatRequest({ message: msg }), USER, f.deps, newTurnState());
+  assertEquals(out.kind, 'response');
+  assertEquals(f.rec.understandReqs.length, 2, 'ONE repair');
+  const commit = f.rec.coachInputs[0].commit;
+  assertEquals(commit.holds.map((h) => h.reason_code), ['iki_adimli_siddet_dusurme'], 'the downgrade is held, not dropped');
+  assertEquals(commit.rejects.map((r) => r.op), ['constraint_retract'], 'the reject surfaces honestly');
+  const understand = f.rec.turnLogs.find((r) => r.stage === 'understand')!;
+  assertEquals([understand.decision, understand.repaired], [original, false]);
+  assert(issueCodes(understand).includes('alinti_dogrulanamadi'), 'the ORIGINAL reject reason is on the understand row');
+  const repair = f.rec.turnLogs.find((r) => r.stage === 'repair')!;
+  assertEquals(repair.decision, clarifyOnly, 'the repair decision is on the repair row');
+  const ri = repair.issues as Array<{ code: string; value?: unknown }>;
+  assertEquals(ri.find((i) => i.code === 'repair_adopted')?.value, false);
+  assertEquals(ri.find((i) => i.code === 'dropped_intent')?.value, 2);
+  // The repair call has its own timing mark — never billed under v2_commit.
+  assertEquals(marks.slice(marks.indexOf('stage_a'), marks.indexOf('commit') + 1), ['stage_a', 'repair', 'commit']);
+});
+
+Deno.test('coachDecisionOf: an emergency the code could not back is not spoken as one; a protective emergency is untouched', () => {
+  const normal = resolveTripwires({ scan: scanTripwires('bugün 14 litre su içtim'), stageA: { status: 'ok', readings: [], positives: [{ category: 'emergency', evidenced: false }] } });
+  assertEquals(normal.kind, 'normal');
+  const claimed = sampleDecision({
+    safety: { acute_medical: true, acute_evidence_quote: null },
+    reply_route: { contract: 'emergency', effort_hint: 'medium' },
+    self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
+  });
+  const spoken = coachDecisionOf(claimed, normal);
+  assertEquals(spoken.unbacked, true);
+  assertEquals((spoken.decision.safety as Record<string, unknown>).acute_medical, false);
+  assertEquals((spoken.decision.reply_route as Record<string, unknown>).contract, 'coach');
+  assertEquals((spoken.decision.self_check as Record<string, unknown>).not_written_reason, null, 'an unwritten report reads as the miss it is');
+  assertEquals((claimed.reply_route as Record<string, unknown>).contract, 'emergency', 'the stored decision is untouched');
+  // A real protective emergency keeps everything.
+  const protective = resolveTripwires({ scan: scanTripwires('bugün 14 litre su içtim'), stageA: { status: 'ok', readings: [], positives: [{ category: 'emergency', evidenced: true }] } });
+  assertEquals(coachDecisionOf(claimed, protective), { decision: claimed, unbacked: false });
+  // An ordinary decision is passed through as is.
+  const plain = sampleDecision({ writes: [w('water_log')] });
+  assertEquals(coachDecisionOf(plain, normal), { decision: plain, unbacked: false });
+});
+
+Deno.test('END TO END "bugün 14 litre su içtim" (retrial final2#4): an unevidenced acute claim gets the ONE repair → the water is written as stated and HELD (8–30 L) — no emergency, no 112', async () => {
+  const msg = 'bugün 14 litre su içtim';
+  assertEquals(scanTripwires(msg).hits.length, 0, 'precondition: no trigger');
+  const acute = sampleDecision({
+    safety: { acute_medical: true, acute_evidence_quote: null },
+    reply_route: { contract: 'emergency', effort_hint: 'medium' },
+    self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
+  });
+  const water = sampleDecision({ writes: [w('water_log', { as_stated: '14 litre', quantity: 14, unit: 'litre', mode: 'set_day_total' })], self_check: { reported_new_facts: true, not_written_reason: null } });
+  const t = await turn({ message: msg }, { stageA: (req, n) => parsedOutcome(n === 1 ? acute : water, req), coach: () => coachReply('14 litre mi yazdın, yoksa 1,4 litre mi?') });
+  assertEquals(t.rec.understandReqs.length, 2);
+  assertStringIncludes(t.rec.understandReqs[1].input[1].content, 'Bir sayı ya da miktar belirti değildir', 'the repair note says why');
+  const ci = t.rec.coachInputs[0];
+  assertEquals(ci.tripwire.kind, 'normal');
+  assertEquals(ci.commit.holds.map((h) => h.reason_code), ['litre_yazim_suphesi'], 'the existing typo question runs');
+  assertStringIncludes(ci.commit.holds[0].question_tr ?? '', '14 L mi, yoksa 1,4 L mi?', 'the hold the coach asks about');
+  assert(!t.env!.message.includes('112'), t.env!.message);
+  assert(t.env!.task_mode !== 'emergency');
+  assertEquals(issueCodes(t.rec.turnLogs.find((r) => r.stage === 'understand')!).includes(ACUTE_EVIDENCE_CODE), true, 'the original claim and its defect stay logged');
+});
+
+Deno.test('END TO END: the same claim when the repair ALSO fails (timeout) — not protective; the coach speaks an ordinary turn (no emergency contract, no 112, no unanchored write offer)', async () => {
+  const acute = sampleDecision({
+    safety: { acute_medical: true, acute_evidence_quote: null },
+    reply_route: { contract: 'emergency', effort_hint: 'medium' },
+    self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
+  });
+  const t = await turn({ message: 'bugün 14 litre su içtim' }, { stageA: (req, n) => (n === 1 ? parsedOutcome(acute, req) : failedOutcome(req, 'timeout')), coach: () => coachReply('Bunu henüz kaydetmedim; ne kadar içtiğini tekrar yazar mısın?') });
+  const ci = t.rec.coachInputs[0];
+  assertEquals(ci.tripwire.kind, 'normal');
+  assertEquals(ci.tripwire.log.unevidenced, ['emergency']);
+  assertEquals((ci.decision.reply_route as Record<string, unknown>).contract, 'coach');
+  assertEquals(t.rec.coachCalls.length >= 1, true);
+  assert(!stageBUser(t.rec.coachCalls[0]).includes('Bu turun sözleşmesi: acil durum'), 'no emergency contract reaches Stage B');
+  assertStringIncludes(stageBUser(t.rec.coachCalls[0]), MISSED_WRITE_LINE, 'nothing was written: the open-question line, never a "kaydedeyim mi?"');
+  assert(!t.env!.message.includes('112'), t.env!.message);
+  const coach = coachRowOf(t);
+  assert(issueCodes(coach).includes(EMERGENCY_UNBACKED_ISSUE));
+  assertEquals((coach.issues as Array<{ code: string; unevidenced?: string[] }>).find((i) => i.code === 'tripwire_outcome')?.unevidenced, ['emergency']);
+});
+
+Deno.test('a REAL emergency (verbatim symptom words, no trigger) is still protective: emergency contract, the code-owned 112 line exactly once', async () => {
+  const msg = 'yanlışlıkla fıstıklı kurabiye yedim, dudaklarım karıncalanıyor';
+  const real = sampleDecision({
+    safety: { acute_medical: true, acute_evidence_quote: 'dudaklarım karıncalanıyor' },
+    reply_route: { contract: 'emergency', effort_hint: 'medium' },
+    self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
+  });
+  const t = await turn({ message: msg }, { stageA: parsed(real), coach: () => coachReply('Hemen oturan bir pozisyona geç ve yanındakine haber ver.') });
+  assertEquals(t.rec.understandReqs.length, 1, 'evidenced: no repair');
+  const ci = t.rec.coachInputs[0];
+  assert(ci.tripwire.kind === 'protective' && ci.tripwire.category === 'emergency');
+  assertStringIncludes(stageBUser(t.rec.coachCalls[0]), 'kod cevabın sonuna kendisi ekler', 'the contract tells the coach not to write its own 112 line');
+  assertEquals(countOf(t.env!.message, '112'), 1, t.env!.message);
+  assertStringIncludes(t.env!.message, REQUIRED_SAFETY_LINE.emergency);
 });
 
 Deno.test('a hold ANSWER that writes nothing ("vazgeçtim") is a conversation turn — and at the conversation cap it is still answered (the discard happened; only this reply says so)', async () => {
