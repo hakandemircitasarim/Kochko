@@ -178,7 +178,7 @@ Deno.test('END TO END: the same timeout on a turn naming the user\'s own allerge
   const res = await routeTurn(chatRequest({ message: 'kahvaltıda fıstık ezmeli ekmek yedim', idempotency_key: 'k-e2e-al' }), d);
   const env = await res.json() as { message: string };
   assertEquals(v1Bodies.length, 0);
-  assert(env.message.startsWith(STAGE_A_FAILED_LINE) && env.message.includes('ciddi fıstık alerjine') && env.message.includes("112'yi ara"), env.message);
+  assert(env.message.startsWith(STAGE_A_FAILED_LINE) && env.message.includes('Bir şey yediysen ve içinde yer fıstığı olabilecekse') && env.message.includes("112'yi ara"), env.message);
   assertEquals(f.rec.persisted[0].quotaClass, 'exempt');
   assertEquals(f.rec.journal.map((j) => j.kind), ['claim', 'commit']);
 });

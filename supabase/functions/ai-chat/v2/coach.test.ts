@@ -102,10 +102,13 @@ Deno.test('crisis contract + 6 s budget on the protective path; onboarding contr
   assertEquals([crisis.contract, crisis.timeoutMs, crisis.effort], ['crisis', CRISIS_TIMEOUT_MS, 'medium']);
   assertStringIncludes(String(crisis.messages.at(-1)!.content), CONTRACT_TEXT.crisis);
   assertEquals(coachContract(coachInput(ti, { tripwire: protectiveTripwire('emergency') })), 'emergency');
-  // Live trial 2026-10-11 ("14 litre su" → a flat 112 command): a number alone gets ONE conditional line
-  // and the number is asked; the plain duty stays first for real symptoms.
-  assert(CONTRACT_TEXT.emergency.indexOf("kişiyi hemen 112'yi aramaya") < CONTRACT_TEXT.emergency.indexOf('koşullu tek cümle'));
-  assertStringIncludes(CONTRACT_TEXT.emergency, 'sayıyı doğrulamak için tek soru sor');
+  // Retrial 2026-10-12: the coach's own (conditional) 112 line + the code-owned one = the 112 sentence
+  // twice. The contract now says the code appends it and the coach writes none; the 2026-10-11 typo
+  // paragraph is gone (an acute claim without the user's symptom words no longer reaches this contract).
+  assertStringIncludes(CONTRACT_TEXT.emergency, 'kod cevabın sonuna kendisi ekler; sen ayrıca bir 112 cümlesi yazma');
+  assert(!CONTRACT_TEXT.emergency.includes("kişiyi hemen 112'yi aramaya"), 'no instruction to write the line the code appends');
+  assert(!CONTRACT_TEXT.emergency.includes('koşullu tek cümle') && !CONTRACT_TEXT.emergency.includes('yazım hatası'));
+  assertStringIncludes(CONTRACT_TEXT.emergency, 'yalnızca şu anki güvenliğiyle ilgili');
   const fresh = await seededTurnInput((t) => { (t.profiles[0] as Record<string, unknown>).onboarding_completed = false; });
   assertEquals(coachContract(coachInput(fresh)), 'onboarding');
   assertEquals(coachContract(coachInput(ti)), null);

@@ -148,7 +148,15 @@ export function fakeAdapterDb(seed: Record<string, Record<string, unknown>[]> = 
 } = {}): FakeAdapterDb {
   let n = 0;
   const rows: Record<string, Record<string, unknown>[]> = structuredClone(seed);
-  const matches = (r: Record<string, unknown>, m: Record<string, unknown>) => Object.entries(m).every(([k, v]) => (v === null ? r[k] == null : r[k] === v));
+  // A PostgREST JSON-path key ('meta->>undo') reads the text of that key inside the jsonb column.
+  const field = (r: Record<string, unknown>, k: string): unknown => {
+    const at = k.indexOf('->>');
+    if (at < 0) return r[k];
+    const obj = r[k.slice(0, at)];
+    const v = obj && typeof obj === 'object' ? (obj as Record<string, unknown>)[k.slice(at + 3)] : undefined;
+    return v == null ? v : String(v);
+  };
+  const matches = (r: Record<string, unknown>, m: Record<string, unknown>) => Object.entries(m).every(([k, v]) => (v === null ? field(r, k) == null : field(r, k) === v));
   const err = (table: string) => (opts.fail?.[table] ? { message: opts.fail[table], code: '23514' } : null);
   const db: FakeAdapterDb = {
     calls: [],

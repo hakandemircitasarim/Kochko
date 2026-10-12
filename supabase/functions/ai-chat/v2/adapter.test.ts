@@ -321,6 +321,97 @@ Deno.test('constraint_retract by row id: deactivated (never deleted), legacy all
   assertEquals([fp.table_name, fp.row_id, fp.before, fp.after], ['food_preferences', 'fp1', { is_allergen: true }, { is_allergen: false }]);
 });
 
+/** A retract request pointed at a spine row (the validator's hold is upstream; the adapter sees the confirmed write). */
+const retractOf = (rowId: string) => {
+  const msg = 'dizim tamamen iyileşti';
+  return req({ op: 'constraint_retract', target: 'c2', evidence_quote: msg, note: null }, msg, { refRow: { table: 'user_constraints', id: rowId } });
+};
+
+Deno.test('constraint_retract of a v2-ADDED allergen (canonical "sesame", mirror stored as "susam"): the mirror the add\'s ledger group recorded is cleared (retrial 2026-10-12)', async () => {
+  // mem: the confirmed sesame removal deactivated user_constraints 2283ae4b, but food_preferences 'susam'
+  // stayed is_allergen=true/severe — the lookup matched food_name = 'sesame'.
+  const db = fakeAdapterDb({
+    user_constraints: [{ id: 'uc-s', user_id: USER, kind: 'allergen', subject: 'sesame', active: true }],
+    food_preferences: [
+      { id: 'fp-s', user_id: USER, food_name: 'susam', preference: 'never', is_allergen: true, allergen_severity: 'severe' },
+      { id: 'fp-other', user_id: USER, food_name: 'tahin', preference: 'never', is_allergen: true, allergen_severity: 'severe' },
+    ],
+    turn_writes: [
+      // the add's group (migration 114): the activation entry + its mirror
+      { id: 'tw37', user_id: USER, op: 'constraint_add', table_name: 'user_constraints', row_id: 'uc-s', group_id: 'g-add', undone_at: null, meta: { source: 'v2_adapter', undo: 'deactivate' } },
+      { id: 'tw38', user_id: USER, op: 'constraint_add', table_name: 'food_preferences', row_id: 'fp-s', group_id: 'g-add', undone_at: null, meta: { source: 'v2_adapter' } },
+      // an unrelated group's mirror must not be touched
+      { id: 'tw40', user_id: USER, op: 'constraint_add', table_name: 'food_preferences', row_id: 'fp-other', group_id: 'g-x', undone_at: null, meta: {} },
+    ],
+  });
+  const out = await createAdapter({ db, helpers: fakeHelpers() }).apply(await retractOf('uc-s'));
+  assertEquals(out.ok, true);
+  assertEquals(db.rows.user_constraints[0].active, false);
+  assertEquals(db.rows.food_preferences.find((f) => f.id === 'fp-s')?.is_allergen, false, 'the mirror v1 readers use is cleared too');
+  assertEquals(db.rows.food_preferences.find((f) => f.id === 'fp-other')?.is_allergen, true);
+  const [, fp] = ledgerEntries(db);
+  assertEquals([fp.table_name, fp.row_id, fp.undo_mode, fp.before, fp.after], ['food_preferences', 'fp-s', 'restore_previous', { is_allergen: true }, { is_allergen: false }], 'undo re-protects both');
+});
+
+Deno.test('constraint_retract with no ledger group (v1 / pre-114 row, or an unreadable ledger): the mirror is matched by the canonical id OR its Turkish label', async () => {
+  const seed = () => ({
+    user_constraints: [{ id: 'uc-s', user_id: USER, kind: 'allergen', subject: 'sesame', active: true }],
+    food_preferences: [{ id: 'fp-s', user_id: USER, food_name: 'susam', preference: 'never', is_allergen: true }],
+  });
+  const db = fakeAdapterDb(seed());
+  assertEquals((await createAdapter({ db, helpers: fakeHelpers() }).apply(await retractOf('uc-s'))).ok, true);
+  assertEquals(db.rows.food_preferences[0].is_allergen, false, "'sesame' → its label 'susam'");
+  // A failed ledger read never fails the removal: the name fallback still runs.
+  const broken = fakeAdapterDb(seed(), { fail: { 'select:turn_writes': 'boom' } });
+  assertEquals((await createAdapter({ db: broken, helpers: fakeHelpers() }).apply(await retractOf('uc-s'))).ok, true);
+  assertEquals(broken.rows.food_preferences[0].is_allergen, false);
+  // A legacy Turkish subject still matches itself; an already-cleared mirror is not ledgered again.
+  const legacy = fakeAdapterDb({
+    user_constraints: [{ id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', active: true }],
+    food_preferences: [{ id: 'fp1', user_id: USER, food_name: 'fıstık', preference: 'never', is_allergen: false }],
+  });
+  assertEquals((await createAdapter({ db: legacy, helpers: fakeHelpers() }).apply(await retractOf('uc-1'))).ok, true);
+  assertEquals(ledgerEntries(legacy).map((e) => e.table_name), ['user_constraints'], 'no mirror entry for a row that was no allergen');
+});
+
+Deno.test('constraint_add CONFIRMED downgrade with a same-subject DUPLICATE row (legacy "fıstık" severe + v2 "peanut" unstated): every row takes the new severity, one undo group', async () => {
+  // retrial 2026-10-12 (mem): confirming only the legacy row would have left 'peanut' (NULL = severe in every filter).
+  const db = fakeAdapterDb({
+    user_constraints: [
+      { id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', severity: 'severe', active: true },
+      { id: 'uc-dup', user_id: USER, kind: 'allergen', subject: 'peanut', severity: null, active: true },
+    ],
+  });
+  const msg = 'fıstık alerjim var ama hafif';
+  const ti = await seededTurnInput((t) => {
+    t.user_constraints = [...t.user_constraints, { ...t.user_constraints.find((c) => c.id === 'uc-1')!, id: 'uc-dup', subject: 'peanut', severity: null }];
+  });
+  const refs = turnRefs(ti);
+  const item = { ...w('constraint_add'), subject_id: 'peanut', display_tr: 'fıstık', severity: 'mild', evidence_quote: msg };
+  const ask = validateChannelItems('writes', [item], validationContext(ti, msg, NOW, refs))[0];
+  assertEquals(ask.verdict, 'ASK');
+  const v = validateConfirmedHold('constraint_add', ask.hold_args!, validationContext(ti, 'evet', NOW, refs))!;
+  assertEquals(((v.row?.existing as Record<string, unknown>).duplicates as unknown[]).length, 1);
+  const out = await createAdapter({ db, helpers: fakeHelpers({ db }) }).apply({ userId: USER, turnId: 'turn-2', today: '2026-10-07', op: v.op, row: v.row!, verdict: v, replaces: null, refRow: null });
+  assertEquals(out.ok, true);
+  assertEquals(db.rows.user_constraints.map((c) => [c.id, c.severity]), [['uc-1', 'mild'], ['uc-dup', 'mild']]);
+  const entries = ledgerEntries(db);
+  assertEquals(entries.map((e) => [e.row_id, e.is_primary, e.before, e.after]), [
+    ['uc-1', true, { severity: 'severe' }, { severity: 'mild' }],
+    ['uc-dup', false, { severity: null }, { severity: 'mild' }],
+  ], '"geri al" restores both rows');
+  // An UNCONFIRMED downgrade (no hold flag) touches neither row.
+  const db2 = fakeAdapterDb({
+    user_constraints: [
+      { id: 'uc-1', user_id: USER, kind: 'allergen', subject: 'fıstık', severity: 'severe', active: true },
+      { id: 'uc-dup', user_id: USER, kind: 'allergen', subject: 'peanut', severity: null, active: true },
+    ],
+  });
+  const unconfirmed = { ...v, issues: v.issues.filter((i) => i.code !== 'iki_adimli_siddet_dusurme') };
+  await createAdapter({ db: db2, helpers: fakeHelpers({ db: db2 }) }).apply({ userId: USER, turnId: 'turn-3', today: '2026-10-07', op: v.op, row: v.row!, verdict: unconfirmed, replaces: null, refRow: null });
+  assertEquals(db2.rows.user_constraints.map((c) => c.severity), ['severe', null]);
+});
+
 Deno.test('food_pref: a taste preference never clears an allergy flag', async () => {
   const db = fakeAdapterDb({ food_preferences: [{ id: 'fp1', user_id: USER, food_name: 'brokoli', preference: 'never', is_allergen: true, allergen_severity: 'severe' }] });
   const out = await createAdapter({ db, helpers: fakeHelpers() }).apply(await req(w('food_pref')));

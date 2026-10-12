@@ -64,8 +64,13 @@ import { memory_note } from './ops/memory.ts';
  * (iki_adimli_siddet_dusurme) — so the coach's capability line for it gains "Gerekirse önce
  * kullanıcıya sorulur." Schema bytes and the Stage A doc are unchanged apart from the version name.
  * (v5 was never deployed: live holds are v4 either way and come back as stale_hold.)
+ * v7 (2026-10-12, retrial): safety.acute_evidence_quote (nullable text) right after acute_medical —
+ * an acute claim carries the user's own verbatim words for the symptom or event, like ed_signal's
+ * evidence_quote ("bugün 14 litre su içtim", no symptom, went to the emergency contract). The
+ * validator accepts the claim only with that quote (validate.ts safety.acute); resolveTripwires
+ * does not protect on an unevidenced claim alone. Open v6 holds come back as stale_hold.
  */
-export const SCHEMA_VERSION = 'v6';
+export const SCHEMA_VERSION = 'v7';
 
 export const REGISTRY: readonly RegOp[] = [
   // writes[] — what the user reported

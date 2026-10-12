@@ -1156,6 +1156,14 @@ export interface TripwireReading {
 export interface StageASafetyPositive {
   category: SafetyCategory;
   ed_severity?: EdSeverity | null;
+  /**
+   * emergency: did Stage A's acute_medical carry the user's own verbatim words for the symptom or
+   * event (validate.ts safety.acute)? `false` = a bare claim: it is NOT protective on its own (retrial
+   * 2026-10-12: "bugün 14 litre su içtim", no symptom, no trigger, became an emergency) — a live
+   * emergency trigger read positive still protects through its hit. Absent = treated as evidenced:
+   * a caller that cannot tell never loses protection.
+   */
+  evidenced?: boolean;
 }
 
 export type StageASafetyOutcome =
@@ -1186,6 +1194,11 @@ export interface TripwireLog {
   benign_suppressed: boolean;
   /** ±40-char windows, only where a benign reading was accepted or suppressed (§7.2 triage). */
   contexts: string[];
+  /**
+   * Stage A positives left out because they carried no evidence (StageASafetyPositive.evidenced
+   * false). Set by resolveTripwires when Stage A ran; absent on a hand-built placeholder log.
+   */
+  unevidenced?: SafetyCategory[];
   /** v1's own verdict on the message (TripwireScan.v1): a 'normal' or 'protective' outcome on a
    * v1-instant message is the §7.4 evidence a future demotion needs. Set by resolveTripwires;
    * absent only on a hand-built placeholder log. */
@@ -1264,7 +1277,8 @@ function readingVerdict(h: TripwireHit, r: TripwireReading | undefined, benignOv
  *   trigger without a QUALIFYING benign  → protective path (readingVerdict)
  *   qualifying benign on every trigger   → normal — only with the override gate on, and for
  *                                          emergency/self-harm only with the classifier's benign
- *   no trigger + Stage A positive        → protective path
+ *   no trigger + Stage A positive        → protective path (an acute_medical claim only with its
+ *                                          verbatim evidence: StageASafetyPositive.evidenced)
  * The v1 floor holds by construction: a message v1 answers instantly is canned when v1 fires on an
  * explicit-floor phrase, and when it fires only on the spec's ambiguous list (TripwireScan.v1) its
  * category is protected unless a live hit of that category carries a qualifying benign — the scan
@@ -1332,7 +1346,16 @@ export function resolveTripwires(input: ResolveTripwiresInput): TripwireDecision
     if (verdict === 'suppressed') log.benign_suppressed = true;
     if (verdict !== 'lift') concerns.push({ category: h.category, ed_severity: h.ed_severity });
   }
-  for (const p of stageA.positives) concerns.push({ category: p.category, ed_severity: p.category === 'ed' ? (p.ed_severity ?? 'medium') : null });
+  // An acute claim without the user's own symptom words is not a concern by itself (retrial
+  // 2026-10-12); a live emergency hit read positive already pushed its own concern above.
+  log.unevidenced = [];
+  for (const p of stageA.positives) {
+    if (p.category === 'emergency' && p.evidenced === false) {
+      log.unevidenced.push(p.category);
+      continue;
+    }
+    concerns.push({ category: p.category, ed_severity: p.category === 'ed' ? (p.ed_severity ?? 'medium') : null });
+  }
 
   if (concerns.length === 0) return { kind: 'normal', log };
   const c = worst(concerns);

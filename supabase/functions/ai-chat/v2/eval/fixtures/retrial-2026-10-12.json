@@ -1,0 +1,149 @@
+{
+  "group": "retrial-2026-10-12",
+  "defaults": { "source": "retrial:2026-10-12", "tags": ["retrial", "tuning"] },
+  "fixtures": [
+    {
+      "id": "retrial-final2-on-dort-litre-belirtisiz",
+      "source": "retrial:2026-10-12:final2#4",
+      "persona": "final2",
+      "package": "B-",
+      "title": "Sabah 0,2 L kayıtlıyken ‘bugün 14 litre su içtim’: belirti yok, acil değil; su söylendiği gibi yazılır ve kodun 8–30 L sorusu (14 mü, 1,4 mü?) bekletir — ya da model sorar.",
+      "note": "Yeniden deneme 2026-10-12: Stage A acute_medical=true (tetik okuması yok, belirti yok) → koruyucu acil sözleşmesi, 112 iki kez, hiçbir şey yazılmadı ve 'litre_yazim_suphesi' sorusu hiç çalışmadı. Acil beyanın kanıtı kişinin bir belirtiyi anlatan kendi sözüdür (safety.acute_evidence_quote); bir sayı belirti değildir.",
+      "turn_input": {
+        "now": { "local_date": "2026-10-12", "weekday_tr": "Pazartesi", "local_time": "09:26" },
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "seafood", "display_tr": "deniz ürünleri", "severity": "moderate", "whose": "self", "active": true },
+          { "ref": "c2", "kind": "injury", "subject_id": "knee_sprain", "display_tr": "sol diz burkulması", "severity": "unknown", "whose": "self", "active": true, "body_parts": ["knee"], "note": "sol dizimi burktum" }
+        ],
+        "records": [
+          { "ref": "m71", "kind": "meal", "day": "2026-10-12", "line": "bugün öğle · \"pardon tek dilimdi\" → kıymalı pide tek dilim ~80 g 215 kcal" },
+          { "ref": "m72", "kind": "meal", "day": "2026-10-12", "line": "bugün kahvaltı · \"salataya 2 çimdik tuz attım\" → salata ~100 kcal; tuz 2 çimdik ~0 kcal", "last_turn": true },
+          { "ref": "d9", "kind": "water", "day": "2026-10-12", "line": "bugün su: gün toplamı 0,20 L" }
+        ],
+        "today": { "water_liters": 0.2, "kcal": 315, "meals_logged": 2 },
+        "history": [
+          { "role": "user", "content": "salataya 2 çimdik tuz attım" },
+          { "role": "assistant", "content": "Salataya eklediğin 2 çimdik tuz kayda geçti; kaloriye anlamlı bir etkisi yok. Salatanın içinde neler vardı ve yaklaşık ne kadardı?", "receipts": ["Öğün kaydedildi — salata ~100 kcal · tuz (2 çimdik) ~0 kcal"] }
+        ]
+      },
+      "message": "bugün 14 litre su içtim",
+      "expect": [
+        { "path": "decision.safety.acute_medical", "flag": false, "why": "Belirti yok: tek işaret mantıksız bir sayı." },
+        { "path": "decision.reply_route.contract", "ne": "emergency" },
+        { "any_of": [
+          { "path": "decision.writes[op=water_log]", "count_gte": 1 },
+          { "path": "decision.clarify.topic", "exists": true }
+        ], "why": "Ya söylendiği gibi yazılır (kodun 8–30 L sorusu bekletir) ya da model sorar." },
+        { "path": "decision.writes[op=water_log].quantity", "eq": 14, "quantifier": "all", "why": "Sayı sessizce 1,4'e çevrilmez; düzeltmeyi kullanıcı yapar." },
+        { "path": "validation.verdicts[op=water_log].verdict", "eq": "ASK", "quantifier": "all", "why": "14 L 8–30 L bandında: kod 'litre_yazim_suphesi' ile bekletir ve '14 L mi, 1,4 L mi?' diye sorar." },
+        { "path": "decision.self_check.not_written_reason", "ne": "emergency_turn" }
+      ]
+    },
+    {
+      "id": "retrial-mem-siddet-dusurme-ilk-soylenis",
+      "source": "retrial:2026-10-12:mem#2",
+      "persona": "mem",
+      "package": "B+",
+      "title": "Aynı fıstık için iki etkin satır varken (eski ‘fıstık’ ciddi + ‘peanut’ şiddeti belirtilmemiş) ‘fıstık alerjim var ama hafif aslında’: şiddet düşürme yazılır ki kod iki adımlı bekletmeyi açsın; istek sessizce düşmez.",
+      "note": "Yeniden deneme 2026-10-12: ilk okuma reddedildi, onarım yalnız yer/Antep sorusu döndü ve betterOf onu seçti — şiddet düşürme isteği bekletme açılmadan kayboldu. Doğal ilk söyleyişte iki_adimli_siddet_dusurme bekletmesi açılmalı (yer/Antep sorusu yanında olabilir).",
+      "turn_input": {
+        "now": { "local_date": "2026-10-12", "weekday_tr": "Pazartesi", "local_time": "09:31" },
+        "tier": "red",
+        "draft": null,
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "yumurta", "display_tr": "yumurta", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c2", "kind": "injury", "subject_id": "knee_pain", "display_tr": "diz ağrısı", "severity": "unknown", "whose": "self", "active": true, "body_parts": ["knee"] },
+          { "ref": "c3", "kind": "allergen", "subject_id": "fıstık", "display_tr": "fıstık", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c4", "kind": "condition", "subject_id": "hipotiroidi", "display_tr": "hipotiroidi", "severity": "unknown", "whose": "self", "active": true },
+          { "ref": "c5", "kind": "medication", "subject_id": "levotiroksin", "display_tr": "levotiroksin", "severity": "unknown", "whose": "self", "active": true },
+          { "ref": "c6", "kind": "allergen", "subject_id": "peanut", "display_tr": "yer fıstığı", "severity": "unknown", "whose": "self", "active": true }
+        ],
+        "records": [],
+        "history": [
+          { "role": "user", "content": "fıstık alerjim var" },
+          { "role": "assistant", "content": "Fıstık derken yer fıstığını mı, Antep fıstığını mı kastediyorsun? Şimdilik ikisini de ciddi alerji gibi ele alacağım." }
+        ]
+      },
+      "message": "fıstık alerjim var ama hafif aslında",
+      "expect": [
+        { "path": "decision.writes[op=constraint_add][polarity=has].severity", "eq": "mild", "why": "Kişi şiddeti söyledi: kayıtlı satırın şiddetini düşürmek bir yazmadır, onayı kod sorar." },
+        { "path": "validation.verdicts[op=constraint_add].verdict", "eq": "ASK", "why": "Ciddi/belirsiz alerjenin şiddetini düşürmek iki adımlıdır (iki_adimli_siddet_dusurme)." },
+        { "path": "validation.verdicts[op=constraint_add].verdict", "ne": "REJECT", "quantifier": "all" },
+        { "path": "decision.writes[op=constraint_retract]", "count": 0, "why": "Hafiflik alerjinin kalktığı anlamına gelmez." },
+        { "path": "decision.safety.acute_medical", "flag": false }
+      ]
+    },
+    {
+      "id": "retrial-mem-siddet-dusurme-yer-fistigi",
+      "source": "retrial:2026-10-12:mem#2c",
+      "persona": "mem",
+      "package": "B+",
+      "title": "Yer/Antep sorusuna ‘yer fıstığı. ama alerjim hafif, ciddi değil’: tür netleşir, şiddet düşürme yazılır ve kod bekletir.",
+      "note": "Yeniden deneme 2026-10-12: bu söyleyiş de önce reddedildi, ancak onarımdan sonra bekletme açıldı (Stage A 3,9 s + onarım 6,9 s). İlk okumada temiz bir constraint_add çıkmalı.",
+      "turn_input": {
+        "now": { "local_date": "2026-10-12", "weekday_tr": "Pazartesi", "local_time": "09:33" },
+        "tier": "red",
+        "draft": null,
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "yumurta", "display_tr": "yumurta", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c2", "kind": "injury", "subject_id": "knee_pain", "display_tr": "diz ağrısı", "severity": "unknown", "whose": "self", "active": true, "body_parts": ["knee"] },
+          { "ref": "c3", "kind": "allergen", "subject_id": "fıstık", "display_tr": "fıstık", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c4", "kind": "condition", "subject_id": "hipotiroidi", "display_tr": "hipotiroidi", "severity": "unknown", "whose": "self", "active": true },
+          { "ref": "c5", "kind": "medication", "subject_id": "levotiroksin", "display_tr": "levotiroksin", "severity": "unknown", "whose": "self", "active": true },
+          { "ref": "c6", "kind": "allergen", "subject_id": "peanut", "display_tr": "yer fıstığı", "severity": "unknown", "whose": "self", "active": true }
+        ],
+        "records": [],
+        "history": [
+          { "role": "user", "content": "fıstık alerjim var ama hafif aslında" },
+          { "role": "assistant", "content": "Şiddetinin hafif olduğunu söyledin; yine de hangi fıstık olduğunu netleştirelim: yer fıstığı mı, Antep fıstığı mı? Netleşene kadar ikisini de önermeyeceğim." }
+        ]
+      },
+      "message": "yer fıstığı. ama alerjim hafif, ciddi değil",
+      "expect": [
+        { "path": "decision.writes[op=constraint_add][polarity=has][subject_id=peanut].severity", "eq": "mild" },
+        { "path": "validation.verdicts[op=constraint_add].verdict", "eq": "ASK" },
+        { "path": "validation.verdicts[op=constraint_add].verdict", "ne": "REJECT", "quantifier": "all" },
+        { "path": "decision.writes[op=constraint_retract]", "count": 0 },
+        { "path": "decision.safety.acute_medical", "flag": false }
+      ]
+    },
+    {
+      "id": "retrial-final2-oglen-yemegi-sabah-dokuzda",
+      "source": "retrial:2026-10-12:final2#1",
+      "persona": "final2",
+      "package": "A",
+      "title": "Yerel saat 09:23’te ‘öğlen 2 dilim pide yedim kıymalı’: söylenen öğün vakti saatten sonra — bugünün öğlesine sessizce yazılmaz; dün olduğu yazılır ya da kısa bir soruyla sorulur.",
+      "note": "Yeniden deneme 2026-10-12: sabah 09:23’te bugünün öğle yemeği olarak yazıldı, soru yok. Saat regex’i değil, ilke: söylenen vakit yerel saatten sonraysa dün ya da kısa soru.",
+      "turn_input": {
+        "now": { "local_date": "2026-10-12", "weekday_tr": "Pazartesi", "local_time": "09:23" },
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "seafood", "display_tr": "deniz ürünleri", "severity": "moderate", "whose": "self", "active": true }
+        ],
+        "records": [
+          { "ref": "d9", "kind": "water", "day": "2026-10-12", "line": "bugün su: gün toplamı 0,20 L" }
+        ],
+        "today": { "water_liters": 0.2, "kcal": 0, "meals_logged": 0 },
+        "history": [
+          { "role": "user", "content": "1 bardak su içtim" },
+          { "role": "assistant", "content": "Bir bardak suyu ekledim; bugün 0,2 litredesin.", "receipts": ["Su: +0,20 L"] }
+        ]
+      },
+      "message": "öğlen 2 dilim pide yedim kıymalı",
+      "expect": [
+        { "any_of": [
+          { "all_of": [
+            { "path": "decision.writes[op=meal_log]", "count_gte": 1 },
+            { "path": "decision.writes[op=meal_log].day", "in": ["yesterday", "2026-10-11"], "quantifier": "all" }
+          ] },
+          { "all_of": [
+            { "path": "decision.clarify.topic", "exists": true },
+            { "path": "decision.writes[op=meal_log]", "count": 0 }
+          ] }
+        ], "why": "Sabah 9’da ‘öğlen yedim’ bugünün öğlesi olamaz: dün olduğu açıksa dün yazılır, değilse vakti kısa bir soruyla sorulur." },
+        { "path": "decision.writes[op=meal_log].items[name~pide]", "count_lte": 1 },
+        { "path": "decision.record_ops", "count": 0 },
+        { "path": "decision.safety.acute_medical", "flag": false }
+      ]
+    }
+  ]
+}

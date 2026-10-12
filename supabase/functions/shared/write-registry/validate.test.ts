@@ -3,8 +3,8 @@
  * Each case is a model decision as the strict schema would produce it; the expectation is the
  * code's verdict. The live defects that motivated v2 are the first cases.
  */
-import { assert, assertEquals } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
-import { collectRefs, freezeForHold, validateChannelItems, validateConfirmedHold, validateDecision, type WriteVerdict } from './validate.ts';
+import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.168.0/testing/asserts.ts';
+import { ACUTE_EVIDENCE_CODE, collectRefs, freezeForHold, validateChannelItems, validateConfirmedHold, validateDecision, type WriteVerdict } from './validate.ts';
 import { SAMPLE_WRITES, sampleContext, sampleDecision, sampleMeal } from './samples.ts';
 import type { ValidationContext } from './dsl.ts';
 import { SCHEMA_VERSION } from './registry.ts';
@@ -170,6 +170,30 @@ Deno.test('constraint_add: a LOWER restated severity on a legacy SEVERE row is h
   assertEquals(ok.row?.severity, 'mild');
   assertEquals((ok.row?.existing as Record<string, unknown>).subject, 'fıstık', 'still the stored row, never a second one');
   assert(ok.issues.some((i) => i.code === 'iki_adimli_siddet_dusurme' && i.level === 'flag' && i.tr.startsWith('kullanıcı onayladı')));
+});
+
+Deno.test('constraint_add: duplicate same-canonical rows (legacy \'fıstık\' + v2 \'peanut\') — the MOST protective is `existing`, a downgrade is held whichever comes first, the rest ride along as duplicates', () => {
+  // retrial 2026-10-12 (mem): 'fıstık' severe (c3) and trial 1's 'peanut' of unstated severity (c6) were both active.
+  const { c1: _v2Peanut, ...others } = sampleContext().refs;
+  const row = (subject: string, severity: string | null, stored?: string) =>
+    ({ kind: 'c' as const, target: 'constraint' as const, constraint: { kind: 'allergen', subject: 'peanut', severity, ...(stored ? { stored_subject: stored } : {}) } });
+  const msg = 'fıstık alerjim var ama hafif aslında';
+  const decl = w('constraint_add', { subject_id: 'peanut', display_tr: 'fıstık', severity: 'mild', evidence_quote: 'fıstık alerjim var ama hafif' });
+  // A MODERATE duplicate rendered first used to be `existing` (no hold: moderate → mild is not guarded);
+  // the unstated-severity row (counts as severe) now wins and the downgrade is held.
+  const modFirst = { ...others, c3: row('peanut', 'moderate'), c6: row('peanut', null, 'fıstık') };
+  const held = one('writes', decl, sampleContext({ user_message: msg, refs: modFirst }));
+  assertEquals([held.verdict, codes(held)], ['ASK', ['iki_adimli_siddet_dusurme']]);
+  assertStringIncludes(held.question_tr ?? '', 'şiddeti belirsiz (ciddi sayılıyor) → hafif');
+  // A stated severe row outranks an unstated one; every other same-subject row is a duplicate.
+  const mem = { ...others, c3: row('peanut', 'severe', 'fıstık'), c6: row('peanut', null) };
+  const confirmed = validateConfirmedHold('constraint_add', one('writes', decl, sampleContext({ user_message: msg, refs: mem })).hold_args!, sampleContext({ user_message: 'evet', refs: mem }))!;
+  assertEquals(confirmed.verdict, 'FLAG');
+  assertEquals(confirmed.row?.existing, { ref: 'c3', subject: 'fıstık', severity: 'severe', body_parts: [], duplicates: [{ ref: 'c6', subject: 'peanut', severity: null }] });
+  // A single row keeps the old shape (no duplicates key).
+  const single = one('writes', w('constraint_add', { subject_id: 'peanut', display_tr: 'fıstık', severity: 'unknown', evidence_quote: 'fıstık alerjim var' }), sampleContext({ user_message: 'fıstık alerjim var', refs: { ...others, c3: row('peanut', 'severe', 'fıstık') } }));
+  assertEquals(single.row?.existing, { ref: 'c3', subject: 'fıstık', severity: 'severe', body_parts: [] });
+  assertEquals(single.row?.effect, 'already_active');
 });
 
 Deno.test('constraint_add severity: only an INCREASE lands directly — unknown/severe allergen, surgery and severe injury downgrades are held', () => {
@@ -676,6 +700,35 @@ Deno.test('final2#9: an ED signal counts only with a verbatim USER quote; illnes
   assertEquals(validateDecision(sig('dün gece kustum', 'illness_vomiting', 'medium'), sampleContext({ user_message: 'dün gece kustum, zehirlendim galiba' })).safety.ed_signal?.escalate, null);
 });
 
+Deno.test('retrial 2026-10-12 (SCHEMA v7): acute_medical counts only with the USER\'s own symptom words; an unevidenced claim is a repairable envelope defect unless a reading already protects', () => {
+  const acute = (quote: string | null, readings: unknown[] = []) =>
+    sampleDecision({ safety: { acute_medical: true, acute_evidence_quote: quote, tripwire_readings: readings }, reply_route: { contract: 'emergency', effort_hint: 'medium' } });
+  // "bugün 14 litre su içtim": no symptom, no trigger — the live re-trial's emergency.
+  const water = sampleContext({ user_message: 'bugün 14 litre su içtim' });
+  const bare = validateDecision(acute(null), water);
+  assertEquals(bare.safety.acute?.accepted, false);
+  const issue = bare.decision_issues.find((i) => i.code === ACUTE_EVIDENCE_CODE);
+  assertEquals([issue?.level, issue?.path, issue?.repairable], ['hard', 'safety.acute_evidence_quote', true]);
+  assertEquals(bare.repair.needed, true, 'the ONE repair call gets the line (quote the symptom or write the report)');
+  assertStringIncludes(issue!.tr, 'Bir sayı ya da miktar belirti değildir');
+  // A paraphrase is not the user's words either; the whole message as "evidence" passes the code (meaning is the model's).
+  assertEquals(validateDecision(acute('çok fazla su içmiş, zehirlenme riski'), water).safety.acute?.accepted, false);
+  // A verbatim symptom quote: accepted, no issue.
+  const faint = sampleContext({ user_message: 'koşarken başım döndü, göğsüm sıkışıyor' });
+  const ok = validateDecision(acute('göğsüm sıkışıyor'), faint);
+  assertEquals([ok.safety.acute?.accepted, ok.decision_issues.filter((i) => i.code === ACUTE_EVIDENCE_CODE).length], [true, 0]);
+  // A positive tripwire reading already protects the turn: a FLAG only — no repair delays a real emergency.
+  const read = validateDecision(acute(null, [{ hit_id: 'tw1', reading: 'positive', reason: 'gerçek bayılma' }]), faint);
+  assertEquals(read.decision_issues.find((i) => i.code === ACUTE_EVIDENCE_CODE)?.level, 'flag');
+  assertEquals([read.safety.acute?.accepted, read.repair.needed], [false, false]);
+  // No claim → nothing to evidence (a stray quote with acute_medical false is ignored).
+  assertEquals(validateDecision(sampleDecision({ safety: { acute_medical: false, acute_evidence_quote: 'x' } }), water).safety.acute, null);
+  // The field is part of the strict envelope: a json_object answer without it is a missing field.
+  const noKey = sampleDecision();
+  delete (noKey.safety as Record<string, unknown>).acute_evidence_quote;
+  assert(validateDecision(noKey, water).decision_issues.some((i) => i.code === 'alan_eksik' && i.path === 'safety.acute_evidence_quote'));
+});
+
 Deno.test('§5.1.10: reported a fact but wrote nothing and did not clarify → missed_write (the coach asks; code never injects)', () => {
   const sc = { reported_new_facts: true, not_written_reason: null };
   assertEquals(validateDecision(sampleDecision({ self_check: sc }), sampleContext()).missed_write, true);
@@ -686,13 +739,14 @@ Deno.test('§5.1.10: reported a fact but wrote nothing and did not clarify → m
 
 Deno.test('§5.1.10: a DECLARED not_written_reason is a decision, not a miss (emergency / illness turns never become a data-entry question)', () => {
   const emergency = sampleDecision({
-    safety: { acute_medical: true, self_harm: false, ed_signal: null, tripwire_readings: [] },
+    safety: { acute_medical: true, acute_evidence_quote: 'hâlâ başım dönüyor', self_harm: false, ed_signal: null, tripwire_readings: [] },
     reply_route: { contract: 'emergency', effort_hint: 'medium' },
     self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
   });
   const e = validateDecision(emergency, sampleContext({ user_message: 'antrenmanda bayıldım, hâlâ başım dönüyor' }));
   assertEquals([e.missed_write, e.not_written_reason], [false, 'emergency_turn']);
   assertEquals(e.decision_issues, []);
+  assertEquals(e.safety.acute?.accepted, true);
   const illness = validateDecision(sampleDecision({
     self_check: { reported_new_facts: true, not_written_reason: 'illness_not_food' },
   }), sampleContext({ user_message: 'dün gece kustum, zehirlendim galiba' }));

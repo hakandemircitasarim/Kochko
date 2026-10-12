@@ -88,6 +88,13 @@ export interface DecisionValidation {
   safety: {
     /** ED signal accepted only with a verbatim USER quote (final2#9); escalation never from the model alone. */
     ed_signal: null | { accepted: boolean; escalate: 'medium' | 'high' | null; reason_tr: string };
+    /**
+     * acute_medical's evidence (SCHEMA v7, retrial 2026-10-12): accepted only with acute_evidence_quote
+     * verbatim in the USER's message — their own words for the symptom or event. null when
+     * acute_medical is not true. An unaccepted claim is not protective on its own (resolveTripwires);
+     * a live trigger read positive still is.
+     */
+    acute: null | { accepted: boolean; reason_tr: string };
   };
   /** One repair call (§3.2 T5) is worth it: some REJECT is fixable from what the model knows. */
   repair: { needed: boolean; items: Array<{ channel: Channel; index: number; op: string; issues: Issue[] }> };
@@ -549,6 +556,34 @@ function validateEdSignal(safety: unknown, ctx: ValidationContext): DecisionVali
   return { accepted: true, escalate, reason_tr: escalate ? `YB sinyali (${String(s.category)})` : 'düşük şiddet; yükseltme yok' };
 }
 
+/** The decision-level issue code of an acute claim without the user's own symptom words. */
+export const ACUTE_EVIDENCE_CODE = 'akut_kanit_yok';
+
+/**
+ * acute_medical needs its evidence (retrial 2026-10-12: "bugün 14 litre su içtim" — no symptom, no
+ * trigger — became an emergency, wrote nothing, and the water op's own 8–30 L typo question never
+ * ran). The claim is ACCEPTED only when acute_evidence_quote is verbatim in the user's message.
+ * Otherwise:
+ *   • no tripwire reading of its own says positive → a HARD, repairable envelope issue: the ONE repair
+ *     call (handler T5) gets the line below and either quotes the symptom or writes the report; a
+ *     claim still unevidenced afterwards is not protective (resolveTripwires) — the turn goes on;
+ *   • a positive tripwire reading in the same decision → a FLAG only: that reading already protects
+ *     the turn, and a repair call would only delay a real emergency reply.
+ * Code never reads the meaning of the quote (AI-first): it checks that the words are the user's.
+ */
+function validateAcute(safety: unknown, ctx: ValidationContext, env: Acc): DecisionValidation['safety']['acute'] {
+  if (!isRecord(safety) || safety.acute_medical !== true) return null;
+  if (isVerbatimQuote(safety.acute_evidence_quote, ctx.user_message)) return { accepted: true, reason_tr: 'belirti kişinin kendi sözüyle' };
+  const readsPositive = Array.isArray(safety.tripwire_readings) && safety.tripwire_readings.some((r) => isRecord(r) && r.reading === 'positive');
+  const path = 'safety.acute_evidence_quote';
+  const tr = 'acute_medical true ama kişinin şu an süren bir belirtiyi ya da acil bir olayı anlatan sözü mesajında aynen yok. '
+    + 'Böyle bir söz varsa onu aynen alıntıla; yoksa acute_medical false olur, rota emergency olmaz ve bildirdiği şey yazılır '
+    + '(mantıksız bir miktar belgedeki aralıktaysa söylendiği gibi; kod sorar). Bir sayı ya da miktar belirti değildir.';
+  if (readsPositive) env.issues.push({ code: ACUTE_EVIDENCE_CODE, level: 'flag', tr, path });
+  else hard(env, ACUTE_EVIDENCE_CODE, tr, path, 'evidence', true);
+  return { accepted: false, reason_tr: 'kanıt alıntısı kullanıcının mesajında aynen yok' };
+}
+
 /**
  * Validate a Stage A decision (or a fused envelope — memory[] is validated when present).
  * Accepts `unknown` because a json_object fallback gateway gives no schema guarantee.
@@ -585,6 +620,8 @@ export function validateDecision(decision: unknown, ctx: ValidationContext): Dec
     }
   }
 
+  const acute = validateAcute(d.safety, ctx, env);
+
   const intent = isRecord(d.intent) ? d.intent : null;
   if (intent?.is_hypothetical === true && verdicts.some((v) => v.channel === 'writes')) {
     env.issues.push({ code: 'niyet_yazma_celiskisi', level: 'flag', tr: 'mesaj varsayım olarak okunmuş ama kayıt yazması var', path: 'intent' });
@@ -619,7 +656,7 @@ export function validateDecision(decision: unknown, ctx: ValidationContext): Dec
     verdicts,
     plan,
     decision_issues: env.issues,
-    safety: { ed_signal: validateEdSignal(d.safety, ctx) },
+    safety: { ed_signal: validateEdSignal(d.safety, ctx), acute },
     repair: { needed: repairItems.length > 0 || fixable(env.issues) || fixable(plan?.issues ?? []), items: repairItems },
     missed_write,
     not_written_reason,

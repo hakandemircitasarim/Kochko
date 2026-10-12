@@ -131,7 +131,9 @@ Deno.test('flag reads only the registry safety shapes; anything else fails close
 });
 
 Deno.test('flag is read through the FIELD\'s registry declaration (ENVELOPE_HEAD.safety), not by guessing the shape', () => {
-  assertEquals(Object.keys(ENVELOPE_HEAD.safety.fields), ['acute_medical', 'self_harm', 'ed_signal', 'tripwire_readings'], 'the fields flag can read');
+  // SCHEMA v7 added acute_evidence_quote (a text, not a signal): flag never reads it (signalOf → null, fail closed).
+  assertEquals(Object.keys(ENVELOPE_HEAD.safety.fields), ['acute_medical', 'acute_evidence_quote', 'self_harm', 'ed_signal', 'tripwire_readings'], 'the declared safety fields');
+  assertEquals(signalOf('göğsüm sıkışıyor', 'acute_evidence_quote'), null, 'a quote is evidence, not a signal');
   assertEquals(safetyFieldOf('decision.safety.ed_signal'), 'ed_signal');
   assertEquals(safetyFieldOf('decision.safety.ed_signal.category'), null, 'a sub-field is not a signal');
   assertEquals(safetyFieldOf('decision.intent.is_hypothetical'), null);

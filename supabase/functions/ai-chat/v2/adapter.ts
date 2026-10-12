@@ -31,7 +31,7 @@ import type { Constraint, ConstraintKind } from '../../shared/constraints.ts';
 import type { NoteSource } from '../../shared/coaching-notes.ts';
 import { isIFCompatible, type PeriodicState } from '../../shared/periodic-config.ts';
 import { type LedgerAppendEntry, type LedgerAppendOk, type LedgerTable, parseRpcReceipt, V2_RPC } from '../../shared/v2-db-types.ts';
-import { PROFILE_FIELD_SPECS, restatedSeverity, SEVERITY_DOWNGRADE_CODE, severityDowngrade } from '../../shared/write-registry/mod.ts';
+import { PROFILE_FIELD_SPECS, restatedSeverity, SEVERITY_DOWNGRADE_CODE, severityDowngrade, vocab } from '../../shared/write-registry/mod.ts';
 import type { AdapterOutcome, AdapterPort, AdapterRequest, EraseConfirmOutcome } from './commit.ts';
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -329,13 +329,46 @@ async function confirmRestated(d: AdapterDeps, req: AdapterRequest, kind: string
   if (up.error) return fail('write_failed');
   if (!up.data?.length) return null;
   const meta = { effect: r.effect, restated: true, kind, subject: r.subject_id, stored_subject: stored, ...(refused ? { severity_kept: true, stated_severity: stated } : {}) };
-  const lg = await ledger(d, req, [changed
+  const entries: LedgerAppendEntry[] = [changed
     ? {
       op: 'constraint_add', table_name: 'user_constraints', row_id: id, field_set: ['severity'], before: { severity: cur.data?.severity ?? null },
       after: { severity: next }, undo_mode: 'restore_previous', group: 'c', is_primary: true, meta,
     }
-    : audit('constraint_add', meta, 'user_constraints', id)]);
+    : audit('constraint_add', meta, 'user_constraints', id)];
+  // The same canonical subject on other active rows (registry ExistingConstraint.duplicates: a legacy
+  // 'fıstık' next to a v2 'peanut'): a severity change that lands, lands on every one of them — the
+  // stored row is the most protective, so if its change is allowed, theirs is too. One undo group.
+  if (changed) entries.push(...await restateDuplicates(d, req, kind, ex, next, now));
+  const lg = await ledger(d, req, entries);
   return ok(1, lg, refused ? SEVERITY_KEPT_NOTE : null);
+}
+
+/** confirmRestated's duplicates: each still-active same-subject row gets the new severity (ledgered). */
+async function restateDuplicates(
+  d: AdapterDeps, req: AdapterRequest, kind: string, ex: Record<string, unknown> | null, next: string | null, now: string,
+): Promise<LedgerAppendEntry[]> {
+  const subjects = (Array.isArray(ex?.duplicates) ? ex!.duplicates as unknown[] : []).filter(isRec).map((x) => str(x.subject)).filter((s): s is string => s !== null);
+  const out: LedgerAppendEntry[] = [];
+  for (const subject of [...new Set(subjects)]) {
+    const row = await d.db.selectOne('user_constraints', 'id, severity', { user_id: req.userId, kind, subject, active: true });
+    const rowId = !row.error && row.data && typeof row.data.id === 'string' ? row.data.id : null;
+    if (!rowId) {
+      if (row.error) d.log?.('[v2_adapter] duplicate constraint read failed (main row updated)', { subject, error: row.error.message });
+      continue;
+    }
+    const before = row.data?.severity ?? null;
+    if (before === next) continue;
+    const up = await d.db.update('user_constraints', { severity: next, updated_at: now }, { id: rowId, user_id: req.userId }, 'id');
+    if (up.error || !up.data?.length) {
+      d.log?.('[v2_adapter] duplicate constraint severity not updated (main row updated)', { subject, error: up.error?.message ?? 'no row' });
+      continue;
+    }
+    out.push({
+      op: 'constraint_add', table_name: 'user_constraints', row_id: rowId, field_set: ['severity'], before: { severity: before }, after: { severity: next },
+      undo_mode: 'restore_previous', group: 'c', is_primary: false, meta: { restated: true, duplicate_of: str(ex?.subject), kind, stored_subject: subject },
+    });
+  }
+  return out;
 }
 
 async function constraintAdd(d: AdapterDeps, req: AdapterRequest): Promise<AdapterOutcome> {
@@ -438,6 +471,42 @@ async function constraintTarget(d: AdapterDeps, req: AdapterRequest): Promise<{ 
   return { id: String(row.data.id), kind: String(row.data.kind), subject: String(row.data.subject) };
 }
 
+/**
+ * The legacy food_preferences allergen row that mirrors a spine row (v1 readers — guardrails, plan
+ * scans — still read it). Retrial 2026-10-12 (mem): removing the v2-added sesame allergy left
+ * food_preferences 'susam' active and severe, because this lookup matched food_name against the
+ * spine subject — the canonical id 'sesame' — while constraintAdd mirrors under the display name.
+ *   1. the mirror row the constraint_add LEDGER GROUP of this spine row recorded (migration 114: the
+ *      add's activation entry and its food_preferences entry share a group) — exact, whatever name
+ *      the add used;
+ *   2. else (a v1 / pre-114 row, or an unreadable ledger) by name: the stored subject or, for a
+ *      vocabulary id, its Turkish label ('sesame' → 'susam').
+ * Only a row that is still an allergen counts. null = no mirror to clear (best effort, like the add).
+ */
+async function legacyAllergenMirror(d: AdapterDeps, userId: string, c: { id: string; subject: string }): Promise<string | null> {
+  const isAllergenRow = async (id: string): Promise<boolean> => {
+    const r = await d.db.selectOne('food_preferences', 'id', { id, user_id: userId, is_allergen: true });
+    return !r.error && !!r.data;
+  };
+  const add = await d.db.selectOne('turn_writes', 'group_id', {
+    user_id: userId, op: 'constraint_add', table_name: 'user_constraints', row_id: c.id, undone_at: null, 'meta->>undo': 'deactivate',
+  });
+  const group = !add.error && add.data && typeof add.data.group_id === 'string' ? add.data.group_id : null;
+  if (add.error) d.log?.('[v2_adapter] constraint_add ledger read failed (mirror matched by name)', { error: add.error.message });
+  if (group) {
+    const fpw = await d.db.selectOne('turn_writes', 'row_id', { user_id: userId, group_id: group, table_name: 'food_preferences', undone_at: null });
+    const id = !fpw.error && fpw.data && typeof fpw.data.row_id === 'string' ? fpw.data.row_id : null;
+    if (id && await isAllergenRow(id)) return id;
+  }
+  const subject = c.subject.trim();
+  const label = (vocab.ALLERGENS as Record<string, string>)[subject]?.split(' (')[0] ?? null;
+  for (const name of [...new Set([subject, label].filter((x): x is string => !!x).map((x) => x.toLocaleLowerCase('tr')))]) {
+    const r = await d.db.selectOne('food_preferences', 'id', { user_id: userId, food_name: name, is_allergen: true });
+    if (!r.error && r.data && typeof r.data.id === 'string') return r.data.id;
+  }
+  return null;
+}
+
 async function constraintRetract(d: AdapterDeps, req: AdapterRequest): Promise<AdapterOutcome> {
   const c = await constraintTarget(d, req);
   if (!c) return fail('unknown_ref');
@@ -450,13 +519,12 @@ async function constraintRetract(d: AdapterDeps, req: AdapterRequest): Promise<A
     undo_mode: 'restore_previous', group: 'c', is_primary: true, meta: { constraint_id: c.id, kind: c.kind, subject: c.subject },
   }];
   if (c.kind === 'allergen' || c.kind === 'intolerance') {
-    const fpMatch = { user_id: req.userId, food_name: c.subject.toLocaleLowerCase('tr'), is_allergen: true };
-    const fpRow = await d.db.selectOne('food_preferences', 'id', fpMatch);
-    const fp = await d.db.update('food_preferences', { is_allergen: false }, fpMatch, 'id');
-    if (fp.error) d.log?.('[v2_adapter] legacy allergen unmirror failed', { error: fp.error.message });
-    else if (fp.data?.length && fpRow.data && typeof fpRow.data.id === 'string') {
+    const fpId = await legacyAllergenMirror(d, req.userId, c);
+    const fp = fpId ? await d.db.update('food_preferences', { is_allergen: false }, { id: fpId, user_id: req.userId, is_allergen: true }, 'id') : null;
+    if (fp?.error) d.log?.('[v2_adapter] legacy allergen unmirror failed', { error: fp.error.message });
+    else if (fpId && fp?.data?.length) {
       entries.push({
-        op: 'constraint_retract', table_name: 'food_preferences', row_id: fpRow.data.id, field_set: ['is_allergen'], before: { is_allergen: true },
+        op: 'constraint_retract', table_name: 'food_preferences', row_id: fpId, field_set: ['is_allergen'], before: { is_allergen: true },
         after: { is_allergen: false }, undo_mode: 'restore_previous', group: 'c', is_primary: false,
       });
     }

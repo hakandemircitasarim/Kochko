@@ -1060,6 +1060,30 @@ Deno.test('§7.2: no trigger but Stage A positive → protective (catches what t
   assert(ed.kind === 'protective' && ed.route === 'ed_support' && ed.ed_severity === 'high' && ed.fallback.kind === 'ed_high');
 });
 
+Deno.test('retrial 2026-10-12: an acute_medical claim WITHOUT the user\'s own symptom words is not protective on its own; a positive reading of a live emergency hit still is', () => {
+  // "bugün 14 litre su içtim": no trigger, Stage A claimed acute_medical with no evidence → normal.
+  const water = scanTripwires('bugün 14 litre su içtim');
+  assertEquals(water.hits.length, 0);
+  const bare = resolveTripwires({ scan: water, stageA: ok([], [{ category: 'emergency', evidenced: false }]) });
+  assertEquals(bare.kind, 'normal');
+  assertEquals(bare.log.unevidenced, ['emergency'], 'logged, never silently dropped');
+  // The same claim WITH evidence (or a caller that cannot tell: evidenced absent) protects as before.
+  const quoted = resolveTripwires({ scan: water, stageA: ok([], [{ category: 'emergency', evidenced: true }]) });
+  assert(quoted.kind === 'protective' && quoted.category === 'emergency' && quoted.route === 'crisis');
+  assertEquals(quoted.log.unevidenced, []);
+  assertEquals(resolveTripwires({ scan: water, stageA: ok([], [{ category: 'emergency' }]) }).kind, 'protective', 'unknown evidence = protective (fail-safe)');
+  // A live emergency hit read positive protects whatever the claim's evidence.
+  const faint = scanTripwires('koşarken bayıldım');
+  const hit = liveAmbiguousHits(faint).find((h) => h.category === 'emergency')!;
+  const read = resolveTripwires({ scan: faint, stageA: ok([{ hit_id: hit.hit_id, reading: 'positive', reason: 'gerçek bayılma' }], [{ category: 'emergency', evidenced: false }]) });
+  assert(read.kind === 'protective' && read.category === 'emergency');
+  // An unread live hit (no reading) is protective by default too — the evidence rule never lifts a trigger.
+  assertEquals(resolveTripwires({ scan: faint, stageA: ok([], [{ category: 'emergency', evidenced: false }]) }).kind, 'protective');
+  // Only the emergency claim needs evidence here: self-harm / ED positives are unchanged.
+  const sh = resolveTripwires({ scan: water, stageA: ok([], [{ category: 'emergency', evidenced: false }, { category: 'self_harm' }]) });
+  assert(sh.kind === 'protective' && sh.category === 'self_harm');
+});
+
 Deno.test('§7.2: Stage A reading a NEGATED hit as positive still protects (the model reads better)', () => {
   const scan = scanTripwires('aç kalmak istemiyorum ama elimde değil');
   const neg = scan.hits.find((h) => h.trigger === 'ed.ac_kalma')!;

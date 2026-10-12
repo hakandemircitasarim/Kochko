@@ -85,11 +85,13 @@ export function coachEffort(input: CoachInput): ReasoningEffort {
 export const CONTRACT_TEXT: Record<Exclude<CoachContract, null>, string> = {
   emergency: [
     '## Bu turun sözleşmesi: acil durum',
-    'Mesajda acil bir tıbbi durum işareti var ve dakikalar önemli. Koçluğu bırak, kısa ve net yaz: kişiyi hemen 112\'yi aramaya ya da en yakın acil servise gitmeye yönlendir, yanında biri varsa haber vermesini söyle. Kalori, kayıt ya da plan konuşma; bir soru soracaksan yalnızca şu anki güvenliğiyle ilgili olsun.',
-    // Live trial 2026-10-11: "14 litre su" minutes after 2 L got a flat 112 command. A number alone is
-    // most often a typo; the conditional line keeps the safety net without the false alarm. A real
-    // tripwire still gets its code-owned 112 line from guarantees.ts whatever this text says.
-    'Mesajdaki tek işaret mantıksız bir sayıysa ve hiçbir belirti anlatılmıyorsa bu çoğu zaman bir yazım hatasıdır: düz bir 112 komutu yerine koşullu tek cümle kur ("gerçekten bu kadarsa ve kendini kötü hissediyorsan hemen 112\'yi ara") ve sayıyı doğrulamak için tek soru sor.',
+    'Kişi şu an süren bir belirti ya da acil bir durum anlatıyor ve dakikalar önemli. Koçluğu bırak, kısa ve net yaz: yanında biri varsa hemen haber vermesini ve yardım gelene kadar ne yapacağını söyle. Kalori, kayıt ya da plan konuşma; bir soru soracaksan yalnızca şu anki güvenliğiyle ilgili olsun.',
+    // Retrial 2026-10-12: the coach's own (conditional) 112 line + the code-owned one = the 112 sentence
+    // twice. guarantees.ts appends REQUIRED_SAFETY_LINE.emergency on every protective emergency turn
+    // whatever the reply says (only the exact code-owned sentence counts as present), so the coach
+    // writes none. The 2026-10-11 typo paragraph went with it: since SCHEMA v7 an acute claim without
+    // the user's own symptom words never reaches this contract (resolveTripwires, handler coachDecisionOf).
+    '112\'yi aramasını ya da en yakın acil servise gitmesini söyleyen cümleyi kod cevabın sonuna kendisi ekler; sen ayrıca bir 112 cümlesi yazma, aynı yönlendirme iki kez görünür.',
   ].join('\n'),
   crisis: [
     '## Bu turun sözleşmesi: kriz',

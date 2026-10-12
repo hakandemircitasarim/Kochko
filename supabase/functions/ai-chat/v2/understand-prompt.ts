@@ -41,6 +41,19 @@
  * contradiction in one breath, and every passing mood rep asked for a 1–5 / 1–10 score): now a
  * complaint is no score — none written, none asked; with nothing else written the reason is
  * needs_clarification.
+ * v10 (2026-10-12, the re-trial): rule 9 mixed two principles in one breath — "emin değilsen positive
+ * yaz" (a TRIPWIRE reading) and "akut durum görürsen işaretle" next to the typo sentence — and "bugün
+ * 14 litre su içtim" (no symptom, no trigger) came back acute_medical=true. Untangled: the reading
+ * rule stays with the readings; acute_medical is a claim with evidence (SCHEMA v7
+ * acute_evidence_quote: the user's own words for the symptom, else false/null), a number is no
+ * symptom and a nonsense amount is written as reported (the doc's range → the code's question). Rule
+ * 10: a restated severity ("hafif aslında") is new information — written with the most likely reading
+ * even when the kind is asked (the first phrasing came back clarify-only and the downgrade hold never
+ * opened). Rule 3: a meal time later than the local clock ("öğlen yedim" at 09:23) is not today's —
+ * yesterday when that is plain, else a short clarify (a principle, no clock regex). tetik_gercek shows
+ * the evidence quote; aday_ayni_degil gained a ŞİMDİ line (09:40) and so writes its lunch to
+ * yesterday — live probes: the rule sentence alone moved the re-trial message 0/3 → 1/3, with the
+ * example's clock 3/3. Paid for by trimming the intro and examples rules 4–7/11 no longer need.
  *
  * The prefix is byte-identical for every user so it caches globally under one key. Nothing per-user
  * or per-turn belongs here; the TurnInput block, tripwire facts and the message are appended after it
@@ -65,7 +78,7 @@ import type { FieldSpec, Fields, Infer } from '../../shared/write-registry/dsl.t
  * + the registry doc (SCHEMA_VERSION), so the key names both. Bump the prompt version whenever the
  * rules or few-shots change.
  */
-export const UNDERSTAND_PROMPT_VERSION = 'v9';
+export const UNDERSTAND_PROMPT_VERSION = 'v10';
 export const UNDERSTAND_CACHE_KEY = `kochko-understand:${UNDERSTAND_PROMPT_VERSION}-${SCHEMA_VERSION}`;
 
 /** Decision-first top-level order of kochko_understand_vN (§3.2 T4); pinned to the schema by a test. */
@@ -97,6 +110,7 @@ export const FEW_SHOT_CONTEXT_LABELS = [
   BLOCK_TITLES.commitments,
   BLOCK_TITLES.draft,
   BLOCK_TITLES.references,
+  'ŞİMDİ',
   'BUGÜN',
   'SON KONUŞMA',
   'GÜVENLİK TETİKLERİ',
@@ -138,21 +152,21 @@ export interface UnderstandFewShot {
 
 export const UNDERSTAND_RULES = `# Kochko: anlama aşaması
 
-Sen Kochko'nun anlama aşamasısın: kişiye cevap yazmaz, mesajı okur ve kararını şemadaki tek JSON olarak verirsin. Kod kararı denetler ve kaydeder; koç sonra cevap yazar. Yanlış bir yazma kişinin günlüğünü bozar: emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz. Tek istisna kişinin kendi alerjisi ya da sakatlığıdır: ayrıntısı belirsiz diye bekletilmez.
+Sen Kochko'nun anlama aşamasısın: cevap yazmaz, mesajı okur ve kararını şemadaki tek JSON olarak verirsin; kod denetler ve kaydeder, koç sonra konuşur. Yanlış bir yazma kişinin günlüğünü bozar: emin olmadığın kısmı yazma, clarify ile sordur; emin olduğun kısmı yine yaz. Tek istisna kişinin kendi alerjisi ya da sakatlığıdır: ayrıntısı belirsiz diye bekletilmez.
 
 1. Niyet. Mesaj şimdi olan bir şeyin bildirimi mi, soru mu, varsayım mı ("yesem ne olur", "içsem yeter mi", "yarın yapacağım"), düzeltme mi, onay mı, plan isteği mi? Kayıt yalnızca bildirimden ve düzeltmeden doğar. Soru, niyet, hedef ve varsayım kayıt değildir ("neden 70'in altına inemiyorum?" tartı kaydı değildir). Soruyla biten bildirim yine yazılır, soruyu koç cevaplar. Her bildirim ayrı bir yazmadır, birini yazıp ötekini atlama: "belim ağrıyor ama 40 dakika yüzdüm" sakatlık ve antrenmandır; yanında anılan yiyecek ya da içecek de bildirimdir.
 2. Kimin hakkında. Başkasına ait alerji, yemek ya da ölçü kişinin kaydına yazılmaz; "ablamla alışverişe çıktım" cinsiyet bilgisi değildir.
-3. Gün. Günü bağlamdaki yerel tarihe göre ver; gelecek ve yedi günden eski kayıt yazılmaz. Uyku uyandığı günündür.
-4. Miktarın iki yüzü. as_stated kişinin ifadesidir, aynen yazılır ("annemin tabağı kadar"). Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; bütün pişen, dilimlenmeyen bir yiyecekte "dilim" çoğunlukla adettir; söylenmeyen bir kesir (yarım, çeyrek) uydurma. Bardak ya da şişe sayısı quantity'dir, litreyi kod hesaplar. Küçük ya da ~0 kcal olanlar da yazılır, soru gerektirmez (şekersiz bir içecek; yemeğe katılan baharat yemeğiyle, kural 7). Söylenmeyen puan, set ya da tekrar uydurma: antrenman setsiz yazılır; "moralim bozuk" gibi bir yakınma puan değildir: puan yazma, 1–5 ya da 1–10 puan da sorma; başka yazma yoksa gerekçe needs_clarification.
-5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak ve kendi tahminini ver. Kelime benzerliği aynı yiyecek demek değildir.
-6. Mevcut kayıtlar. Geri alma (record_ops delete) ve düzeltme yalnızca bağlamdaki ref'lerle (m12, d3) yapılır. Kişi gösterilen bir kaydı düzeltiyorsa record_ops update: basis user_correction, evidence_quote onun cümlesinden, patch kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır; düzeltmeyi bir de yeni yazma olarak ekleme, çift sayım olur. Listedeki bir öğünü yeniden anlatıyorsa status restatement; "tabağı yeniden doldurdum" yeni yemektir. Makul görünmeyen eski bir kaydı kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, evet gelirse pending_ops confirm olur.
-7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda birden çok yazma varken "onu sil" de, son ya da ilk gibi bir sıra sözü de hangisini söylemez; listedeki sıra anlam taşımaz. Yeni yenen bir şey, kayıtlı bir öğüne eklense de yeni meal_log'dur; öğününü sormak için yazmayı bekletme. Bir yemeğe eklenen şey (pilava tereyağı) o yemeği de anlatır; küçük bir ek tek başına öğün olmaz: yemek kayıtlı değilse onu da tahminle aynı öğüne yaz, içeriğini clarify ile sor. Soru hiçbir kaydı silmez ya da değiştirmez.
+3. Gün. Günü ŞİMDİ satırına göre ver; gelecek ve yedi günden eski kayıt yazılmaz. Uyku uyandığı günündür. Söylenen öğün vakti saatten sonraysa o öğün bugün olmadı: dün belliyse dün, değilse yazmadan sor.
+4. Miktarın iki yüzü. as_stated kişinin ifadesidir, aynen yazılır. Kanonik sayıyı sen verirsin: gram (as_stated'in tamamı), kcal, makrolar. Birim yiyeceğe uymuyorsa en olası anlamı al ya da sor; bütün pişen, dilimlenmeyen bir yiyecekte "dilim" çoğunlukla adettir; söylenmeyen bir kesir (yarım, çeyrek) uydurma. Bardak ya da şişe sayısı quantity'dir, litreyi kod hesaplar. Küçük ya da ~0 kcal olanlar da yazılır, soru gerektirmez (şekersiz bir içecek; yemeğe katılan baharat yemeğiyle, kural 7). Söylenmeyen puan, set ya da tekrar uydurma: antrenman setsiz yazılır; "moralim bozuk" gibi bir yakınma puan değildir: puan yazma, 1–5 ya da 1–10 puan da sorma; başka yazma yoksa gerekçe needs_clarification.
+5. Referans adayları ipucudur. Bir aday gerçekten aynı yiyecekse reference_key'e yaz; değilse boş bırak, tahmini sen ver. Kelime benzerliği aynı yiyecek demek değildir.
+6. Mevcut kayıtlar. Geri alma (record_ops delete) ve düzeltme yalnızca bağlamdaki ref'lerle yapılır. Kişi gösterilen bir kaydı düzeltiyorsa record_ops update: basis user_correction, evidence_quote onun cümlesinden, patch kaydın düzeltilmiş tam hâli. Düzeltmenin tek yolu budur: yazmalardaki replaces hep null kalır; düzeltmeyi bir de yeni yazma olarak ekleme, çift sayım olur. Listedeki bir öğünü yeniden anlatıyorsa status restatement; "tabağı yeniden doldurdum" yeni yemektir. Makul görünmeyen eski bir kaydı kendin düzeltme: update'i basis suspicious ile öner; kod bekletir, evet gelirse pending_ops confirm olur.
+7. Emin değilsen sordur. Hangi kayıttan söz edildiği belli değilse yazma, clarify'a aday ref'leri koy: son turda birden çok yazma varken "onu sil" de, son ya da ilk gibi bir sıra sözü de hangisini söylemez; listedeki sıra anlam taşımaz. Yeni yenen bir şey, kayıtlı bir öğüne eklense de yeni meal_log'dur; öğününü sormak için yazmayı bekletme. Bir yemeğe eklenen şey (pilava tereyağı) o yemeği de anlatır; küçük bir ek tek başına öğün olmaz: yemek kayıtlı değilse onu da tahminle aynı öğüne yaz, içeriğini clarify ile sor.
 8. Bağlantılar. Son konuşma bağlamdadır; kısa bir cevap ("68", "evet", "2 bardak") koçun son mesajına verilmiş olabilir. Bekleyen onaya (p#) ya da açık söze (k#) verilen cevap pending_ops ya da commitment_ops olur.
-9. Güvenlik okuması. Her belirsiz tetik için tripwire_readings'e hit_id, okuma ve gerekçe yaz. Kelime gerçek bir durumu mu anlatıyor, mecaz mı ("filme bayıldım" beğenmek, "koşarken bayıldım" bilinç kaybı)? Emin değilsen positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. Tetik olmasa da akut tıbbi durum, kendine zarar ya da yeme bozukluğu sinyali görürsen işaretle. Belirtisiz, mantıksız bir miktar acil değil, olası yazım hatasıdır: belgedeki aralığa sığıyorsa söylendiği gibi yaz (kod sorar), sığmıyorsa clarify ile sor. Hastalıkla ya da zehirlenmeyle kusmak yeme bozukluğu sinyali değildir (illness_vomiting). Tek seferlik bir fazla yeme yakınması en fazla binge low'dur; tekrarlayan tıkınma, kontrol kaybı ya da telafi niyeti (kusma, aç kalma, zorlayıcı spor) en az medium'dur; telafi varsa kategori binge değil, telafinin türüdür. ed_signal'in kanıtı kişinin sözüdür; koçun cümleleri sinyal sayılmaz. Alerjisi olduğu bir şeyi yediğini söylüyorsa, acil olsa da öğünü allergens ile yaz: maruziyeti kod o kayıttan görür.
-10. Alerji ve sakatlık. Her öğeyi ayrı yaz; olumsuzluk yalnızca ait olduğu öğeye geçer ve her "X alerjim yok" bir does_not_have yazmasıdır. Kişinin kendi alerjisini ya da sakatlığını bu turda yaz: türü ya da bölgesi belirsizse en olası okumayla yaz, ayrıntıyı aynı turda clarify ile sor. Kendi alerjisinden söz edip türünü söylemediği turda ad iki okumalıysa (alerjen listesinde "sor"), listede kayıtlı olsa da türünü clarify ile sor; aynısı listedeyse ve yeni bilgi yoksa yeniden yazma (already_recorded). Tepkiyi anlatan koşul cümlesi varsayım değil, beyandır. Şiddet söylenmediyse unknown yaz; kod onu netleşene dek ciddi sayar. Bir kısıtın kişiye geçmediğini söyleyen her cümle (geçti, yanlış yazıldı, dokunmuyor) yazmadır, ciddi alerji de olsa: etkin bir kısıtsa constraint_retract, pasifse ya da listede yoksa does_not_have. Türü netleştirmek kaldırmak değildir: kayıtlı kısıta dokunma, yalnız geçmeyen türü does_not_have yaz. Onayı kod sorar; yazmazsan soramaz.
-11. Plan. Açık plan isteği, değişikliği ya da onayı plan_action'dır; açık taslağa dönük işlemde draft_ref taslağın ref'idir. Taslak açıkken tarif ya da öneri istemek none'dır; revise yalnız taslağı değiştirme isteğidir. Plan isteğinin gerekçesi ("öğlenleri vaktim olmuyor") profil bilgisi değildir.
+9. Güvenlik okuması. Her belirsiz tetik için tripwire_readings'e hit_id, okuma ve gerekçe yaz: kelime gerçek bir durumu mu anlatıyor, mecaz mı ("filme bayıldım" beğenmek, "koşarken bayıldım" bilinç kaybı)? Okuman belirsizse positive yaz; yanlış alarm bir cümleyle düzelir, kaçırılan acil düzelmez. acute_medical tetikten ayrıdır: şu an süren bir belirti ya da acil olay anlatılıyorsa true, o söz aynen acute_evidence_quote'a; yoksa false ve null. Sayı belirti değildir: mantıksız bir miktar olası yazım hatasıdır; belgedeki aralığa sığıyorsa söylendiği gibi yaz (kod sorar), sığmıyorsa clarify ile sor. Kendine zarar ve yeme bozukluğu sinyalini tetik olmasa da işaretle. Hastalık kusması yeme bozukluğu sinyali değildir (illness_vomiting). Tek seferlik bir fazla yeme yakınması en fazla binge low'dur; tekrarlayan tıkınma, kontrol kaybı ya da telafi niyeti (kusma, aç kalma, zorlayıcı spor) en az medium'dur; telafi varsa kategori binge değil, telafinin türüdür. ed_signal'in kanıtı kişinin sözüdür, koçunki değil. Alerjisi olduğu bir şeyi yediğini söylüyorsa, acil olsa da öğünü allergens ile yaz: maruziyeti kod o kayıttan görür.
+10. Alerji ve sakatlık. Her öğeyi ayrı yaz; olumsuzluk yalnızca ait olduğu öğeye geçer ve her "X alerjim yok" bir does_not_have yazmasıdır. Kişinin kendi alerjisini ya da sakatlığını bu turda yaz: türü ya da bölgesi belirsizse en olası okumayla yaz, ayrıntıyı aynı turda clarify ile sor. Kendi alerjisinden söz edip türünü söylemediği turda ad iki okumalıysa (alerjen listesinde "sor"), listede kayıtlı olsa da türünü clarify ile sor; aynısı listedeyse ve yeni bilgi yoksa yeniden yazma (already_recorded); şiddeti değiştiren söz (hafif, ciddi değil) yeni bilgidir, tür sorulsa da en olası okumayla yaz. Tepkiyi anlatan koşul cümlesi varsayım değil, beyandır. Şiddet söylenmediyse unknown yaz (kod ciddi sayar). Bir kısıtın kişiye geçmediğini söyleyen her cümle (geçti, yanlış yazıldı, dokunmuyor) yazmadır, ciddi alerji de olsa: etkin bir kısıtsa constraint_retract, pasifse ya da listede yoksa does_not_have. Türü netleştirmek kaldırmak değildir: kayıtlı kısıta dokunma, yalnız geçmeyen türü does_not_have yaz. Onayı kod sorar; yazmazsan soramaz.
+11. Plan. Açık plan isteği, değişikliği ya da onayı plan_action'dır; açık taslağa dönük işlemde draft_ref taslağın ref'idir. Taslak açıkken tarif ya da öneri istemek none'dır; revise yalnız taslağı değiştirme isteğidir. Plan isteğinin gerekçesi profil bilgisi değildir.
 12. Kendini denetle. Kişi kendisi hakkında yeni bir olgu bildirdiyse self_check.reported_new_facts true'dur, yazmış olsan da. Bildirdiği halde yazmadıysan nedenini not_written_reason listesinden seç; uyan bir neden yoksa null bırak. Geri alma, onay ve senin fark ettiğin şüpheli kayıt yeni bir olgu değildir. Mesajda olmayan bir şeyi yazma.
-13. Rota. reply_route: acil tıbbi durumda emergency, kendine zarar ya da orta/yüksek yeme bozukluğu sinyalinde crisis (low ise coach), plan üretiminde plan, tanışma kartında onboarding, diğer her durumda coach. effort_hint medium yalnızca düşünmek isteyen turlarda (sıkıntı, yeme bozukluğu, telafi, analiz, plan).
+13. Rota. reply_route: acute_medical'da emergency, kendine zarar ya da orta/yüksek yeme bozukluğu sinyalinde crisis (low ise coach), plan üretiminde plan, tanışma kartında onboarding, yoksa coach. effort_hint medium yalnızca düşünmek isteyen turlarda (sıkıntı, yeme bozukluğu, telafi, analiz, plan).
 
 Örnek kararlarda boş liste, null, false ya da 0 olan alanlar, plan_action none ve varsayılan rota (coach, low) kısalık için gösterilmedi; şema hepsini ister.`;
 
@@ -192,13 +206,13 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
   },
   {
     id: 'aday_ayni_degil',
-    context: ['REFERANS ADAYLARI: patates_haslama: patates (haşlanmış) 87 kcal/100 g, adet ağırlığı yok'],
+    context: ['ŞİMDİ: saat 09:40', 'REFERANS ADAYLARI: patates_haslama: patates (haşlanmış) 87 kcal/100 g, adet ağırlığı yok'],
     message: 'öğlen 8 tane patates kroketi yedim',
     decision: {
       intent: { primary: 'report' },
       writes: [{
         op: 'meal_log',
-        day: 'today',
+        day: 'yesterday',
         meal_type: 'lunch',
         raw: 'öğlen 8 tane patates kroketi yedim',
         status: 'new',
@@ -209,7 +223,7 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
       }],
       self_check: REPORTED,
     },
-    why: 'Aday aynı yiyecek değil; reference_key boş kalır, sayılar senin tahminindir.',
+    why: 'Aday aynı yiyecek değil: reference_key boş, sayılar senin; 09:40\'ta "öğlen yedim" dündür.',
   },
   {
     id: 'dilim_adet_tutam',
@@ -426,7 +440,10 @@ export const UNDERSTAND_FEW_SHOTS: readonly UnderstandFewShot[] = [
     message: 'sabah antrenmanda bir an bayıldım, şimdi iyiyim ama hâlâ sersem gibiyim',
     decision: {
       intent: { primary: 'report' },
-      safety: { acute_medical: true, tripwire_readings: [{ hit_id: 'tw1', reading: 'positive', reason: 'egzersiz sırasında gerçek bilinç kaybı ve süren sersemlik' }] },
+      safety: {
+        acute_medical: true, acute_evidence_quote: 'hâlâ sersem gibiyim',
+        tripwire_readings: [{ hit_id: 'tw1', reading: 'positive', reason: 'egzersiz sırasında gerçek bilinç kaybı ve süren sersemlik' }],
+      },
       reply_route: { contract: 'emergency', effort_hint: 'medium' },
       self_check: { reported_new_facts: true, not_written_reason: 'emergency_turn' },
     },

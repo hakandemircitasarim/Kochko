@@ -18,7 +18,7 @@ export { stageARegistrySize, STAGE_A_REGISTRY_BUDGET, type RegistryPromptSize } 
 export { estimateTokens, TR_CHARS_PER_TOKEN } from './tokens.ts';
 export { buildCapabilities } from './capabilities.ts';
 export {
-  validateDecision, validateChannelItems, validateConfirmedHold, collectRefs, freezeForHold, opOf,
+  validateDecision, validateChannelItems, validateConfirmedHold, collectRefs, freezeForHold, opOf, ACUTE_EVIDENCE_CODE,
   type DecisionValidation, type WriteVerdict, type PlanVerdict, type Verdict, type Normalization, type NotWrittenReason,
 } from './validate.ts';
 export {

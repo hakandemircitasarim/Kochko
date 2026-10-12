@@ -32,6 +32,14 @@ const CUSTOM = /^custom:[\p{L}\p{N}_-]{2,40}$/u;
 const isAllergenId = (s: string) => Object.prototype.hasOwnProperty.call(ALLERGENS, s) || CUSTOM.test(s);
 const isDietaryId = (s: string) => Object.prototype.hasOwnProperty.call(DIETARY_SUBJECTS, s) || CUSTOM.test(s);
 
+/** One more active spine row with the same kind and canonical subject (a legacy row + a v2 row). */
+export interface DuplicateConstraint {
+  ref: string;
+  /** user_constraints.subject exactly as stored. */
+  subject: string;
+  severity: string | null;
+}
+
 /** The stored spine row a self+has declaration restates (derive output `existing`). */
 export interface ExistingConstraint {
   /** The c-ref it was rendered as this turn. */
@@ -40,17 +48,38 @@ export interface ExistingConstraint {
   subject: string;
   severity: string | null;
   body_parts: string[];
+  /**
+   * The OTHER active rows of the same kind and canonical subject (retrial 2026-10-12, mem: a legacy
+   * 'fıstık' severe row next to trial 1's 'peanut' row of unstated severity). `existing` is the most
+   * protective of them all, so a downgrade is held whichever row the model meant, and a confirmed
+   * severity change lands on every one (adapter confirmRestated) — never on one row while a duplicate
+   * keeps the old protection under the coach's "güncellendi".
+   */
+  duplicates?: DuplicateConstraint[];
 }
 
-/** The user's own ACTIVE constraint with the same kind and canonical subject, if one was rendered. */
+/** Protection order of a stored severity: an unstated one counts as severe (§7.1), a stated severe first. */
+function protectionRank(severity: string | null | undefined): number {
+  return severity === 'severe' ? 4 : severity === 'moderate' ? 2 : severity === 'mild' ? 1 : 3;
+}
+
+/**
+ * The user's own ACTIVE constraint with the same kind and canonical subject, if one was rendered —
+ * the MOST PROTECTIVE one when several are (ties: rendering order), the rest as `duplicates`.
+ */
 function activeSame(a: { whose: string; polarity: string; kind: string; subject_id: string }, ctx: ValidationContext): ExistingConstraint | null {
   if (a.whose !== 'self' || a.polarity !== 'has') return null;
+  const rows: Array<ExistingConstraint & { rank: number }> = [];
   for (const [ref, r] of Object.entries(ctx.refs)) {
     const c = r.constraint;
     if (r.kind !== 'c' || r.undone || !c || c.kind !== a.kind || c.subject !== a.subject_id) continue;
-    return { ref, subject: c.stored_subject ?? c.subject, severity: c.severity ?? null, body_parts: [...(c.body_parts ?? [])] };
+    rows.push({ ref, subject: c.stored_subject ?? c.subject, severity: c.severity ?? null, body_parts: [...(c.body_parts ?? [])], rank: protectionRank(c.severity) });
   }
-  return null;
+  if (rows.length === 0) return null;
+  const top = rows.reduce((best, x) => (x.rank > best.rank ? x : best));
+  const existing: ExistingConstraint = { ref: top.ref, subject: top.subject, severity: top.severity, body_parts: top.body_parts };
+  const duplicates = rows.filter((x) => x !== top).map((x) => ({ ref: x.ref, subject: x.subject, severity: x.severity }));
+  return duplicates.length ? { ...existing, duplicates } : existing;
 }
 
 /**

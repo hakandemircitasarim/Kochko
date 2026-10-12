@@ -21,7 +21,7 @@ import {
 import type { DayTotals, ReferenceRow } from '../../shared/write-registry/dsl.ts';
 import { validateJsonSchema } from '../../shared/json-schema-check.ts';
 import { liveAmbiguousHits, renderTripwireFacts, scanTripwires } from '../../shared/safety-tripwires.ts';
-import { renderTurnInputBlock } from './stage-a-request.ts';
+import { renderTurnInputBlock, TURN_BLOCK_TITLES } from './stage-a-request.ts';
 import { loadTurnInput, renderTurnInput } from './input.ts';
 import { fakeTurnInputDb, NOW, seedTables, USER } from './testing.ts';
 import { estimateTokens, PROMPT_BUDGETS } from './prompt-size.ts';
@@ -189,8 +189,9 @@ Deno.test('Stage A budget: rules, few-shots and the whole cached prefix (rules +
 // ─── rules ───────────────────────────────────────────────────────────────────────────────────────
 
 Deno.test('understand rules: calm Turkish with diacritics, no shouting, no piles, no dev residue', () => {
-  // JSON and the date format are technical names, not emphasis.
-  assertEquals(shoutedWords(UNDERSTAND_RULES, ['JSON', 'YYYY-MM-DD']), []);
+  // JSON and the date format are technical names, not emphasis; so is a turn-block title the rules point
+  // at (v10 rule 3: "ŞİMDİ satırı", the line that carries the clock — stage-a-request.ts TURN_BLOCK_TITLES.now).
+  assertEquals(shoutedWords(UNDERSTAND_RULES, ['JSON', 'YYYY-MM-DD', TURN_BLOCK_TITLES.now]), []);
   assertEquals(pileWords(UNDERSTAND_RULES), []);
   assertEquals(asciiTurkishHits(UNDERSTAND_RULES), []);
   assertEquals(devLeakHits(UNDERSTAND_RULES), []);
@@ -619,8 +620,8 @@ Deno.test('rules (v8, first live trial 2026-10-11): each trial miss is answered 
   assert(UNDERSTAND_RULES.includes('Türü netleştirmek kaldırmak değildir: kayıtlı kısıta dokunma, yalnız geçmeyen türü does_not_have yaz.'));
   // The typo: written as stated when the doc's range takes it (code asks), else asked — never acute, never skipped.
   assert(UNDERSTAND_RULES.includes('belgedeki aralığa sığıyorsa söylendiği gibi yaz (kod sorar), sığmıyorsa clarify ile sor'));
-  // An implausible amount with no symptom is a likely typo, not acute (rule 9).
-  assert(UNDERSTAND_RULES.includes('Belirtisiz, mantıksız bir miktar acil değil, olası yazım hatasıdır'));
+  // An implausible amount is a likely typo, not acute (rule 9; v10 words it as "a number is no symptom").
+  assert(UNDERSTAND_RULES.includes('Sayı belirti değildir: mantıksız bir miktar olası yazım hatasıdır'));
   // No unstated score, set or rep (rule 4) — and the mood example is not the trial's wording.
   assert(UNDERSTAND_RULES.includes('Söylenmeyen puan, set ya da tekrar uydurma'));
   assert(!UNDERSTAND_RULES.includes('motivasyon'));
@@ -652,7 +653,32 @@ Deno.test('rules (v9, pre-retrial review): rule 4 no longer contradicts rule 7, 
   assert(r4.includes('puan yazma, 1–5 ya da 1–10 puan da sorma'));
   assert(r4.includes('başka yazma yoksa gerekçe needs_clarification'));
   assert(!r4.includes('clarify da açma'));
-  assertEquals(UNDERSTAND_PROMPT_VERSION, 'v9');
+});
+
+Deno.test('rules (v10, the re-trial 2026-10-12): rule 9 untangled, acute_medical is a claim with evidence, a restated severity is written, a meal time after the clock is not today', () => {
+  const rule = (n: number) => UNDERSTAND_RULES.slice(UNDERSTAND_RULES.indexOf(`\n${n}. `), UNDERSTAND_RULES.indexOf(`\n${n + 1}. `));
+  const r9 = rule(9);
+  // "Emin değilsen positive" is about a TRIGGER reading and stands with the readings; acute_medical is its own sentence.
+  const reading = r9.indexOf('Okuman belirsizse positive yaz');
+  const acute = r9.indexOf('acute_medical tetikten ayrıdır');
+  assert(reading > 0 && acute > reading, 'the reading rule first, then the separate acute claim');
+  assert(!r9.includes('Tetik olmasa da akut tıbbi durum'), 'the old mixed sentence is gone');
+  assert(r9.includes("o söz aynen acute_evidence_quote'a; yoksa false ve null"), 'the evidence is the user\'s own words, else no claim');
+  assert(r9.includes('Sayı belirti değildir'));
+  // Rule 13 routes emergency on the claim (which code backs only with its evidence).
+  assert(rule(13).includes("acute_medical'da emergency"));
+  // The few-shot that shows a real emergency carries its verbatim evidence.
+  const g = shot('tetik_gercek');
+  assert(g.message.includes(String(g.decision.safety?.acute_evidence_quote)), 'tetik_gercek quotes the user verbatim');
+  // Rule 10: a restated severity is new information — written even while the kind is asked.
+  assert(rule(10).includes('şiddeti değiştiren söz (hafif, ciddi değil) yeni bilgidir, tür sorulsa da en olası okumayla yaz'));
+  // Rule 3: a stated meal time later than the clock is not today's (a principle, no clock regex) — and one
+  // example shows it with a time of its own (09:40, a croquette lunch → yesterday).
+  assert(rule(3).includes('Söylenen öğün vakti saatten sonraysa o öğün bugün olmadı: dün belliyse dün, değilse yazmadan sor.'));
+  const late = shot('aday_ayni_degil');
+  assert(late.context.some((c) => c.startsWith('ŞİMDİ: saat 09:40')));
+  assertEquals(itemsOf(late.decision, 'writes', 'meal_log')[0].day, 'yesterday');
+  assertEquals(UNDERSTAND_PROMPT_VERSION, 'v10');
 });
 
 // ─── rendering and the prefix ────────────────────────────────────────────────────────────────────
