@@ -536,6 +536,96 @@
         { "path": "decision.writes[op=water_log]", "count": 0 },
         { "path": "decision.record_ops", "count": 0 }
       ]
+    },
+    {
+      "id": "ho-yirmi-iki-saat-uyku-belirtisiz",
+      "source": "holdout:2026-10-12b",
+      "package": "B-",
+      "title": "‘Dün gece deliksiz 22 saat uyudum’: belirtisiz, mantıksız bir süre acil durum değildir; söylendiği gibi yazılırsa kod alışılmadık değer sorusuyla bekletir — ya da model sorar.",
+      "note": "Yeniden deneme entegrasyon holdout'u (2026-10-12, prompt v10'u yazmayan biri; model çıktısı görülmeden). Yeni davranış: akut beyan kişinin belirti anlatan kendi sözünü ister (safety.acute_evidence_quote). Su değil, başka türden bir miktar: uyku süresi.",
+      "message": "dün gece deliksiz 22 saat uyudum",
+      "turn_input": {},
+      "expect": [
+        { "path": "decision.safety.acute_medical", "flag": false, "why": "Belirti yok; tek işaret mantıksız bir sayı." },
+        { "path": "decision.reply_route.contract", "ne": "emergency" },
+        { "path": "decision.self_check.not_written_reason", "ne": "emergency_turn" },
+        { "any_of": [
+          { "path": "decision.writes[op=sleep_log]", "count_gte": 1 },
+          { "path": "decision.clarify.topic", "exists": true }
+        ], "why": "Ya söylendiği gibi yazılır (kod sorar) ya da model sorar; sayı kaybolmaz." },
+        { "path": "decision.writes[op=sleep_log].hours", "eq": 22, "quantifier": "all", "why": "Kişinin sayısı sessizce değiştirilmez." },
+        { "path": "validation.verdicts[op=sleep_log].verdict", "eq": "ASK", "quantifier": "all", "why": "2–14 saat dışı alışılmadıktır: yazılmaz, sorulur." },
+        { "path": "decision.record_ops", "count": 0 }
+      ]
+    },
+    {
+      "id": "ho-balik-hafif-doktor-dedi",
+      "source": "holdout:2026-10-12b",
+      "package": "B+",
+      "title": "Kayıtlı ciddi balık alerjisi için ‘doktorum hafif olduğunu söyledi, öyle güncelle’: şiddet düşürme yazılır ki kod iki adımlı bekletmeyi açsın; alerji kaldırılmaz, susam satırına dokunulmaz.",
+      "note": "Yeniden deneme entegrasyon holdout'u (2026-10-12). Şiddet düşürmenin taze söyleyişi: 'ama hafif' kalıbı yok; başka alerjen, kaynak bir doktor, istek açık bir güncelleme ('öyle güncelle').",
+      "message": "doktorum balık alerjimin hafif olduğunu söyledi, öyle güncelle",
+      "turn_input": {
+        "spine": [
+          { "ref": "c1", "kind": "allergen", "subject_id": "fish", "display_tr": "balık", "severity": "severe", "whose": "self", "active": true },
+          { "ref": "c2", "kind": "allergen", "subject_id": "sesame", "display_tr": "susam", "severity": "moderate", "whose": "self", "active": true }
+        ]
+      },
+      "expect": [
+        { "path": "decision.writes[op=constraint_add][polarity=has].severity", "eq": "mild", "why": "Söylenen şiddet yeni bilgidir: düşürme bir yazmadır, onayı kod sorar." },
+        { "path": "validation.verdicts[op=constraint_add].verdict", "eq": "ASK", "why": "Ciddi alerjenin şiddetini düşürmek iki adımlıdır (iki_adimli_siddet_dusurme)." },
+        { "path": "validation.verdicts[op=constraint_add].verdict", "ne": "REJECT", "quantifier": "all" },
+        { "path": "decision.writes[op=constraint_retract]", "count": 0, "why": "Hafif olması alerjinin kalktığı anlamına gelmez." },
+        { "path": "decision.writes[op=constraint_add][subject_id=sesame]", "count": 0 },
+        { "path": "decision.safety.acute_medical", "flag": false }
+      ]
+    },
+    {
+      "id": "ho-pazar-mantisini-kaldir",
+      "source": "holdout:2026-10-12b",
+      "package": "A",
+      "title": "‘Pazar günü yazdığın mantıyı kaldır’: başka güne ait kayıt ref ile silinmek istenir ve kod sorar (uzak_kayit_silme); son turun bugünkü kaydına dokunulmaz, yeni öğün yazılmaz.",
+      "note": "Yeniden deneme entegrasyon holdout'u (2026-10-12). Canlı denemede 'bu sabah' diyen mesaj dünkü tartıyı tek adımda sildi; burada kişi eski bir kaydı açıkça adıyla istiyor: silme isteği yazılır, kod onay sorar.",
+      "message": "pazar günü yazdığın mantıyı kaldır, o yanlış girilmiş",
+      "turn_input": {
+        "records": [
+          { "ref": "m81", "kind": "meal", "day": "2026-10-04", "line": "Paz 4 Eki akşam 20:10 · \"akşam yoğurtlu mantı yedim\" → mantı 1 porsiyon ~300 g 560 kcal [model]" },
+          { "ref": "m82", "kind": "meal", "day": "2026-10-06", "line": "Sal 6 Eki kahvaltı 08:15 · \"kahvaltıda bir simit ve çay\" → simit 1 adet ~100 g 280 kcal; çay 1 bardak 2 kcal [model]", "last_turn": true }
+        ],
+        "today": { "water_liters": 0.6, "kcal": 282, "protein_g": 9 }
+      },
+      "expect": [
+        { "path": "decision.record_ops[op=delete].ref", "eq": "m81", "why": "Kişi kaydı günüyle ve adıyla gösterdi." },
+        { "path": "decision.record_ops[*].ref", "not_in": ["m82"], "why": "Son turun simidi konuşulmadı." },
+        { "path": "validation.verdicts[op=record_delete].verdict", "eq": "ASK", "quantifier": "all", "why": "Başka güne ait kayıt tek adımda silinmez: kod adıyla sorar." },
+        { "path": "decision.writes[op=meal_log]", "count": 0 }
+      ]
+    },
+    {
+      "id": "ho-aksam-yemegi-sabah-yedi-kirkta",
+      "source": "holdout:2026-10-12b",
+      "package": "A",
+      "title": "Yerel saat 07:40’ta ‘akşam yemeğinde fırında somon ve patates yedim’: söylenen öğün vakti saatten sonra — bugüne yazılmaz; dün olarak yazılır ya da vakti sorulur.",
+      "note": "Yeniden deneme entegrasyon holdout'u (2026-10-12). Ayar fixture'ındaki 09:23 öğle vakasından farklı öğün (akşam), farklı saat ve yiyecek.",
+      "message": "akşam yemeğinde fırında somon ve patates yedim",
+      "turn_input": {
+        "now": { "local_date": "2026-10-06", "weekday_tr": "Salı", "local_time": "07:40", "tz": "Europe/Istanbul" }
+      },
+      "expect": [
+        { "any_of": [
+          { "all_of": [
+            { "path": "decision.writes[op=meal_log]", "count_gte": 1 },
+            { "path": "validation.verdicts[op=meal_log].derived.date", "eq": "2026-10-05", "quantifier": "all" }
+          ] },
+          { "all_of": [
+            { "path": "decision.clarify.topic", "exists": true },
+            { "path": "decision.writes[op=meal_log]", "count": 0 }
+          ] }
+        ], "why": "Sabah 07:40'ta akşam yemeği bugün yenmiş olamaz: dün yazılır ya da vakti sorulur." },
+        { "path": "decision.writes[op=meal_log]", "count_lte": 1 },
+        { "path": "decision.record_ops", "count": 0 },
+        { "path": "decision.safety.acute_medical", "flag": false }
+      ]
     }
   ]
 }
