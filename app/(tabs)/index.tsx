@@ -44,6 +44,8 @@ import { isDismissed, markDismissed } from '@/lib/dismissals';
 import { SkeletonBlock } from '@/components/ui/Skeleton';
 import { Reveal } from '@/components/ui/Reveal';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
+import { ConfettiBurst } from '@/components/ui/ConfettiBurst';
+import { Button } from '@/components/ui/Button';
 import { showToast } from '@/components/ui/Toast';
 import { usePremium } from '@/hooks/usePremium';
 import { checkAndScheduleTrialReminder, routeForNotificationType } from '@/services/notifications.service';
@@ -646,29 +648,39 @@ export default function TodayScreen() {
               padding: SPACING.xxl, alignItems: 'center', width: '100%', maxWidth: 360,
             }}
           >
-            {/* Kupa ikonu → kollarını havaya kaldırmış Koçko: kutlamayı karakter yapar (§0-A). */}
-            <Animated.View style={{
-              transform: [{ scale: celebrationScale }],
-              width: 116, height: 116, borderRadius: 58, backgroundColor: alpha(colors.primary, 0.12),
-              alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.lg,
-            }}>
-              <KochkoMascot size={92} mood="cheer" />
-            </Animated.View>
+            {/* Kupa ikonu → kollarını havaya kaldırmış Koçko: kutlamayı karakter yapar (§0-A).
+                Konfeti maskotun ÖNÜNDEN patlar (Duolingo dili): kab 116px ama parçalar
+                kartın dışına taşabilir — overflow kesilmez, kutlama kartla sınırlı değil. */}
+            <View style={{ width: 116, height: 116, marginBottom: SPACING.lg, alignItems: 'center', justifyContent: 'center' }}>
+              <Animated.View style={{
+                transform: [{ scale: celebrationScale }],
+                width: 116, height: 116, borderRadius: 58, backgroundColor: alpha(colors.primary, 0.12),
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <KochkoMascot size={92} mood="cheer" animated />
+              </Animated.View>
+              <ConfettiBurst burstKey={celebration} />
+            </View>
             <Text accessibilityRole="header" style={{ color: colors.text, ...TYPE.title3, textAlign: 'center' }}>
               {celebration}
             </Text>
             <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center', marginTop: SPACING.xs }}>
               Bu anı hak ettin — paylaşmak ister misin?
             </Text>
+            {/* Gövdeli butonlar (§0-A): kutlamanın iki seçeneği de basınca rafa iner. */}
             <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl, width: '100%' }}>
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              <Button
+                title="Kapat"
+                variant="outline"
+                size="lg"
+                style={{ flex: 1 }}
                 onPress={() => { haptics.tap(); setCelebration(null); }}
-                accessibilityRole="button" accessibilityLabel="Kapat"
-                style={{ flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, alignItems: 'center' }}
-              >
-                <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Kapat</Text>
-              </TouchableOpacity>
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              />
+              <Button
+                title="Paylaş"
+                size="lg"
+                style={{ flex: 1 }}
+                icon={<Ionicons name="share-social-outline" size={16} color={getContrastColor(colors.primary)} />}
                 onPress={() => {
                   haptics.tap();
                   const t = celebration ?? 'Kochko';
@@ -688,12 +700,7 @@ export default function TodayScreen() {
                     footer: userName ? `${userName} · Kochko` : 'Kochko ile',
                   }).catch(() => {});
                 }}
-                accessibilityRole="button" accessibilityLabel="Paylaş"
-                style={{ flex: 1, flexDirection: 'row', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}
-              >
-                <Ionicons name="share-social-outline" size={16} color={getContrastColor(colors.primary)} />
-                <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong, fontWeight: '700' }}>Paylaş</Text>
-              </TouchableOpacity>
+              />
             </View>
           </View>
         </TouchableOpacity>

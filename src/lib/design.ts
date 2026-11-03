@@ -203,6 +203,16 @@ export const MOTION = {
    * surfaces that must not react (scrims, wrappers around their own pressable children).
    */
   pressOpacity: 0.7,
+  /**
+   * Height of the "shelf" under a bodied control (filled/outline Button, choice tiles).
+   *
+   * The shelf is what makes a Yazio/Duolingo button read as a physical key. A key that only
+   * DIMS when pressed contradicts its own body, so a shelved control does not fade: its face
+   * drops by exactly this many pixels onto the shelf, and the outer box keeps its height so
+   * nothing around it moves. One number for the depth and the travel — if they disagree the
+   * face either floats above the shelf or sinks through it.
+   */
+  shelf: 4,
 } as const;
 
 /* ───────────────────────────── SURFACES ───────────────────────────── */
