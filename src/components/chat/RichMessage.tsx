@@ -3,6 +3,7 @@
  */
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { CircularProgress } from '@/components/ui/CircularProgress';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
@@ -38,9 +39,7 @@ export function MacroBar({ label, current, target, color }: { label: string; cur
         <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{label}</Text>
         <Text style={{ color: colors.text, ...TYPE.bodyStrong }}>{current} / {target}g</Text>
       </View>
-      <View style={{ height: 4, backgroundColor: colors.progressTrack, borderRadius: 2, overflow: 'hidden' }}>
-        <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 2 }} />
-      </View>
+      <ProgressBar progress={pct} color={color} height={6} />
     </View>
   );
 }
@@ -309,9 +308,7 @@ export function WeeklyBudgetBar({ consumed, total }: { consumed: number; total: 
         <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Haftalık Bütçe</Text>
         <Text style={{ color: colors.text, ...TYPE.bodyStrong }}>{Math.round(consumed).toLocaleString('tr-TR')} / {Math.round(total).toLocaleString('tr-TR')} kcal</Text>
       </View>
-      <View style={{ height: 6, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
-        <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 3 }} />
-      </View>
+      <ProgressBar progress={pct} color={color} height={8} />
       <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4, textAlign: 'right' }}>Kalan: {Math.round(remaining).toLocaleString('tr-TR')} kcal</Text>
     </View>
   );

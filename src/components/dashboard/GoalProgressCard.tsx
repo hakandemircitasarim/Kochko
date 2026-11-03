@@ -17,6 +17,7 @@ import { TYPE } from '@/lib/design';
 import type { GoalProgress, PaceStatus } from '@/lib/goal-progress';
 import { formatISODateTR } from '@/lib/day-boundary';
 import { PressableCard } from '@/components/ui/PressableCard';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 
 interface Props {
   progress: GoalProgress;
@@ -115,12 +116,7 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
               {progressLine}
             </Text>
           </View>
-          <View
-            accessible={false}
-            style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}
-          >
-            <View style={{ height: '100%', width: `${Math.min(100, Math.max(0, progress.percentComplete))}%`, backgroundColor: barColor, borderRadius: 4 }} />
-          </View>
+          <ProgressBar progress={progress.percentComplete / 100} color={barColor} height={10} />
           {etaText && (
             <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.sm }} maxFontSizeMultiplier={1.3}>
               Tahmini bitiş ~{etaText}

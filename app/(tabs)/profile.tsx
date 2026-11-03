@@ -18,6 +18,7 @@ import { PERIODIC_LABELS, type PeriodicState } from '@/services/periodic.service
 import { supabase } from '@/lib/supabase';
 import { InsightCard } from '@/components/profile/InsightCard';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { deleteAISummaryNote, resetAISummary } from '@/services/privacy.service';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
@@ -193,9 +194,7 @@ export default function ProfileScreen() {
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
             </View>
-            <View style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}>
-              <View style={{ height: '100%', width: `${comp.percentage}%`, backgroundColor: colors.primary, borderRadius: 4 }} />
-            </View>
+            <ProgressBar progress={comp.percentage / 100} color={colors.primary} height={10} />
             {comp.lowestCategory && (
               <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: SPACING.sm }}>
                 Sıradaki: {CATEGORY_LABELS[comp.lowestCategory]} ekle — koçun daha isabetli plan yapsın.
@@ -218,9 +217,7 @@ export default function ProfileScreen() {
           <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginBottom: SPACING.sm }}>
             {nextBadge.label} · {nextBadge.remaining} gün kaldı
           </Text>
-          <View style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}>
-            <View style={{ height: '100%', width: `${Math.round(nextBadge.progress * 100)}%`, backgroundColor: colors.warning, borderRadius: 4 }} />
-          </View>
+          <ProgressBar progress={nextBadge.progress} color={colors.warning} height={10} />
         </View>
       )}
 

@@ -46,6 +46,7 @@ import { Reveal } from '@/components/ui/Reveal';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { ConfettiBurst } from '@/components/ui/ConfettiBurst';
 import { Button } from '@/components/ui/Button';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { showToast } from '@/components/ui/Toast';
 import { usePremium } from '@/hooks/usePremium';
 import { checkAndScheduleTrialReminder, routeForNotificationType } from '@/services/notifications.service';
@@ -958,9 +959,7 @@ export default function TodayScreen() {
               <Text style={{ color: colors.textSecondary, ...TYPE.caption, flex: 1 }} numberOfLines={1}>
                 Sıradaki rozet: {nb.label} · {nb.remaining} gün kaldı
               </Text>
-              <View style={{ width: 56, height: 5, backgroundColor: colors.progressTrack, borderRadius: 3, overflow: 'hidden' }}>
-                <View style={{ height: '100%', width: `${Math.round(nb.progress * 100)}%`, backgroundColor: colors.warning, borderRadius: 3 }} />
-              </View>
+              <ProgressBar progress={nb.progress} color={colors.warning} height={6} style={{ width: 56 }} />
             </View>
           );
         })()}
@@ -1255,12 +1254,8 @@ export default function TodayScreen() {
                 accessibilityRole="progressbar"
                 accessibilityLabel={`Haftalık bütçe: ${weeklyConsumed.toLocaleString('tr-TR')} / ${weeklyBudgetTotal.toLocaleString('tr-TR')} kilokalori`}
                 accessibilityValue={{ min: 0, max: 100, now: Math.round(weeklyPct * 100) }}
-                style={{ height: 8, backgroundColor: colors.progressTrack, borderRadius: 4, overflow: 'hidden' }}
               >
-                <View style={{
-                  height: '100%', width: `${weeklyPct * 100}%`,
-                  backgroundColor: weeklyOver ? colors.warning : colors.primary, borderRadius: 4,
-                }} />
+                <ProgressBar progress={weeklyPct} color={weeklyOver ? colors.warning : colors.primary} height={10} />
               </View>
             </View>
           </View>

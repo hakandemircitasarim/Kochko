@@ -12,6 +12,7 @@ import { haptics } from '@/lib/haptics'; // FIX (ux-polish): the hero CTAs are t
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { StreakBadge } from '@/components/tracking/StreakBadge';
 import { Reveal } from '@/components/ui/Reveal';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CoachBubble } from '@/components/dashboard/CoachBubble';
 import { SPACING, RADIUS, HERO } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
@@ -66,9 +67,7 @@ function MacroBar({ label, value, target, color, emphasize = false }: { label: s
       >
         {label}
       </Text>
-      <View style={{ height: 8, backgroundColor: trackColor, borderRadius: 4, overflow: 'hidden' }}>
-        <View style={{ height: '100%', width: `${pct * 100}%`, backgroundColor: color, borderRadius: 4 }} />
-      </View>
+      <ProgressBar progress={pct} color={color} trackColor={trackColor} height={10} />
       {/* Emphasis is carried by COLOUR AND WEIGHT ONLY — the readout format stays identical across
           all three macros. Driven on a device, the old version showed "155g kaldı" next to
           "0/183g" and "0/61g": three stats in one row, same size, two different sentence shapes.
