@@ -20,8 +20,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, alpha } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 
 export type ToastVariant = 'success' | 'error' | 'info';
 
@@ -69,12 +71,14 @@ export function showToast(
 
 /** Mounted once at the app root (inside the theme provider). Renders the current toast. */
 export function ToastHost() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
+  const reduceMotion = useReduceMotion();
   const current = useToastStore((s) => s.current);
   const hide = useToastStore((s) => s.hide);
   const translateY = useRef(new Animated.Value(60)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const badge = useRef(new Animated.Value(1)).current;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dismiss = () => {
@@ -84,13 +88,27 @@ export function ToastHost() {
 
   useEffect(() => {
     if (!current) return;
-    translateY.setValue(60);
-    opacity.setValue(0);
     haptics.tap();
-    Animated.parallel([
-      Animated.spring(translateY, { toValue: 0, friction: 8, tension: 80, useNativeDriver: true }),
-      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-    ]).start();
+    if (reduceMotion) {
+      // Kayma/yaylanma yok: yerinde belirir.
+      translateY.setValue(0);
+      badge.setValue(1);
+      opacity.setValue(0);
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }).start();
+    } else {
+      translateY.setValue(60);
+      opacity.setValue(0);
+      badge.setValue(0.4);
+      Animated.parallel([
+        Animated.spring(translateY, { toValue: 0, friction: 8, tension: 80, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+        // Rozet (maskot/ikon) kart oturduktan hemen sonra "pıt" diye girer.
+        Animated.sequence([
+          Animated.delay(90),
+          Animated.spring(badge, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }),
+        ]),
+      ]).start();
+    }
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => dismiss(), current.duration);
     return () => { if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
@@ -111,6 +129,9 @@ export function ToastHost() {
         opacity, transform: [{ translateY }],
       }}
     >
+      {/* Gövdeli kart (Duolingo dili, §0-A): sol renk şeridi yerine 2px çerçeve + vurgunun
+          renginde alt raf. Başarıda rozet KOÇKO'nun kendisi — "kaydettim" diyen karakter; hata
+          ve bilgide tonlu daire içinde ikon (maskot hatayı sevimlileştirmesin). */}
       <View
         // Screen-reader: announce the toast as a live status message.
         accessibilityRole="text"
@@ -118,13 +139,24 @@ export function ToastHost() {
         accessibilityLabel={current.actionLabel ? `${current.message}. ${current.actionLabel}` : current.message}
         style={{
           flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, maxWidth: '100%',
-          backgroundColor: colors.cardElevated, borderRadius: RADIUS.md,
-          borderWidth: 0.5, borderColor: colors.border, borderLeftWidth: 3, borderLeftColor: accent,
-          paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg,
+          backgroundColor: colors.cardElevated, borderRadius: RADIUS.lg,
+          borderWidth: 2, borderColor: isDark ? colors.border : colors.progressTrack,
+          borderBottomWidth: MOTION.shelf, borderBottomColor: accent,
+          paddingVertical: SPACING.sm, paddingLeft: SPACING.sm, paddingRight: SPACING.lg,
         }}
       >
-        <Ionicons name={icon} size={16} color={accent} />
-        <Text style={{ ...TYPE.body, color: colors.text, flexShrink: 1 }} numberOfLines={2}>{current.message}</Text>
+        <Animated.View
+          style={{
+            width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: alpha(accent, isDark ? 0.2 : 0.14),
+            transform: [{ scale: badge }],
+          }}
+        >
+          {current.variant === 'success'
+            ? <KochkoMascot size={28} />
+            : <Ionicons name={icon} size={18} color={accent} />}
+        </Animated.View>
+        <Text style={{ ...TYPE.bodyStrong, color: colors.text, flexShrink: 1 }} numberOfLines={2}>{current.message}</Text>
         {current.actionLabel ? (
           <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { const a = current.onAction; dismiss(); a?.(); }}
