@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Dimensions, KeyboardAvoidingView, Platform } from 'react-native';
+import { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Dimensions, KeyboardAvoidingView, Platform, Animated, Easing } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
@@ -24,6 +24,7 @@ import { calculateBMR, calculateTDEE, calculateTargets } from '@/lib/tdee';
 import { FREE_LAUNCH } from '@/lib/premium-gate';
 import { formatDecimal } from '@/lib/units';
 import { ChipSelect } from '@/components/ui/ChoiceTile';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 const { width } = Dimensions.get('window');
 
 // FIX (audit UX-ONB-05): tek bir 18+ doğum yılı kuralı. Bu ekrandaki OAuth doğum-yılı
@@ -177,10 +178,44 @@ function WelcomeSlide({
   onBack?: () => void;
 }) {
   const { colors } = useTheme();
+  const reduceMotion = useReduceMotion();
+  // Slayt geçişi (Duolingo dili): içerik ileri giderken sağdan, geri giderken soldan kayarak
+  // gelir; maskot/ikon ardından yaylanarak oturur. Yön RENDER sırasında önceki adımla
+  // kıyaslanır (ref layout effect'te güncellenir) — yeni içerik ilk karede doğru taraftan
+  // başlar, eski konumda bir kare "parlamaz". Reduce-motion → anında.
+  const prevStep = useRef(stepIndex);
+  const dir = stepIndex >= prevStep.current ? 1 : -1;
+  const enter = useRef(new Animated.Value(1)).current;
+  const pop = useRef(new Animated.Value(1)).current;
+  useLayoutEffect(() => {
+    if (prevStep.current === stepIndex) return;
+    prevStep.current = stepIndex;
+    if (reduceMotion) { enter.setValue(1); pop.setValue(1); return; }
+    enter.setValue(0);
+    pop.setValue(0.6);
+    const a = Animated.parallel([
+      Animated.timing(enter, { toValue: 1, duration: MOTION.slow, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+      Animated.sequence([
+        Animated.delay(80),
+        Animated.spring(pop, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }),
+      ]),
+    ]);
+    a.start();
+    return () => a.stop();
+  }, [stepIndex, reduceMotion, enter, pop]);
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
+      <Animated.View
+        style={{
+          alignItems: 'center', width: '100%',
+          opacity: enter,
+          transform: [{ translateX: enter.interpolate({ inputRange: [0, 1], outputRange: [40 * dir, 0] }) }],
+        }}
+      >
       {/* İlk slayt uygulamanın EN İLK karesi — soyut ikon değil karakter karşılasın (§0-A).
           Sonraki slaytlar konu ikonlarını koruyor (her karede maskot tekrar etmesin). */}
+      <Animated.View style={{ transform: [{ scale: pop }] }}>
       {stepIndex === 0 ? (
         <View style={{ marginBottom: SPACING.xl }}>
           <KochkoMascot size={112} mood="cheer" animated />
@@ -194,6 +229,7 @@ function WelcomeSlide({
         <Ionicons name={slide.icon} size={36} color={colors.primary} />
       </View>
       )}
+      </Animated.View>
       {/* Intro slides are the first thing anyone sees. The heading led at FONT.xl (20) — the same
           step a card title uses elsewhere — so the app's opening statement carried card weight. */}
       <Text style={{ ...TYPE.title1, color: colors.text, textAlign: 'center', marginBottom: SPACING.md }}>
@@ -202,6 +238,7 @@ function WelcomeSlide({
       <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.xxl }}>
         {slide.body}
       </Text>
+      </Animated.View>
 
       {/* Dot indicators */}
       <View
@@ -210,15 +247,7 @@ function WelcomeSlide({
         accessibilityLabel={`Tanıtım adımı ${stepIndex + 1} / ${totalSlides}`}
       >
         {Array.from({ length: totalSlides }).map((_, i) => (
-          <View
-            key={i}
-            style={{
-              width: i === stepIndex ? 24 : 8,
-              height: 8,
-              borderRadius: 4,
-              backgroundColor: i === stepIndex ? colors.primary : colors.border,
-            }}
-          />
+          <SlideDot key={i} active={i === stepIndex} />
         ))}
       </View>
 
@@ -232,6 +261,30 @@ function WelcomeSlide({
         <Button title="Atla" onPress={() => { haptics.tap(); onSkip(); }} variant="ghost" size="sm" />
       </View>
     </View>
+  );
+}
+
+/** Sayfa noktası: aktif olan 8 → 24 genişler, renk aynı anda geçer (reduce-motion: anında).
+ *  Genişlik native driver'da çalışmaz; üç nokta için JS sürücüsü yeterince ucuz. */
+function SlideDot({ active }: { active: boolean }) {
+  const { colors } = useTheme();
+  const reduceMotion = useReduceMotion();
+  const t = useRef(new Animated.Value(active ? 1 : 0)).current;
+  useEffect(() => {
+    if (reduceMotion) { t.setValue(active ? 1 : 0); return; }
+    const a = Animated.timing(t, { toValue: active ? 1 : 0, duration: MOTION.base, easing: Easing.out(Easing.cubic), useNativeDriver: false });
+    a.start();
+    return () => a.stop();
+  }, [active, reduceMotion, t]);
+  return (
+    <Animated.View
+      style={{
+        width: t.interpolate({ inputRange: [0, 1], outputRange: [8, 24] }),
+        height: 8,
+        borderRadius: 4,
+        backgroundColor: t.interpolate({ inputRange: [0, 1], outputRange: [colors.border, colors.primary] }),
+      }}
+    />
   );
 }
 
