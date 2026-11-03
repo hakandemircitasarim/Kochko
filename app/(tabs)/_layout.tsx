@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { Tabs, router } from 'expo-router';
-import { View, Text, TouchableOpacity, Platform, StyleSheet, Animated, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, Platform, StyleSheet, Animated, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { SPACING, RADIUS, WATER_INCREMENT } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, alpha } from '@/lib/design';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useProfileStore } from '@/stores/profile.store';
 import { useAuthStore } from '@/stores/auth.store';
 import { useDashboardStore } from '@/stores/dashboard.store';
@@ -15,15 +16,43 @@ import { showToast } from '@/components/ui/Toast';
 
 type IconName = 'home' | 'chatbubble-ellipses' | 'add' | 'bar-chart' | 'person';
 
+/**
+ * Sekme ikonu (Duolingo dili): seçili sekme tonlu bir hapın içine oturur ve SEÇİLDİĞİ ANDA
+ * kısa bir yaylanma yapar (0.8 → 1). İlk çizimde ve seçim kalkarken yaylanmaz; reduce-motion
+ * açıkken hiç. Hap boyutu sabit (44×28) ve yerleşim kutusu ikonla aynı — etiketler kaymaz.
+ */
 function TabIcon({ name, focused }: { name: IconName; focused: boolean }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const reduceMotion = useReduceMotion();
   const outlineName = `${name}-outline` as keyof typeof Ionicons.glyphMap;
+  const pop = useRef(new Animated.Value(1)).current;
+  const wasFocused = useRef(focused);
+
+  useEffect(() => {
+    if (focused && !wasFocused.current && !reduceMotion) {
+      pop.setValue(0.8);
+      Animated.spring(pop, { toValue: 1, friction: 3.5, tension: 180, useNativeDriver: true }).start();
+    }
+    wasFocused.current = focused;
+  }, [focused, reduceMotion, pop]);
+
   return (
-    <Ionicons
-      name={focused ? name : outlineName}
-      size={22}
-      color={focused ? colors.primary : colors.textSecondary}
-    />
+    <View
+      style={{
+        // Hap 28px ama ikon kutusu 22px kalmalı: fark negatif dikey boşlukla emilir, yoksa
+        // sekme etiketleri 6px aşağı itilip alttan kırpılıyor (web'de ölçüldü).
+        width: 44, height: 28, marginVertical: -3, borderRadius: RADIUS.pill, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: focused ? alpha(colors.primary, isDark ? 0.22 : 0.12) : 'transparent',
+      }}
+    >
+      <Animated.View style={{ transform: [{ scale: pop }] }}>
+        <Ionicons
+          name={focused ? name : outlineName}
+          size={22}
+          color={focused ? colors.primary : colors.textSecondary}
+        />
+      </Animated.View>
+    </View>
   );
 }
 
@@ -40,8 +69,9 @@ function FABButton() {
   const dayBoundaryHour = useProfileStore(s => (s.profile?.day_boundary_hour as number) ?? 4);
   const lastPushRef = useRef(0);
   // FIX (ux-round2 #1): the app's most-tapped, most-'premium' button was silent — every other
-  // logging path fires haptics + press feedback. Add a tactile tap + a spring press-scale.
-  const scale = useRef(new Animated.Value(1)).current;
+  // logging path fires haptics + press feedback. Haptics stay; the press feedback is now the
+  // app's bodied-button language (§0-A): a darker shelf under the disc, and the disc drops onto
+  // it while pressed instead of shrinking — the same key the rest of the app's buttons are.
   // FIX (ux-round2 #9): long-press → quick menu that jumps straight to a log sub-screen (su/tartı/
   // uyku/toparlanma/antrenman) — saves the open-then-pick second tap. Short tap unchanged.
   const [menuOpen, setMenuOpen] = useState(false);
@@ -55,11 +85,8 @@ function FABButton() {
   ];
   return (
     <View style={styles.fabContainer}>
-      <Animated.View style={{ transform: [{ scale }] }}>
-        <TouchableOpacity
-          style={[styles.fab, { backgroundColor: colors.primary }]}
-          onPressIn={() => Animated.spring(scale, { toValue: 0.9, friction: 6, useNativeDriver: true }).start()}
-          onPressOut={() => Animated.spring(scale, { toValue: 1, friction: 5, tension: 140, useNativeDriver: true }).start()}
+      <Pressable
+          style={styles.fabBody}
           onPress={() => {
             const now = Date.now();
             if (now - lastPushRef.current < 800) return;
@@ -68,13 +95,18 @@ function FABButton() {
             router.push('/log');
           }}
           onLongPress={() => { haptics.tap(); setMenuOpen(true); }}
-          activeOpacity={MOTION.pressOpacity}
           accessibilityRole="button"
           accessibilityLabel="Hızlı kayıt — öğün, su, tartı, antrenman. Uzun bas: hızlı menü"
         >
-          <Ionicons name="add" size={28} color={getContrastColor(colors.primary)} />
-        </TouchableOpacity>
-      </Animated.View>
+          {({ pressed }) => (
+            <>
+              <View pointerEvents="none" style={[styles.fabShelf, { backgroundColor: colors.primaryDark }]} />
+              <View style={[styles.fab, { backgroundColor: colors.primary, transform: [{ translateY: pressed ? MOTION.shelf : 0 }] }]}>
+                <Ionicons name="add" size={28} color={getContrastColor(colors.primary)} />
+              </View>
+            </>
+          )}
+        </Pressable>
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <TouchableOpacity
@@ -192,12 +224,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Gövdeli FAB: dış kutu disk + raf kadar uzun; raf diskin MOTION.shelf altından başlar.
+  // Eski marginTop (-16) dış kutuya taşındı, disk sekme çubuğunun üstünde aynı yerde durur.
+  fabBody: {
+    width: 52,
+    height: 52 + MOTION.shelf,
+    marginTop: -16,
+  },
+  fabShelf: {
+    position: 'absolute',
+    left: 0,
+    top: MOTION.shelf,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+  },
   fab: {
     width: 52,
     height: 52,
     borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -16,
   },
 });
