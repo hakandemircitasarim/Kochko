@@ -11,7 +11,6 @@ import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
-import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 import { detectTimezone } from '@/lib/timezone';
@@ -24,6 +23,7 @@ import { calculateBMR, calculateTDEE, calculateTargets } from '@/lib/tdee';
 
 import { FREE_LAUNCH } from '@/lib/premium-gate';
 import { formatDecimal } from '@/lib/units';
+import { ChipSelect } from '@/components/ui/ChoiceTile';
 const { width } = Dimensions.get('window');
 
 // FIX (audit UX-ONB-05): tek bir 18+ doğum yılı kuralı. Bu ekrandaki OAuth doğum-yılı
@@ -807,50 +807,5 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
         />
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-// ─── ChipSelect Component ───
-
-function ChipSelect({ label, options, selected, onChange }: {
-  label: string;
-  options: { value: string; label: string }[];
-  selected: string;
-  onChange: (v: string) => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ marginBottom: SPACING.md }}>
-      {/* Field labels tell the user what they are being asked. TYPE.callout, not the smallest step. */}
-      <Text style={{ ...TYPE.callout, color: colors.textSecondary, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
-        {options.map(opt => {
-          const isSelected = selected === opt.value;
-          return (
-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-              key={opt.value}
-              onPress={() => { haptics.tap(); onChange(opt.value); }}
-              accessibilityRole="radio"
-              accessibilityLabel={`${label}: ${opt.label}`}
-              accessibilityState={{ selected: isSelected }}
-              style={{
-                minHeight: 44,
-                justifyContent: 'center',
-                paddingVertical: 8,
-                paddingHorizontal: SPACING.md,
-                borderRadius: RADIUS.pill,
-                borderWidth: 0.5,
-                borderColor: isSelected ? colors.primary : colors.border,
-                backgroundColor: isSelected ? colors.primary : 'transparent',
-              }}
-            >
-              <Text style={{ ...TYPE.body, color: isSelected ? getContrastColor(colors.primary) : colors.textSecondary, fontWeight: isSelected ? '600' : '400' }}>
-                {opt.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
   );
 }

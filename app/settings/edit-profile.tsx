@@ -12,12 +12,12 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
-import { getContrastColor } from '@/lib/accessibility';
 import { GENDER_LABELS_TR, ACTIVITY_LEVEL_LABELS_TR, toOptions } from '@/lib/labels';
 import { formatDecimal } from '@/lib/units';
+import { ChipSelect } from '@/components/ui/ChoiceTile';
 import type {
   Gender, ActivityLevel, Equipment, CookingSkill, BudgetLevel,
   TrainingStyle, DietMode, AlcoholFrequency, UnitSystem, PortionLanguage,
@@ -355,40 +355,5 @@ export default function EditProfileScreen() {
         <Button title="Kaydet" onPress={handleSave} loading={saving} disabled={hasErrors} size="lg" style={{ marginTop: SPACING.md }} />
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-// ─── ChipSelect Component ───
-
-function ChipSelect({ label, options, selected, onChange }: {
-  label: string;
-  options: { value: string; label: string }[];
-  selected: string;
-  onChange: (v: string) => void;
-}) {
-  const { colors } = useTheme();
-  return (
-    <View style={{ marginBottom: SPACING.md }}>
-      <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm, fontWeight: '500' }}>{label}</Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
-        {options.map(opt => {
-          const isSelected = selected === opt.value;
-          return (
-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-              key={opt.value}
-              onPress={() => { haptics.tap(); onChange(opt.value); }}
-              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: isSelected }}
-              accessibilityLabel={`${label}: ${opt.label}`}
-              style={{ paddingVertical: 10, paddingHorizontal: SPACING.md, borderRadius: 8, borderWidth: 1,
-                borderColor: isSelected ? colors.primary : colors.border,
-                backgroundColor: isSelected ? colors.primary : 'transparent' }}>
-              <Text style={{ color: isSelected ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.body }}>{opt.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-    </View>
   );
 }
