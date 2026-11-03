@@ -6,21 +6,21 @@
  * uyku mor, kilo pembe. Sayı hâlâ orada ama ikinci planda; her kartın altında kısa
  * bir TEŞVİK satırı var ("Yarıyı geçtin!") — "az sayı, çok teşvik".
  *
- * Kartlar artık gerçek KART: PressableCard ile basışta %2 küçülme (MOTION.pressScale
- * kuralı — büyük yüzeyde soldurma değil küçülme). Değer değiştiğinde küçük bir
+ * Kartlar GÖVDELİ: rengin koyusundan bir raf, basınca yüz rafa iner (Button/ChoiceTile ile
+ * aynı MOTION.shelf). Değer değiştiğinde küçük bir
  * "pop" (su ekleyince sayı zıplar) — ilk render'da oynamaz.
  *
  * İz (progress track) rengi hem KART DOLGUSUNDAN hem TEMADAN bağımsız seçildi
  * (koyuda beyaz-alfa, açıkta siyah-alfa) — DEVIR §0-A'daki iki kez düşülen tuzak.
  */
 import React, { useEffect, useRef } from 'react';
-import { Animated, Text, View } from 'react-native';
+import { Animated, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, WATER_INCREMENT, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE, alpha } from '@/lib/design';
+import { TYPE, MOTION, mix } from '@/lib/design';
 import { getButtonA11yProps } from '@/lib/accessibility';
-import { PressableCard } from '@/components/ui/PressableCard';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 interface Props {
@@ -89,8 +89,12 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
     ? getButtonA11yProps(fullA11yLabel, a11yHint ?? 'Eklemek için dokun')
     : { accessibilityRole: 'text' as const, accessibilityLabel: fullA11yLabel };
 
-  // Dolgu: metrik renginin pasteli. İz: dolgudan VE temadan bağımsız (§0-A tuzağı).
-  const cardBg = alpha(color, isDark ? 0.18 : 0.13);
+  // Dolgu: metrik renginin pasteli — zeminle ÖNCEDEN karıştırılmış OPAK ton (design.ts `mix`):
+  // dokunulabilir kart gövdeli (raf + yüz) ve yarı saydam bir yüz rafı içinden gösterirdi.
+  // Zemin üstünde eskisiyle aynı piksel. Raf: aynı rengin daha doygun karışımı.
+  // İz: dolgudan VE temadan bağımsız (§0-A tuzağı).
+  const cardBg = mix(color, colors.background, isDark ? 0.18 : 0.13);
+  const shelfBg = mix(color, colors.background, isDark ? 0.42 : 0.34);
   const track = isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.10)';
 
   const inner = (
@@ -135,9 +139,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
         </Text>
       ) : null}
       {progress !== undefined && (
-        <View style={{ height: 6, backgroundColor: track, borderRadius: 3, overflow: 'hidden', marginTop: SPACING.sm }}>
-          <View style={{ height: '100%', width: `${Math.min(100, progress * 100)}%`, backgroundColor: color, borderRadius: 3 }} />
-        </View>
+        <ProgressBar progress={progress} color={color} trackColor={track} height={8} style={{ marginTop: SPACING.sm }} />
       )}
     </>
   );
@@ -152,10 +154,20 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
   if (!onPress) {
     return <View {...a11yProps} style={cardStyle}>{inner}</View>;
   }
+  // Dokunulabilir kart GÖVDELİ (Duolingo dili): rengin koyusundan raf, basınca yüz rafa iner
+  // (MOTION.shelf). Eskiden PressableCard ile %2 küçülüyordu; kartın tuş olduğu artık
+  // dururken de görünüyor. Dış kutu `paddingBottom: shelf` — satırdaki iki kart eşit boyda
+  // kalır (yüz flex:1), basış yerleşimi oynatmaz.
+  const shelf = MOTION.shelf;
   return (
-    <PressableCard onPress={onPress} onLongPress={onLongPress} {...a11yProps} style={cardStyle}>
-      {inner}
-    </PressableCard>
+    <Pressable onPress={onPress} onLongPress={onLongPress} {...a11yProps} style={{ flex: 1, paddingBottom: shelf }}>
+      {({ pressed }) => (
+        <>
+          <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: shelf, bottom: 0, borderRadius: RADIUS.lg, backgroundColor: shelfBg }} />
+          <View style={{ ...cardStyle, transform: [{ translateY: pressed ? shelf : 0 }] }}>{inner}</View>
+        </>
+      )}
+    </Pressable>
   );
 }
 

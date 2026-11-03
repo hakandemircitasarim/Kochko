@@ -257,3 +257,27 @@ export function alpha(hex: string, a: number): string {
   const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a))})`;
 }
+
+/**
+ * `fg`'yi `a` opaklıkla `bg`'nin ÜSTÜNE boyamanın sonucu — OPAK bir hex.
+ *
+ * Gövdeli yüzeylerde (raf + yüz) yarı saydam bir yüz, arkasındaki rafı içinden gösterir:
+ * ChoiceTile'da menekşe ton koyu rafın üstünde menekşe etiketi yuttu. Pastel bir kart
+ * gövde alacaksa tonu zeminle önceden karıştırıp opak çizmek gerekir; sonuç, aynı kartın
+ * zemin üstünde yarı saydam çizilmiş hâliyle piksel piksel aynıdır.
+ * Hex olmayan girdi (rgba vb.) karıştırılamaz: `fg` aynen döner.
+ */
+export function mix(fg: string, bg: string, a: number): string {
+  const parse = (hex: string) => {
+    const m = hex.trim().replace('#', '');
+    if (m.length !== 3 && m.length !== 6) return null;
+    const full = m.length === 3 ? m.split('').map((c) => c + c).join('') : m;
+    const n = parseInt(full, 16);
+    return Number.isNaN(n) ? null : [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  };
+  const f = parse(fg), b = parse(bg);
+  if (!f || !b) return fg;
+  const k = Math.max(0, Math.min(1, a));
+  const out = f.map((c, i) => Math.round(c * k + b[i] * (1 - k)));
+  return '#' + out.map((c) => c.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
