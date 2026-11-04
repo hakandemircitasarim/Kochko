@@ -4,6 +4,7 @@
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
 import { CircularProgress } from '@/components/ui/CircularProgress';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
@@ -14,16 +15,20 @@ import { haptics } from '@/lib/haptics';
 // chips while a send is in flight — preventing a double-tap from firing two concurrent
 // sends (duplicate AI turns / duplicate side-effecting log or delete).
 export function QuickSelectButtons({ options, onSelect, disabled = false }: { options: string[]; onSelect: (option: string) => void; disabled?: boolean }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  // Gövdeli kelime kutucuğu (Duolingo dili, §0-B): kart yüz + 2px gri çerçeve + gri raf,
+  // basınca rafa iner. Gri tüm gövdeli yüzeylerle aynı (açıkta progressTrack, koyuda border).
+  const edge = isDark ? colors.border : colors.progressTrack;
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: SPACING.sm }}>
-      <View style={{ flexDirection: 'row', gap: 6, opacity: disabled ? 0.5 : 1 }}>
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, opacity: disabled ? 0.5 : 1 }}>
         {options.map((opt, i) => (
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={i} disabled={disabled} onPress={() => { haptics.tap(); onSelect(opt); }}
+          <ShelfPressable key={i} disabled={disabled} onPress={() => { haptics.tap(); onSelect(opt); }}
             accessibilityRole="button" accessibilityLabel={opt} accessibilityState={{ disabled }}
-            style={{ paddingVertical: 8, paddingHorizontal: SPACING.md, minHeight: 36, justifyContent: 'center', borderRadius: RADIUS.pill, backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border }}>
-            <Text style={{ ...TYPE.callout, color: colors.text }}>{opt}</Text>
-          </TouchableOpacity>
+            radius={RADIUS.pill} shelfColor={edge}
+            faceStyle={{ paddingVertical: 7, paddingHorizontal: SPACING.md, minHeight: 36, justifyContent: 'center', backgroundColor: colors.card, borderWidth: 2, borderColor: edge }}>
+            <Text style={{ ...TYPE.callout, color: colors.text, fontWeight: '600' }}>{opt}</Text>
+          </ShelfPressable>
         ))}
       </View>
     </ScrollView>
