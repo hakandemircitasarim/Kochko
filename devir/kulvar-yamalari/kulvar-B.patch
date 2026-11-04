@@ -1,0 +1,3230 @@
+diff --git a/app/plan/history.tsx b/app/plan/history.tsx
+index bd27070..c2cde6d 100644
+--- a/app/plan/history.tsx
++++ b/app/plan/history.tsx
+@@ -5,15 +5,20 @@
+  * Read-only. Tap an entry → see the snapshot summary (no edit; the plan is
+  * frozen). Plans approved long ago are still useful as a record of
+  * negotiation history and past meal/workout ideas.
++ *
++ * DUOLINGO DİLİ (2026-11-04): tür seçici iki gövdeli kutucuk (seçili = açık marka yüz +
++ * marka çerçeve + koyu raf, ChoiceTile'ın seçili hâliyle aynı), arşiv satırları gövdeli
++ * kartlar (ShelfPressable; basınca rafa iner, açılınca özet içeride).
+  */
+ import { useEffect, useState, useCallback } from 'react';
+-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
++import { View, Text, ScrollView } from 'react-native';
+ import { Stack, useLocalSearchParams } from 'expo-router';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
+ import { useTheme } from '@/lib/theme';
+ import { SPACING, RADIUS } from '@/lib/constants';
+-import { TYPE, MOTION } from '@/lib/design';
++import { TYPE, mix } from '@/lib/design';
++import { ShelfPressable } from '@/components/ui/ShelfPressable';
+ import { useAuthStore } from '@/stores/auth.store';
+ import { EmptyState } from '@/components/ui/EmptyState';
+ import { LoadErrorState } from '@/components/ui/LoadErrorState';
+@@ -53,7 +58,8 @@ function formatDate(iso: string): string {
+ 
+ export default function PlanHistoryScreen() {
+   const insets = useSafeAreaInsets();
+-  const { colors } = useTheme();
++  const { colors, isDark } = useTheme();
++  const grey = isDark ? colors.border : colors.progressTrack;
+   const params = useLocalSearchParams<{ type?: string }>();
+   const initialType: PlanType = params.type === 'workout' ? 'workout' : 'diet';
+   const user = useAuthStore(s => s.user);
+@@ -93,41 +99,42 @@ export default function PlanHistoryScreen() {
+         }}
+       />
+ 
+-      {/* Type switcher */}
+-      <View
+-        style={{
+-          flexDirection: 'row',
+-          backgroundColor: colors.cardElevated,
+-          borderRadius: RADIUS.sm,
+-          padding: 3,
+-          margin: SPACING.md,
+-        }}
+-      >
++      {/* Type switcher — iki gövdeli kutucuk. */}
++      <View style={{ flexDirection: 'row', gap: SPACING.sm, margin: SPACING.md }}>
+         {(['diet', 'workout'] as const).map(t => {
+           const active = planType === t;
+           return (
+-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++            <ShelfPressable
+               key={t}
+               onPress={() => setPlanType(t)}
+               accessibilityRole="button"
+               accessibilityLabel={t === 'diet' ? 'Diyet planları' : 'Antrenman planları'}
+-              style={{
+-                flex: 1,
+-                paddingVertical: SPACING.sm,
+-                borderRadius: RADIUS.sm - 2,
+-                backgroundColor: active ? colors.text : 'transparent',
++              accessibilityState={{ selected: active }}
++              radius={RADIUS.md}
++              shelfColor={active ? colors.primaryDark : grey}
++              style={{ flex: 1 }}
++              faceStyle={{
++                flexDirection: 'row',
+                 alignItems: 'center',
++                justifyContent: 'center',
++                gap: 6,
++                paddingVertical: SPACING.sm + 2,
++                borderWidth: 2,
++                borderColor: active ? colors.primary : grey,
++                backgroundColor: active ? mix(colors.primary, colors.card, isDark ? 0.22 : 0.1) : colors.card,
+               }}
+             >
++              <Ionicons name={t === 'diet' ? 'restaurant' : 'barbell'} size={16} color={active ? colors.primary : colors.textMuted} />
+               <Text
+                 style={{
+                   ...TYPE.bodyStrong,
+-                  color: active ? colors.background : colors.textSecondary,
++                  fontWeight: active ? '800' : '600',
++                  color: active ? colors.primary : colors.textSecondary,
+                 }}
+               >
+                 {t === 'diet' ? 'Diyet' : 'Antrenman'}
+               </Text>
+-            </TouchableOpacity>
++            </ShelfPressable>
+           );
+         })}
+       </View>
+@@ -165,7 +172,8 @@ export default function PlanHistoryScreen() {
+ }
+ 
+ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
+-  const { colors } = useTheme();
++  const { colors, isDark } = useTheme();
++  const grey = isDark ? colors.border : colors.progressTrack;
+   const [expanded, setExpanded] = useState(false);
+ 
+   const reason = row.archived_reason ?? 'superseded';
+@@ -193,20 +201,31 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
+   })();
+ 
+   return (
+-    <TouchableOpacity
++    <ShelfPressable
+       onPress={() => setExpanded(e => !e)}
+-      activeOpacity={MOTION.pressOpacity}
+       accessibilityRole="button"
+       accessibilityLabel={`${formatDate(row.generated_at)} planı, ${reasonLabel}`}
+-      style={{
++      accessibilityState={{ expanded }}
++      radius={RADIUS.lg}
++      shelfColor={grey}
++      faceStyle={{
+         backgroundColor: colors.card,
+-        borderRadius: RADIUS.lg,
+         padding: SPACING.md,
+-        borderWidth: 1,
+-        borderColor: colors.border,
++        borderWidth: 2,
++        borderColor: grey,
+       }}
+     >
+       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
++        <View
++          accessible={false}
++          style={{
++            width: 36, height: 36, borderRadius: 12,
++            backgroundColor: mix(planType === 'diet' ? colors.primary : colors.purple, colors.card, isDark ? 0.24 : 0.12),
++            alignItems: 'center', justifyContent: 'center',
++          }}
++        >
++          <Ionicons name={planType === 'diet' ? 'restaurant' : 'barbell'} size={17} color={planType === 'diet' ? colors.primary : colors.purple} />
++        </View>
+         <View style={{ flex: 1 }}>
+           <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
+             {formatDate(row.generated_at)}
+@@ -235,7 +254,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
+       </View>
+ 
+       {expanded ? (
+-        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
++        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.sm, borderTopWidth: 2, borderTopColor: grey }}>
+           {planType === 'diet' ? (
+             <DietExpanded plan={row.plan_data as DietPlanData} />
+           ) : (
+@@ -243,7 +262,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
+           )}
+         </View>
+       ) : null}
+-    </TouchableOpacity>
++    </ShelfPressable>
+   );
+ }
+ 
+diff --git a/src/components/plan/AlternativeComparisonModal.tsx b/src/components/plan/AlternativeComparisonModal.tsx
+index af15730..1358c51 100644
+--- a/src/components/plan/AlternativeComparisonModal.tsx
++++ b/src/components/plan/AlternativeComparisonModal.tsx
+@@ -6,15 +6,20 @@
+  *
+  * Intentionally compact (summary-level, not full meal detail) — users
+  * can open FullPlanModal after picking if they want to drill in.
++ *
++ * DUOLINGO DİLİ (2026-11-04): iki aday iki renkli yastık kart (A marka, B gül; opak pastel yüz
++ * + 2px ton çerçeve), dolu A/B rozeti, "Bunu seç" gövdeli Button (aynı eylem → aynı tuş; renk
++ * ayrımı kartta). "2 alternatif daha" ikincil outline Button.
+  */
+-import { View, Text, ScrollView, TouchableOpacity, Modal, Platform, ActivityIndicator } from 'react-native';
++import { View, Text, ScrollView, TouchableOpacity, Modal, Platform } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
+ import { useTheme } from '@/lib/theme';
+ import { getContrastColor } from '@/lib/accessibility';
+ import { haptics } from '@/lib/haptics';
+ import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+-import { TYPE, GUTTER, MOTION } from '@/lib/design';
++import { TYPE, GUTTER, MOTION, mix } from '@/lib/design';
++import { Button } from '@/components/ui/Button';
+ import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
+ import { DAY_LABELS_TR } from '@/services/plan.service';
+ 
+@@ -38,13 +43,13 @@ function PlanBadge({ label, accent }: { label: string; accent: string }) {
+     <View
+       style={{
+         alignSelf: 'flex-start',
+-        backgroundColor: accent + '22',
+-        paddingHorizontal: 9,
+-        paddingVertical: 3,
++        backgroundColor: accent,
++        paddingHorizontal: 10,
++        paddingVertical: 4,
+         borderRadius: 999,
+       }}
+     >
+-      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.overline, color: accent }}>
++      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.overline, color: getContrastColor(accent) }}>
+         PLAN {label}
+       </Text>
+     </View>
+@@ -52,7 +57,7 @@ function PlanBadge({ label, accent }: { label: string; accent: string }) {
+ }
+ 
+ /** Shared pick CTA — one definition so the diet and workout cards cannot drift apart. */
+-function PickButton({ label, accent, onPick, pickDisabled }: { label: string; accent: string; onPick: () => void; pickDisabled?: boolean }) {
++function PickButton({ label, onPick, pickDisabled }: { label: string; accent: string; onPick: () => void; pickDisabled?: boolean }) {
+   return (
+     <>
+       {/* The row stretches both cards to the taller one's height, but the CTA followed its own
+@@ -60,31 +65,14 @@ function PickButton({ label, accent, onPick, pickDisabled }: { label: string; ac
+           spacer eats the leftover height in the shorter card (min 12 so the taller card still
+           gets a gap), putting both CTAs on one baseline. */}
+       <View style={{ flexGrow: 1, minHeight: SPACING.md }} />
+-      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++      {/* FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
++          apply a candidate that's about to be swapped under the finger — block it. */}
++      <Button
++        title="Bunu seç"
+         onPress={onPick}
+-        // FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
+-        // apply a candidate that's about to be swapped under the finger — block it.
+         disabled={pickDisabled}
+-        accessibilityRole="button"
+         accessibilityLabel={`Plan ${label}'yı seç`}
+-        accessibilityState={{ disabled: !!pickDisabled }}
+-        style={{
+-          backgroundColor: accent,
+-          borderRadius: RADIUS.md,
+-          // 8pt padding around a 13px label gave a ~38px target; the reading step plus 12pt
+-          // clears 44 without the button growing wider than the half-width card.
+-          paddingVertical: SPACING.md,
+-          alignItems: 'center',
+-          opacity: pickDisabled ? 0.5 : 1,
+-        }}
+-      >
+-      <Text
+-        maxFontSizeMultiplier={MAX_FONT_SCALE}
+-        style={{ ...TYPE.bodyStrong, fontWeight: '700', color: getContrastColor(accent) }}
+-      >
+-          Bunu seç
+-        </Text>
+-      </TouchableOpacity>
++      />
+     </>
+   );
+ }
+@@ -101,11 +89,11 @@ function DietSummary({ plan, label, accent, onPick, pickDisabled, colors }: { pl
+     <View
+       style={{
+         flex: 1,
+-        backgroundColor: colors.card,
+-        borderRadius: RADIUS.xl,
+-        borderWidth: 1,
+-        borderColor: accent + '44',
+-        padding: SPACING.lg,
++        backgroundColor: mix(accent, colors.card, 0.08),
++        borderRadius: RADIUS.lg,
++        borderWidth: 2,
++        borderColor: mix(accent, colors.card, 0.45),
++        padding: SPACING.md,
+       }}
+     >
+       <PlanBadge label={label} accent={accent} />
+@@ -121,7 +109,7 @@ function DietSummary({ plan, label, accent, onPick, pickDisabled, colors }: { pl
+       </Text>
+ 
+       {sampleDay ? (
+-        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
++        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 2, borderTopColor: mix(accent, colors.card, 0.25) }}>
+           <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+             ÖRNEK GÜN ({sampleDay.day_label})
+           </Text>
+@@ -154,11 +142,11 @@ function WorkoutSummary({ plan, label, accent, onPick, pickDisabled, colors }: {
+     <View
+       style={{
+         flex: 1,
+-        backgroundColor: colors.card,
+-        borderRadius: RADIUS.xl,
+-        borderWidth: 1,
+-        borderColor: accent + '44',
+-        padding: SPACING.lg,
++        backgroundColor: mix(accent, colors.card, 0.08),
++        borderRadius: RADIUS.lg,
++        borderWidth: 2,
++        borderColor: mix(accent, colors.card, 0.45),
++        padding: SPACING.md,
+       }}
+     >
+       <PlanBadge label={label} accent={accent} />
+@@ -170,7 +158,7 @@ function WorkoutSummary({ plan, label, accent, onPick, pickDisabled, colors }: {
+         {total} toplam egzersiz
+       </Text>
+ 
+-      <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
++      <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 2, borderTopColor: mix(accent, colors.card, 0.25) }}>
+         <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+           HAFTALIK BÖLÜM
+         </Text>
+@@ -315,34 +303,16 @@ export function AlternativeComparisonModal({
+             // FIX (ux-pass5): the 10-30s LLM call had ZERO in-flight indication inside this
+             // fullscreen modal (the composer's TypingIndicator is occluded) and re-taps fired
+             // parallel generations — spinner + disabled while loadingMore.
+-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++            <Button
++              title="Hiçbiri olmadı, 2 alternatif daha"
++              variant="outline"
++              size="sm"
+               onPress={() => { haptics.tap(); onRequestMore(); }}
+-              disabled={loadingMore}
+-              accessibilityRole="button"
++              loading={loadingMore}
+               accessibilityLabel={loadingMore ? 'Yeni alternatifler hazırlanıyor' : 'Hiçbiri olmadı, 2 alternatif daha göster'}
+-              accessibilityState={{ disabled: !!loadingMore, busy: !!loadingMore }}
+-              style={{
+-                marginTop: SPACING.lg,
+-                alignSelf: 'center',
+-                flexDirection: 'row',
+-                alignItems: 'center',
+-                gap: 6,
+-                backgroundColor: colors.surfaceLight,
+-                borderRadius: RADIUS.full,
+-                paddingHorizontal: SPACING.md,
+-                paddingVertical: SPACING.sm,
+-                opacity: loadingMore ? 0.7 : 1,
+-              }}
+-            >
+-              {loadingMore ? (
+-                <ActivityIndicator size="small" color={colors.textSecondary} style={{ transform: [{ scale: 0.8 }] }} />
+-              ) : (
+-                <Ionicons name="refresh" size={15} color={colors.textSecondary} />
+-              )}
+-              <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.textSecondary }}>
+-                {loadingMore ? 'Yeni alternatifler hazırlanıyor...' : 'Hiçbiri olmadı, 2 alternatif daha göster'}
+-              </Text>
+-            </TouchableOpacity>
++              icon={<Ionicons name="refresh" size={15} color={colors.primary} />}
++              style={{ marginTop: SPACING.lg, alignSelf: 'center' }}
++            />
+           ) : null}
+         </ScrollView>
+       </View>
+diff --git a/src/components/plan/ExerciseCard.tsx b/src/components/plan/ExerciseCard.tsx
+index 4ed2f91..fdc7549 100644
+--- a/src/components/plan/ExerciseCard.tsx
++++ b/src/components/plan/ExerciseCard.tsx
+@@ -1,85 +1,99 @@
+ /**
+  * Single exercise entry for workout plan full view.
++ *
++ * DUOLINGO DİLİ (2026-11-04): kart dokunulamaz (yalnız içindeki "Bunu yaptım" çipi), o
++ * yüzden RAF YOK — raf "bas beni" demek. Canlılığı renkten alır: egzersizin gün içindeki
++ * SIRASI dolu bir yastık rozette numara olarak durur (1, 2, 3…) ve her sıra kendi tonunu
++ * taşır (menekşe/mavi/kehribar/gül döngüsü — metrik paleti, yeni hue yok). Sıra numarası
++ * gerçek bilgi: antrenman sırayla yapılır. Pastel opak yüz + aynı tonun 2px çerçevesi
++ * MealCard ile aynı spec.
+  */
+-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
++import { View, Text } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { useTheme } from '@/lib/theme';
++import { useTheme, METRIC_COLORS } from '@/lib/theme';
+ import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+-import { TYPE, MOTION } from '@/lib/design';
++import { TYPE } from '@/lib/design';
++import { PlanTileBadge, PlanActionChip, PLATE_INK, pastel } from './MealCard';
+ import type { WorkoutExercise } from '@/services/plan.service';
+ 
+ interface Props {
+   exercise: WorkoutExercise;
++  /** Gün içindeki sıra (0'dan). Verilirse rozet numara + sıranın tonu; yoksa menekşe halter. */
++  index?: number;
+   // FIX (ux-ideas #19): one-tap "Bunu yaptım" — only the ACTIVE plan's TODAY passes these.
+   onLogPress?: () => void;
+   logStatus?: 'saving' | 'done';
+ }
+ 
+-export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
+-  const { colors } = useTheme();
++// Sıra tonları + dolu rozet üstündeki ön plan (kehribar/gül mürekkep, mavi/menekşe beyaz).
++const ORDER_TONES: Array<{ tone: string; fg: string }> = [
++  { tone: METRIC_COLORS.workout, fg: '#FFFFFF' },
++  { tone: METRIC_COLORS.water, fg: '#FFFFFF' },
++  { tone: METRIC_COLORS.steps, fg: PLATE_INK },
++  { tone: METRIC_COLORS.weight, fg: PLATE_INK },
++];
++
++export function ExerciseCard({ exercise, index, onLogPress, logStatus }: Props) {
++  const { colors, isDark } = useTheme();
++  const t = ORDER_TONES[(index ?? 0) % ORDER_TONES.length];
++  const { face, edge } = pastel(t.tone, colors.card, isDark);
+   const loadText = exercise.weight_kg
+     ? `${exercise.sets} × ${exercise.reps} · ${exercise.weight_kg} kg`
+     : exercise.rpe
+       ? `${exercise.sets} × ${exercise.reps} · RPE ${exercise.rpe}`
+       : `${exercise.sets} × ${exercise.reps}`;
++  const done = logStatus === 'done';
+ 
+   return (
+     <View
+       style={{
+-        backgroundColor: colors.card,
++        backgroundColor: face,
+         borderRadius: RADIUS.lg,
+-        borderWidth: 1,
+-        borderColor: colors.border,
++        borderWidth: 2,
++        borderColor: edge,
+         padding: SPACING.md,
+         marginBottom: SPACING.sm,
+       }}
+     >
+-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+-        {/* FIX (ux-polish): match MealCard's badge spec (36/10/18) so the two plan-item cards
++      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
++        {/* FIX (ux-polish): same badge spec as MealCard so the two plan-item cards
+             read on-register across the diet/workout tabs. */}
+-        <View
+-          style={{
+-            width: 36,
+-            height: 36,
+-            borderRadius: 10,
+-            backgroundColor: colors.purple + '18',
+-            alignItems: 'center',
+-            justifyContent: 'center',
+-          }}
+-        >
+-          <Ionicons name="barbell-outline" size={18} color={colors.purple} />
+-        </View>
++        <PlanTileBadge tone={t.tone}>
++          {index != null ? (
++            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.headline, fontWeight: '800', color: t.fg }}>
++              {index + 1}
++            </Text>
++          ) : (
++            <Ionicons name="barbell" size={20} color={t.fg} />
++          )}
++        </PlanTileBadge>
+         <View style={{ flex: 1 }}>
+           {/* Measured on device against MealCard: there the meal name is `headline` and the kcal
+-              figure sits a step below it, so the name reads as what the card IS. Here name and
+-              load were both `bodyStrong`, so "3 × 10" competed with the exercise for first glance.
+-              Name up one step; load stays at 15 (a workout's load matters more than a meal's kcal,
+-              and the right column measured only ~73dp, so this does not squeeze it). */}
++              figure sits a step below it, so the name reads as what the card IS. Name at headline;
++              load is the workout's key figure, so it keeps bodyStrong — but under the name now,
++              not in a competing right column. */}
+           <Text style={{ ...TYPE.headline, color: colors.text }}>
+             {exercise.name}
+           </Text>
+-          {exercise.muscle_groups && exercise.muscle_groups.length > 0 ? (
+-            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }}>
+-              {exercise.muscle_groups.join(' · ')}
+-            </Text>
+-          ) : null}
+-        </View>
+-        <View style={{ alignItems: 'flex-end' }}>
+-          <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
++          <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>
+             {loadText}
++            {exercise.rest_sec ? (
++              <Text style={{ ...TYPE.caption, color: colors.textSecondary, fontWeight: '500' }}>
++                {`  ·  ${exercise.rest_sec}s dinlenme`}
++              </Text>
++            ) : null}
+           </Text>
+-          {exercise.rest_sec ? (
+-            <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
+-              {exercise.rest_sec}s dinlenme
++          {exercise.muscle_groups && exercise.muscle_groups.length > 0 ? (
++            <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 1 }}>
++              {exercise.muscle_groups.join(' · ')}
+             </Text>
+           ) : null}
+         </View>
+       </View>
+ 
+       {/* Form cues ("Dizler ayak yönünde, kontrollü in.") are read-to-act content, and the scale
+-          reserves 11px for things that are never that. Measured on device it also started at the
+-          card's left edge, under the badge, so it read as a stray caption rather than as part of
+-          the exercise — indent it to the name column. */}
++          reserves 11px for things that are never that. Indented to the name column so it reads
++          as part of the exercise, not a stray caption under the badge. */}
+       {exercise.notes ? (
+         <Text
+           style={{
+@@ -87,7 +101,7 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
+             color: colors.textSecondary,
+             fontStyle: 'italic',
+             marginTop: SPACING.xs,
+-            marginLeft: 36 + SPACING.sm,
++            marginLeft: 40 + SPACING.md,
+           }}
+         >
+           {exercise.notes}
+@@ -96,44 +110,18 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
+ 
+       {/* FIX (ux-ideas #19): "Bunu yaptım" — closes the track→mark loop on the workout side. */}
+       {onLogPress ? (
+-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+-          onPress={onLogPress}
+-          disabled={!!logStatus}
+-          accessibilityRole="button"
+-          accessibilityLabel={logStatus === 'done' ? 'Yapıldı olarak işaretlendi' : 'Bunu yaptım, günlüğe ekle'}
+-          accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
+-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+-          style={{
+-            flexDirection: 'row',
+-            alignItems: 'center',
+-            gap: 4,
+-            alignSelf: 'flex-start',
+-            marginTop: SPACING.sm,
+-            backgroundColor: logStatus === 'done' ? colors.successLight : colors.purple + '18',
+-            borderRadius: RADIUS.full,
+-            paddingHorizontal: SPACING.sm,
+-            paddingVertical: 8,
+-          }}
+-        >
+-          {logStatus === 'saving' ? (
+-            <ActivityIndicator size="small" color={colors.purple} style={{ transform: [{ scale: 0.7 }] }} />
+-          ) : (
+-            <Ionicons
+-              name={logStatus === 'done' ? 'checkmark-circle' : 'add-circle-outline'}
+-              size={12}
+-              color={logStatus === 'done' ? colors.success : colors.purple}
+-            />
+-          )}
+-          {/* 11px was below the scale's floor for anything you must read to act — and this chip
+-              IS the action. Reading-adjacent step; maxFontSizeMultiplier keeps a 150% OS text
+-              size from bursting the pill. */}
+-          <Text
+-            maxFontSizeMultiplier={MAX_FONT_SCALE}
+-            style={{ ...TYPE.caption, fontWeight: '700', color: logStatus === 'done' ? colors.success : colors.purple }}
+-          >
+-            {logStatus === 'done' ? 'Yapıldı' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yaptım'}
+-          </Text>
+-        </TouchableOpacity>
++        <View style={{ marginTop: SPACING.sm, marginLeft: 40 + SPACING.md }}>
++          <PlanActionChip
++            label={done ? 'Yapıldı' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yaptım'}
++            icon="add-circle"
++            filled
++            done={done}
++            saving={logStatus === 'saving'}
++            onPress={onLogPress}
++            accessibilityLabel={done ? 'Yapıldı olarak işaretlendi' : 'Bunu yaptım, günlüğe ekle'}
++            accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
++          />
++        </View>
+       ) : null}
+     </View>
+   );
+diff --git a/src/components/plan/MealCard.tsx b/src/components/plan/MealCard.tsx
+index 7573c4e..7a21a4c 100644
+--- a/src/components/plan/MealCard.tsx
++++ b/src/components/plan/MealCard.tsx
+@@ -1,15 +1,32 @@
+ /**
+  * Single meal card for the diet plan full view. Shows meal name, time,
+- * items list (collapsible), totals. Optional highlighted state (500ms
+- * green glow when the meal just changed in a new snapshot).
++ * items list (collapsible), totals. Optional highlighted state (600ms
++ * border glow when the meal just changed in a new snapshot).
++ *
++ * DUOLINGO DİLİ (2026-11-04, §0-A/§0-B):
++ *  - Her öğün KENDİ RENGİNİ taşır (kahvaltı kehribar, öğle mavi, atıştırma gül, akşam menekşe):
++ *    pastel opak yüz + aynı tonun çerçevesi/rafı + dolu "yastık" ikon rozeti. Önceden dört öğün de
++ *    aynı beyaz kutuydu; yalnız 36px'lik soluk ikon kutusu ayırıyordu.
++ *  - Kart GÖVDELİ: başlığa basınca yüz rafa iner (solmaz). ShelfPressable doğrudan
++ *    kullanılamıyor — o, kartın TAMAMINI tek bir Pressable yapar; ama başlıktaki "+" ve açık
++ *    gövdedeki çipler AYRI düğmeler (ekran okuyucu için kardeş, iç içe değil — ux-ideas #2'nin
++ *    bilerek yaptığı ayrım). Aynı iskelet (MOTION.shelf raf + translateY yüz) burada elle,
++ *    basılı hâli başlık Pressable'ının onPressIn/Out'u sürüyor.
++ *  - "Bunu yedim" / "Bu öğünü değiştir" çipleri gövdeli küçük tuşlar (ShelfPressable).
++ *
++ * Bu dosya planın görsel yardımcılarını da dışa verir (MEAL_TONES, shade, PlanTileBadge):
++ * PlanDayAccordion / PlanActiveView / ExerciseCard aynı rozet ve ton dilini kullanır; en alt
++ * seviye bileşen burası olduğu için döngüsel import olmadan paylaşılıyor.
+  */
+-import { useEffect, useRef } from 'react';
+-import { View, Text, TouchableOpacity, Animated, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
++import { useEffect, useRef, useState, type ReactNode } from 'react';
++import { View, Text, Pressable, Animated, ActivityIndicator, LayoutAnimation, Platform, UIManager } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { useTheme } from '@/lib/theme';
++import { useTheme, METRIC_COLORS } from '@/lib/theme';
+ import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+-import { TYPE, MOTION } from '@/lib/design';
++import { TYPE, MOTION, mix } from '@/lib/design';
+ import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
++import { getContrastColor } from '@/lib/accessibility';
++import { ShelfPressable } from '@/components/ui/ShelfPressable';
+ import { type DietMeal } from '@/services/plan.service';
+ 
+ // FIX (ux-round2 #13): enable LayoutAnimation on Android (iOS is on by default) so the meal
+@@ -18,9 +35,132 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
+   UIManager.setLayoutAnimationEnabledExperimental(true);
+ }
+ 
++/* ───────────── Paylaşılan plan görsel dili ───────────── */
++
++/** StatStrip'in mürekkebi (§0-A): kehribar/gül dolgu üstünde beyaz WCAG altında kalıyor. */
++export const PLATE_INK = '#2A2140';
++
++/**
++ * Öğün başına ton — metrik paletinden (yeni hue yok), temadan BAĞIMSIZ (yalnız dolgu/çerçeve
++ * olarak kullanılır, metin rengi olarak asla: açık temada kehribar metin 2:1'e düşer).
++ * `fg` dolu rozetin üstündeki ikonun rengi: kehribar + gül mürekkep, mavi + menekşe beyaz.
++ */
++export const MEAL_TONES: Record<DietMeal['meal_type'], { tone: string; fg: string; icon: keyof typeof Ionicons.glyphMap }> = {
++  breakfast: { tone: METRIC_COLORS.steps, fg: PLATE_INK, icon: 'sunny' },
++  lunch: { tone: METRIC_COLORS.water, fg: '#FFFFFF', icon: 'restaurant' },
++  snack: { tone: METRIC_COLORS.weight, fg: PLATE_INK, icon: 'cafe' },
++  dinner: { tone: METRIC_COLORS.sleep, fg: '#FFFFFF', icon: 'moon' },
++};
++
++/** Bir tonun koyusu — gövdeli yüzeyin rafı (Button'ın primary→primaryDark ilişkisi). */
++export function shade(hex: string, k = 0.76): string {
++  return mix(hex, '#000000', k);
++}
++
++/** Pastel opak yüz + aynı tonun kenarı (çerçeve ve raf). Yüz opak olmalı (§0-B). */
++export function pastel(tone: string, card: string, isDark: boolean) {
++  return {
++    face: mix(tone, card, isDark ? 0.16 : 0.09),
++    edge: mix(tone, card, isDark ? 0.55 : 0.4),
++  };
++}
++
++/**
++ * Dolu "yastık" rozet — Duolingo ders düğümünün küçük kardeşi: dolu renk + 3px koyu alt
++ * kalınlık. Dokunulmaz (süs), o yüzden basınca inmez; kalınlık yalnız hacim hissi.
++ */
++export function PlanTileBadge({ tone, size = 40, children }: { tone: string; size?: number; children: ReactNode }) {
++  const depth = 3;
++  return (
++    <View
++      accessible={false}
++      importantForAccessibility="no-hide-descendants"
++      style={{ width: size, height: size + depth, borderRadius: size * 0.32, backgroundColor: shade(tone) }}
++    >
++      <View
++        style={{
++          width: size,
++          height: size,
++          borderRadius: size * 0.32,
++          backgroundColor: tone,
++          alignItems: 'center',
++          justifyContent: 'center',
++        }}
++      >
++        {children}
++      </View>
++    </View>
++  );
++}
++
++/**
++ * Küçük gövdeli eylem çipi ("Bunu yedim", "Bunu yaptım", "Bu öğünü değiştir").
++ * `filled` → marka dolgusu + primaryDark raf (birincil, Button primary ile aynı ilişki);
++ * değilse kart yüz + gri gövde (ikincil). Dolgu bilerek öğün tonu DEĞİL: 13px etiket mavi
++ * (#4C8DFF) üstünde beyazla 3,2:1, menekşe tonda mürekkeple 3,6:1 — ikisi de AA altı.
++ * `done` → gök mavisi "yolunda" tonu; o hâlde zaten devre dışı (tekrar kayıt yok).
++ */
++export function PlanActionChip({
++  label, icon, filled, done, saving, onPress, accessibilityLabel, accessibilityState,
++}: {
++  label: string;
++  icon: keyof typeof Ionicons.glyphMap;
++  filled?: boolean;
++  done?: boolean;
++  saving?: boolean;
++  onPress: () => void;
++  accessibilityLabel: string;
++  accessibilityState?: { disabled?: boolean; busy?: boolean };
++}) {
++  const { colors, isDark } = useTheme();
++  const grey = isDark ? colors.border : colors.progressTrack;
++  const face = done ? mix(colors.success, colors.card, isDark ? 0.22 : 0.14) : filled ? colors.primary : colors.card;
++  const edge = done ? mix(colors.success, colors.card, 0.6) : filled ? colors.primaryDark : grey;
++  const fg = done ? colors.success : filled ? getContrastColor(colors.primary) : colors.textSecondary;
++  return (
++    <ShelfPressable
++      onPress={onPress}
++      disabled={done || saving}
++      accessibilityRole="button"
++      accessibilityLabel={accessibilityLabel}
++      accessibilityState={accessibilityState}
++      // FIX (ux-pass5): chip was ~23px tall with no hitSlop — flagship one-tap
++      // logging kept missing. ~36px visual + hitSlop → ≥44px effective.
++      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
++      radius={RADIUS.pill}
++      shelfColor={edge}
++      style={{ alignSelf: 'flex-start' }}
++      faceStyle={{
++        flexDirection: 'row',
++        alignItems: 'center',
++        gap: 5,
++        minHeight: 34,
++        paddingHorizontal: SPACING.md,
++        backgroundColor: face,
++        borderWidth: filled && !done ? 0 : 2,
++        borderColor: edge,
++      }}
++    >
++      {saving ? (
++        <ActivityIndicator size="small" color={fg} style={{ transform: [{ scale: 0.7 }] }} />
++      ) : (
++        <Ionicons name={done ? 'checkmark-circle' : icon} size={15} color={fg} />
++      )}
++      {/* Kept in lockstep across MealCard / ExerciseCard — same control, same spec. 11px is
++          the scale's "never for anything you must read to act" step, and this is the
++          flagship one-tap action on both plan cards. */}
++      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '800', color: fg }}>
++        {label}
++      </Text>
++    </ShelfPressable>
++  );
++}
++
++/* ───────────── MealCard ───────────── */
++
+ interface Props {
+   meal: DietMeal;
+-  highlighted?: boolean;      // just-changed flag — triggers green glow
++  highlighted?: boolean;      // just-changed flag — triggers border glow
+   expanded: boolean;
+   onToggle: () => void;
+   onEditPress?: () => void;   // opens chat with prefill "X'i değiştir"
+@@ -30,268 +170,200 @@ interface Props {
+   logStatus?: 'saving' | 'done';
+ }
+ 
+-const MEAL_ICONS: Record<DietMeal['meal_type'], string> = {
+-  breakfast: 'sunny-outline',
+-  lunch: 'restaurant-outline',
+-  dinner: 'moon-outline',
+-  snack: 'cafe-outline',
+-};
+-
+ export function MealCard({ meal, highlighted, expanded, onToggle, onEditPress, onLogPress, logStatus }: Props) {
+-  const { colors } = useTheme();
++  const { colors, isDark } = useTheme();
+   const glow = useRef(new Animated.Value(0)).current;
++  const [pressed, setPressed] = useState(false);
+ 
+-  // Plan-domain palette mapped onto brand theme tokens (no off-brand hexes):
+-  // breakfast → warning (amber), lunch → primary (diet teal),
+-  // dinner → purple (workout accent), snack → pink.
+-  const MEAL_COLORS: Record<DietMeal['meal_type'], string> = {
+-    breakfast: colors.warning,
+-    lunch: colors.primary,
+-    dinner: colors.purple,
+-    snack: colors.pink,
+-  };
++  // LLM JSON'da bilinmeyen bir meal_type gelirse öğle tonuna düş — kart çökmesin.
++  const t = MEAL_TONES[meal.meal_type] ?? MEAL_TONES.lunch;
++  const { face, edge } = pastel(t.tone, colors.card, isDark);
+ 
+   useEffect(() => {
+     if (highlighted) {
+       glow.setValue(1);
++      // Renk geçişi: native driver renk desteklemez; 600ms'lik tek seferlik vurgu.
+       Animated.timing(glow, { toValue: 0, duration: 600, useNativeDriver: false }).start();
+     }
+   }, [highlighted, glow]);
+ 
+   const borderColor = glow.interpolate({
+     inputRange: [0, 1],
+-    outputRange: [colors.border, colors.success],
++    outputRange: [edge, colors.success],
+   });
+ 
+-  const color = MEAL_COLORS[meal.meal_type];
++  const shelf = MOTION.shelf;
++  const done = logStatus === 'done';
+ 
+   return (
+-    <Animated.View
+-      style={{
+-        backgroundColor: colors.card,
+-        borderRadius: RADIUS.lg,
+-        borderWidth: 1,
+-        borderColor,
+-        padding: SPACING.md,
+-        marginBottom: SPACING.sm,
+-      }}
+-    >
+-      {/* Header */}
+-      {/* FIX (ux-pass5): expandable header announced as a button with expanded state
+-          (matches PlanDayAccordion) — was a text blob to TalkBack, hiding the actions inside. */}
+-      {/* FIX (ux-ideas #2): the 'Bunu yedim' one-tap log now also lives on the COLLAPSED
+-          header (compact + button), so the day's most-repeated action no longer requires
+-          expanding each meal first. The full labelled chip still renders in the expanded body.
+-          Split into a toggle + a sibling button (not nested) so the log tap and the expand tap
+-          never contend for the same touch responder. */}
+-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+-        <TouchableOpacity
+-          onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); onToggle(); }}
+-          activeOpacity={MOTION.pressOpacity}
+-          accessibilityRole="button"
+-          accessibilityLabel={`${MEAL_TYPE_LABELS_TR[meal.meal_type]}, ${meal.name}, ${Math.round(meal.total_kcal)} kalori, ${expanded ? 'açık' : 'aç'}`}
+-          accessibilityState={{ expanded }}
+-          style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}
+-        >
+-          <View
+-            style={{
+-              width: 36,
+-              height: 36,
+-              borderRadius: 10,
+-              backgroundColor: color + '18',
+-              alignItems: 'center',
+-              justifyContent: 'center',
+-            }}
+-          >
+-            <Ionicons name={MEAL_ICONS[meal.meal_type] as any} size={18} color={color} />
+-          </View>
+-          <View style={{ flex: 1 }}>
+-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+-              <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+-                {MEAL_TYPE_LABELS_TR[meal.meal_type]}
+-              </Text>
+-              {meal.time ? (
+-                <Text style={{ ...TYPE.footnote, color: colors.textMuted }}>· {meal.time}</Text>
+-              ) : null}
+-            </View>
+-            {/* The meal's name is what this card IS. At 13px it was smaller than the app's reading
+-                size, so a plan read as a wall of small bold text with no entry point per card. */}
+-            {/* Two lines when collapsed, not one. Raising the name to the reading step made it
+-                truncate in the ACTIVE plan view — those rows carry an extra "+" control, so the
+-                name has less room there than in the draft view where the same names fit. Driven on
+-                a device: "Peynirli tost ve yo…", "Kıymalı kuru fasu…". Giving the name a second
+-                line is the honest fix; shrinking it back would trade legibility for a layout
+-                constraint that only exists on one of the two surfaces. */}
+-            <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }} numberOfLines={expanded ? 0 : 2}>
+-              {meal.name}
+-            </Text>
+-          </View>
+-          <View style={{ alignItems: 'flex-end' }}>
+-            {/* FIX (audit UI-PLN-02): round raw LLM-authored macros so decimals (487.3, 32.5) don't leak into the UI */}
+-            <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
+-              {Math.round(meal.total_kcal)} kcal
+-            </Text>
+-            {/* Dar sag sutun: makro satiri kabin genisligini belirliyor — 13'e cikarmak
+-                ogun adini ikinci satirda kirpiyordu, bu yuzden en kucuk okunur adimda kaliyor. */}
+-            <Text style={{ ...TYPE.footnote, color: colors.textSecondary }}>
+-              P{Math.round(meal.total_protein)} · K{Math.round(meal.total_carbs)} · Y{Math.round(meal.total_fat)}
+-            </Text>
+-          </View>
+-          <Ionicons
+-            name={expanded ? 'chevron-up' : 'chevron-down'}
+-            size={16}
+-            color={colors.textMuted}
+-          />
+-        </TouchableOpacity>
+-
+-        {/* Compact one-tap log — only on the active plan's TODAY (onLogPress present) and while
+-            collapsed; expanding reveals the full labelled chip below. Icon-only to fit the dense
+-            header, with a full-intent a11y label. Reflects saving / done state at a glance. */}
+-        {onLogPress && !expanded ? (
+-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+-            onPress={onLogPress}
+-            disabled={!!logStatus}
++    <View style={{ paddingBottom: shelf, marginBottom: SPACING.sm }}>
++      {/* Raf — yüzün tonunun koyusu; basılınca yüz bunun üstüne iner. */}
++      <View
++        pointerEvents="none"
++        style={{ position: 'absolute', left: 0, right: 0, top: shelf, bottom: 0, borderRadius: RADIUS.lg, backgroundColor: edge }}
++      />
++      <Animated.View
++        style={{
++          backgroundColor: face,
++          borderRadius: RADIUS.lg,
++          borderWidth: 2,
++          borderColor,
++          padding: SPACING.md,
++          transform: [{ translateY: pressed ? shelf : 0 }],
++        }}
++      >
++        {/* Header */}
++        {/* FIX (ux-pass5): expandable header announced as a button with expanded state
++            (matches PlanDayAccordion) — was a text blob to TalkBack, hiding the actions inside. */}
++        {/* FIX (ux-ideas #2): the 'Bunu yedim' one-tap log now also lives on the COLLAPSED
++            header (compact + button), so the day's most-repeated action no longer requires
++            expanding each meal first. The full labelled chip still renders in the expanded body.
++            Split into a toggle + a sibling button (not nested) so the log tap and the expand tap
++            never contend for the same touch responder. */}
++        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
++          <Pressable
++            onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); onToggle(); }}
++            onPressIn={() => setPressed(true)}
++            onPressOut={() => setPressed(false)}
+             accessibilityRole="button"
+-            accessibilityLabel={logStatus === 'done' ? `${meal.name} günlüğe eklendi` : logStatus === 'saving' ? 'Ekleniyor' : `${meal.name}, bunu yedim, günlüğe ekle`}
+-            accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
+-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+-            style={{
+-              width: 32,
+-              height: 32,
+-              borderRadius: 16,
+-              alignItems: 'center',
+-              justifyContent: 'center',
+-              backgroundColor: logStatus === 'done' ? colors.successLight : colors.primary + '18',
+-            }}
++            accessibilityLabel={`${MEAL_TYPE_LABELS_TR[meal.meal_type]}, ${meal.name}, ${Math.round(meal.total_kcal)} kalori, ${expanded ? 'açık' : 'aç'}`}
++            accessibilityState={{ expanded }}
++            style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}
+           >
+-            {logStatus === 'saving' ? (
+-              <ActivityIndicator size="small" color={colors.primary} style={{ transform: [{ scale: 0.7 }] }} />
+-            ) : (
+-              <Ionicons
+-                name={logStatus === 'done' ? 'checkmark-circle' : 'add-circle-outline'}
+-                size={18}
+-                color={logStatus === 'done' ? colors.success : colors.primary}
+-              />
+-            )}
+-          </TouchableOpacity>
+-        ) : null}
+-      </View>
+-
+-      {/* Expanded: items + notes + edit */}
+-      {expanded && (
+-        <View style={{ marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
+-          {(Array.isArray(meal.items) ? meal.items : []).map((it, i) => (
+-            <View
+-              key={i}
+-              style={{
+-                flexDirection: 'row',
+-                justifyContent: 'space-between',
+-                paddingVertical: 4,
+-              }}
+-            >
+-              {/* Ingredient list — 11px for the actual food a person is meant to shop for and eat. */}
+-              <Text style={{ ...TYPE.caption, color: colors.text, flex: 1 }} numberOfLines={1}>
+-                {it.name}{' '}
+-                <Text style={{ color: colors.textMuted }}>
+-                  ({it.grams ? `${it.grams}g` : it.portion ?? '-'})
++            <PlanTileBadge tone={t.tone}>
++              <Ionicons name={t.icon} size={20} color={t.fg} />
++            </PlanTileBadge>
++            <View style={{ flex: 1 }}>
++              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
++                <Text style={{ ...TYPE.overline, color: colors.textSecondary }}>
++                  {MEAL_TYPE_LABELS_TR[meal.meal_type]?.toLocaleUpperCase('tr-TR')}
+                 </Text>
++                {meal.time ? (
++                  <Text style={{ ...TYPE.footnote, color: colors.textMuted }}>· {meal.time}</Text>
++                ) : null}
++              </View>
++              {/* The meal's name is what this card IS — reading step, not a 13px caption. */}
++              {/* Two lines when collapsed, not one. Raising the name to the reading step made it
++                  truncate in the ACTIVE plan view — those rows carry an extra "+" control, so the
++                  name has less room there than in the draft view where the same names fit. Driven on
++                  a device: "Peynirli tost ve yo…", "Kıymalı kuru fasu…". Giving the name a second
++                  line is the honest fix; shrinking it back would trade legibility for a layout
++                  constraint that only exists on one of the two surfaces. */}
++              <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }} numberOfLines={expanded ? 0 : 2}>
++                {meal.name}
++              </Text>
++              {/* Az sayı, çok teşvik: kcal + makrolar ad'ın ALTINDA tek ikincil satır. Önceden sağda
++                  kendi sütunlarıydı ve adla aynı ağırlıkta yarışıyordu; ayrıca adın genişliğini
++                  yiyordu. FIX (audit UI-PLN-02): ham LLM ondalıkları yuvarlanır. */}
++              <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
++                <Text style={{ fontWeight: '700', color: colors.text }}>{Math.round(meal.total_kcal)} kcal</Text>
++                {`  ·  P${Math.round(meal.total_protein)} K${Math.round(meal.total_carbs)} Y${Math.round(meal.total_fat)}`}
+               </Text>
+-              {/* FIX (audit UI-PLN-02): round per-item kcal (raw LLM JSON may carry decimals) */}
+-              <Text style={{ ...TYPE.caption, color: colors.textMuted }}>{Math.round(it.kcal)} kcal</Text>
+             </View>
+-          ))}
++            <Ionicons
++              name={expanded ? 'chevron-up' : 'chevron-down'}
++              size={18}
++              color={colors.textMuted}
++            />
++          </Pressable>
+ 
+-          {/* Same step as ExerciseCard's note line — one spec for "the coach's aside about this item". */}
+-          {meal.notes ? (
+-            <Text
+-              style={{
+-                ...TYPE.caption,
+-                color: colors.textSecondary,
+-                fontStyle: 'italic',
+-                marginTop: SPACING.xs,
++          {/* Compact one-tap log — only on the active plan's TODAY (onLogPress present) and while
++              collapsed; expanding reveals the full labelled chip below. Icon-only gövdeli yuvarlak
++              tuş (öğünün kendi tonunda), with a full-intent a11y label. Reflects saving / done. */}
++          {onLogPress && !expanded ? (
++            <ShelfPressable
++              onPress={onLogPress}
++              disabled={!!logStatus}
++              accessibilityRole="button"
++              accessibilityLabel={done ? `${meal.name} günlüğe eklendi` : logStatus === 'saving' ? 'Ekleniyor' : `${meal.name}, bunu yedim, günlüğe ekle`}
++              accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
++              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
++              radius={20}
++              shelfColor={done ? mix(colors.success, colors.card, 0.6) : shade(t.tone)}
++              faceStyle={{
++                width: 40,
++                height: 40,
++                alignItems: 'center',
++                justifyContent: 'center',
++                backgroundColor: done ? mix(colors.success, colors.card, isDark ? 0.22 : 0.14) : t.tone,
+               }}
+             >
+-              {meal.notes}
+-            </Text>
++              {logStatus === 'saving' ? (
++                <ActivityIndicator size="small" color={t.fg} style={{ transform: [{ scale: 0.7 }] }} />
++              ) : (
++                <Ionicons name={done ? 'checkmark' : 'add'} size={22} color={done ? colors.success : t.fg} />
++              )}
++            </ShelfPressable>
+           ) : null}
++        </View>
+ 
+-          {(onEditPress || onLogPress) ? (
+-            <View style={{ marginTop: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+-              {onLogPress ? (
+-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+-                  onPress={onLogPress}
+-                  disabled={!!logStatus}
+-                  accessibilityRole="button"
+-                  accessibilityLabel={logStatus === 'done' ? 'Günlüğe eklendi' : 'Bunu yedim, günlüğe ekle'}
+-                  accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
+-                  // FIX (ux-pass5): chip was ~23px tall with no hitSlop — flagship one-tap
+-                  // logging kept missing. paddingVertical 8 (~32px visual) + hitSlop → ≥44px effective.
+-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+-                  style={{
+-                    flexDirection: 'row',
+-                    alignItems: 'center',
+-                    gap: 4,
+-                    backgroundColor: logStatus === 'done' ? colors.successLight : colors.primary + '18',
+-                    borderRadius: RADIUS.full,
+-                    paddingHorizontal: SPACING.sm,
+-                    paddingVertical: 8,
+-                  }}
+-                >
+-                  {logStatus === 'saving' ? (
+-                    <ActivityIndicator size="small" color={colors.primary} style={{ transform: [{ scale: 0.7 }] }} />
+-                  ) : (
+-                    <Ionicons
+-                      name={logStatus === 'done' ? 'checkmark-circle' : 'add-circle-outline'}
+-                      size={12}
+-                      color={logStatus === 'done' ? colors.success : colors.primary}
+-                    />
+-                  )}
+-                  {/* Kept in lockstep with ExerciseCard's chip — same control, same spec. 11px is
+-                      the scale's "never for anything you must read to act" step, and this is the
+-                      flagship one-tap action on both plan cards. */}
+-                  <Text
+-                    maxFontSizeMultiplier={MAX_FONT_SCALE}
+-                    style={{
+-                      ...TYPE.caption,
+-                      fontWeight: '700',
+-                      color: logStatus === 'done' ? colors.success : colors.primary,
+-                    }}
+-                  >
+-                    {logStatus === 'done' ? 'Günlüğe eklendi' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yedim'}
++        {/* Expanded: items + notes + edit */}
++        {expanded && (
++          <View style={{ marginTop: SPACING.md, paddingTop: SPACING.sm, borderTopWidth: 2, borderTopColor: edge }}>
++            {(Array.isArray(meal.items) ? meal.items : []).map((it, i) => (
++              <View
++                key={i}
++                style={{
++                  flexDirection: 'row',
++                  justifyContent: 'space-between',
++                  paddingVertical: 4,
++                }}
++              >
++                {/* Ingredient list — the actual food a person is meant to shop for and eat. */}
++                <Text style={{ ...TYPE.callout, color: colors.text, flex: 1 }} numberOfLines={1}>
++                  {it.name}{' '}
++                  <Text style={{ color: colors.textMuted }}>
++                    ({it.grams ? `${it.grams}g` : it.portion ?? '-'})
+                   </Text>
+-                </TouchableOpacity>
+-              ) : null}
+-              {onEditPress ? (
+-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+-                  onPress={onEditPress}
++                </Text>
++                {/* FIX (audit UI-PLN-02): round per-item kcal (raw LLM JSON may carry decimals) */}
++                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>{Math.round(it.kcal)} kcal</Text>
++              </View>
++            ))}
++
++            {/* Same step as ExerciseCard's note line — one spec for "the coach's aside about this item". */}
++            {meal.notes ? (
++              <Text
++                style={{
++                  ...TYPE.caption,
++                  color: colors.textSecondary,
++                  fontStyle: 'italic',
++                  marginTop: SPACING.xs,
++                }}
++              >
++                {meal.notes}
++              </Text>
++            ) : null}
++
++            {(onEditPress || onLogPress) ? (
++              <View style={{ marginTop: SPACING.md, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: SPACING.sm }}>
++                {onLogPress ? (
++                  <PlanActionChip
++                    label={done ? 'Günlüğe eklendi' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yedim'}
++                    icon="add-circle"
++                    filled
++                    done={done}
++                    saving={logStatus === 'saving'}
++                    onPress={onLogPress}
++                    accessibilityLabel={done ? 'Günlüğe eklendi' : 'Bunu yedim, günlüğe ekle'}
++                    accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
++                  />
++                ) : null}
++                {onEditPress ? (
+                   // FIX (ux-pass5): same undersized target as the log chip + TalkBack read it
+-                  // as plain text — add role/label and grow to ≥44px effective.
+-                  accessibilityRole="button"
+-                  accessibilityLabel={`${meal.name} öğününü değiştir`}
+-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+-                  style={{
+-                    flexDirection: 'row',
+-                    alignItems: 'center',
+-                    gap: 4,
+-                    backgroundColor: colors.surfaceLight,
+-                    borderRadius: RADIUS.full,
+-                    paddingHorizontal: SPACING.sm,
+-                    paddingVertical: 8,
+-                  }}
+-                >
+-                  <Ionicons name="create-outline" size={13} color={colors.textSecondary} />
+-                  <Text
+-                    maxFontSizeMultiplier={MAX_FONT_SCALE}
+-                    style={{ ...TYPE.caption, fontWeight: '600', color: colors.textSecondary }}
+-                  >
+-                    Bu öğünü değiştir
+-                  </Text>
+-                </TouchableOpacity>
+-              ) : null}
+-            </View>
+-          ) : null}
+-        </View>
+-      )}
+-    </Animated.View>
++                  // as plain text — role/label + ≥44px effective (PlanActionChip hitSlop).
++                  <PlanActionChip
++                    label="Bu öğünü değiştir"
++                    icon="create-outline"
++                    onPress={onEditPress}
++                    accessibilityLabel={`${meal.name} öğününü değiştir`}
++                  />
++                ) : null}
++              </View>
++            ) : null}
++          </View>
++        )}
++      </Animated.View>
++    </View>
+   );
+ }
+diff --git a/src/components/plan/PhaseTimeline.tsx b/src/components/plan/PhaseTimeline.tsx
+index 33a6406..4f5b327 100644
+--- a/src/components/plan/PhaseTimeline.tsx
++++ b/src/components/plan/PhaseTimeline.tsx
+@@ -3,13 +3,25 @@
+  * Spec 6.7: Çok fazlı hedef planlaması görsel zaman çizelgesi
+  *
+  * Mevcut faz konumunu, geçiş bölgelerini ve gelecek fazları gösterir.
++ *
++ * DUOLINGO YOL HARİTASI (2026-11-04): eskiden 32px'lik oransal bir şeritti; aktif faz tek
++ * dolu hücre, tamamlanan ile gelecek arasındaki fark yalnız alfa tonuydu (0x40 vs 0x20) — göz
++ * ayırt edemiyordu. Şimdi her faz bir DÜĞÜM: tamamlanan = dolu renk + tik, şimdiki = büyük
++ * dolu düğüm + halka + "ŞİMDİ" balonu (girişte bir kez yaylanır, reduce-motion'da durur),
++ * gelecek = gri düğüm + kilit. Düğümler arası yol: geçilen kısım marka renginde, kalanı gri.
++ * Oransal süre bilgisi kaybolmasın diye her düğümün altında "N hf" ve en altta haftalık
++ * ProgressBar var. Düğümler dokunulamaz: alt kalınlık hacim için, basınca inmez.
+  */
+-import { View, Text } from 'react-native';
+-import { SPACING, MAX_FONT_SCALE } from '@/lib/constants';
+-import { TYPE } from '@/lib/design';
++import { useEffect, useRef } from 'react';
++import { View, Text, Animated } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
++import { TYPE, mix } from '@/lib/design';
+ import { useTheme, type ThemeColors } from '@/lib/theme';
+ import { getContrastColor } from '@/lib/accessibility';
+ import { goalShortLabelTR } from '@/lib/labels';
++import { useReduceMotion } from '@/hooks/useReduceMotion';
++import { ProgressBar } from '@/components/ui/ProgressBar';
+ 
+ interface Phase {
+   id: string;
+@@ -37,107 +49,152 @@ const GOAL_COLOR_TOKENS: Record<string, keyof ThemeColors> = {
+   conditioning: 'coral',
+ };
+ 
++const GOAL_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
++  lose_weight: 'flame',
++  gain_weight: 'trending-up',
++  gain_muscle: 'barbell',
++  maintain: 'shield-checkmark',
++  health: 'heart',
++  conditioning: 'pulse',
++};
++
++const NODE = 48;
++const NODE_ACTIVE = 58;
++const DEPTH = 4;
++
+ export function PhaseTimeline({ phases, currentWeek }: PhaseTimelineProps) {
+-  const { colors } = useTheme();
++  const { colors, isDark } = useTheme();
++  const reduceMotion = useReduceMotion();
++  const pop = useRef(new Animated.Value(reduceMotion ? 1 : 0.7)).current;
++
++  // Şimdiki düğüm sayfaya bir kez yaylanarak oturur (mount-only, native driver).
++  useEffect(() => {
++    if (reduceMotion) { pop.setValue(1); return; }
++    const a = Animated.spring(pop, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true });
++    a.start();
++    return () => a.stop();
++  }, [reduceMotion, pop]);
++
+   if (phases.length === 0) return null;
+ 
+   const totalWeeks = phases.reduce((s, p) => s + p.targetWeeks, 0);
++  const grey = isDark ? colors.border : colors.progressTrack;
++  // Gelecek düğümün yüzü: kartın üstünde ayrışan opak gri (iz kuralı §0-A — yüzeye göre).
++  const futureFace = isDark ? colors.surfaceLight : colors.background;
++  // Tüm düğüm merkezleri tek yatay çizgide: alan alttan hizalı; şimdiki düğümün merkezin
++  // altında kalan payı (yarıçap + halka + kalınlık) diğerlerine marginBottom ile eşitleniyor.
++  const AREA_H = NODE_ACTIVE + 8 + DEPTH + 20;
++  const belowActive = NODE_ACTIVE / 2 + 4 + DEPTH;
++  const lineY = AREA_H - belowActive;
+ 
+   return (
+     <View style={{
+       backgroundColor: colors.card,
+-      borderRadius: 12,
+-      padding: SPACING.md,
+-      borderWidth: 1,
+-      borderColor: colors.border,
++      borderRadius: RADIUS.lg,
++      padding: SPACING.lg,
++      borderWidth: 2,
++      borderColor: grey,
+     }}>
+-      <Text style={{ ...TYPE.headline, color: colors.text, marginBottom: SPACING.sm }}>
++      <Text style={{ ...TYPE.headline, color: colors.text, marginBottom: SPACING.md }}>
+         Hedef Fazları
+       </Text>
+ 
+-      {/* Timeline bar — FIX (ux-polish): decorative; hidden from screen readers so phase names aren't
+-          read twice (bar + labels) and color-only active/completed state isn't announced here. The
+-          labels below carry the accessible names + spoken state. */}
+-      <View
+-        importantForAccessibility="no-hide-descendants"
+-        accessibilityElementsHidden
+-        style={{
+-        flexDirection: 'row',
+-        height: 32,
+-        borderRadius: 8,
+-        overflow: 'hidden',
+-        backgroundColor: colors.surfaceLight,
+-      }}>
++      <View style={{ flexDirection: 'row' }}>
+         {phases.map((phase, i) => {
+-          const widthPct = (phase.targetWeeks / totalWeeks) * 100;
+           const color = colors[GOAL_COLOR_TOKENS[phase.goalType] ?? 'textMuted'];
+-
++          const fg = getContrastColor(color);
++          const size = phase.isActive ? NODE_ACTIVE : NODE;
++          const state = phase.isCompleted ? 'done' : phase.isActive ? 'now' : 'next';
++          // Yol: bir düğümden SAĞA çıkan çizgi, bu faz bitmişse "geçilmiş" (marka), değilse gri.
++          // Sola giren çizgi önceki fazın durumunu taşır.
++          const leftTraveled = i > 0 && phases[i - 1].isCompleted;
++          const rightTraveled = phase.isCompleted;
++          const label = phase.label ? goalShortLabelTR(phase.label) : `${phase.targetWeeks} hafta`;
+           return (
+-            <View key={phase.id} style={{
+-              width: `${widthPct}%`,
+-              backgroundColor: phase.isCompleted
+-                ? color + '40'
+-                : phase.isActive
+-                  ? color
+-                  : color + '20',
+-              justifyContent: 'center',
+-              alignItems: 'center',
+-              borderRightWidth: i < phases.length - 1 ? 1 : 0,
+-              borderRightColor: colors.background,
+-            }}>
+-              <Text
+-                // FIX (ux-pass5): TR etiketler eski 'Cut'/'Bulk'tan uzun — dar fazda 32px
+-                // barın dışına sarmasın.
+-                numberOfLines={1}
+-                style={{
+-                // FIX (audit accent-contrast): aktif faz metnini sabit beyaz yerine faz
+-                // rengine göre kontrast-güvenli seç (WCAG AA).
+-                color: phase.isActive ? (getContrastColor(color) === 'black' ? colors.background : '#fff') : colors.textSecondary,
+-                ...TYPE.footnote,
+-                fontWeight: phase.isActive ? '700' : '500',
+-              }}>
+-                {goalShortLabelTR(phase.goalType)}
+-              </Text>
+-            </View>
+-          );
+-        })}
+-      </View>
++            <View key={phase.id} style={{ flex: 1, alignItems: 'center' }}>
++              {/* Görsel düğüm + yol: dekoratif — ekran okuyucu durumu alttaki etiketten duyar. */}
++              <View
++                accessibilityElementsHidden
++                importantForAccessibility="no-hide-descendants"
++                style={{ width: '100%', height: AREA_H, alignItems: 'center', justifyContent: 'flex-end' }}
++              >
++                {i > 0 ? (
++                  <View style={{ position: 'absolute', left: 0, right: '50%', top: lineY - 3, height: 6, backgroundColor: leftTraveled ? colors.primary : grey }} />
++                ) : null}
++                {i < phases.length - 1 ? (
++                  <View style={{ position: 'absolute', left: '50%', right: 0, top: lineY - 3, height: 6, backgroundColor: rightTraveled ? colors.primary : grey }} />
++                ) : null}
++
++                <Animated.View style={{ alignItems: 'center', marginBottom: state === 'now' ? 0 : belowActive - (NODE / 2 + DEPTH), transform: [{ scale: state === 'now' ? pop : 1 }] }}>
++                  {state === 'now' ? (
++                    <View style={{ backgroundColor: color, borderRadius: RADIUS.pill, paddingHorizontal: 8, paddingVertical: 1, marginBottom: 4 }}>
++                      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.overline, fontSize: 10, color: fg }}>ŞİMDİ</Text>
++                    </View>
++                  ) : null}
++                  {/* Halka (yalnız şimdiki): düğümün etrafında rengin açık tonu. */}
++                  <View style={{
++                    padding: state === 'now' ? 4 : 0,
++                    borderRadius: 999,
++                    backgroundColor: state === 'now' ? mix(color, colors.card, 0.25) : 'transparent',
++                  }}>
++                    {/* Alt kalınlık (coin hissi): koyu ton bir katman, yüz onun üstünde. */}
++                    <View style={{
++                      width: size, height: size + DEPTH, borderRadius: size / 2,
++                      backgroundColor: state === 'next' ? grey : mix(color, '#000000', 0.75),
++                    }}>
++                      <View style={{
++                        width: size, height: size, borderRadius: size / 2,
++                        backgroundColor: state === 'next' ? futureFace : color,
++                        borderWidth: state === 'next' ? 2 : 0,
++                        borderColor: grey,
++                        alignItems: 'center', justifyContent: 'center',
++                      }}>
++                        <Ionicons
++                          name={state === 'done' ? 'checkmark' : state === 'now' ? (GOAL_ICONS[phase.goalType] ?? 'flag') : 'lock-closed'}
++                          size={state === 'done' ? 26 : state === 'now' ? 26 : 18}
++                          color={state === 'next' ? colors.textMuted : fg}
++                        />
++                      </View>
++                    </View>
++                  </View>
++                </Animated.View>
++              </View>
+ 
+-      {/* Phase labels below */}
+-      <View style={{ flexDirection: 'row', marginTop: SPACING.xs }}>
+-        {phases.map((phase) => {
+-          const widthPct = (phase.targetWeeks / totalWeeks) * 100;
+-          return (
+-            // FIX (audit UI-PLN-01): dar fazlarda serbest-metin etiketin komşu hücrelere
+-            // taşmaması için hücreyi clip'le.
+-            <View key={phase.id} style={{ width: `${widthPct}%`, alignItems: 'center', overflow: 'hidden' }}>
+               <Text
+-                // FIX (audit UI-PLN-01): tek satır + ellipsis ve büyük sistem fontunda taşma artmasın.
+-                numberOfLines={1}
++                // FIX (audit UI-PLN-01): büyük sistem fontunda taşma artmasın. 5 fazlı hedefte düğüm
++                // sütunu ~70dp — "Yağ Ya…" kırpılıyordu; iki satır + ortalı, sonra ellipsis.
++                numberOfLines={2}
+                 ellipsizeMode="tail"
+                 maxFontSizeMultiplier={MAX_FONT_SCALE}
+-                // FIX (ux-polish): speak the phase's state (active/completed) — the bar conveyed it by
+-                // color only, which a screen reader couldn't announce.
+-                accessibilityLabel={`${phase.label ? goalShortLabelTR(phase.label) : `${phase.targetWeeks} hafta`}${phase.isActive ? ', şu anki faz' : phase.isCompleted ? ', tamamlandı' : ''}`}
++                // FIX (ux-polish): speak the phase's state (active/completed) — the path conveys it by
++                // color/icon only, which a screen reader couldn't announce.
++                accessibilityLabel={`${label}${phase.isActive ? ', şu anki faz' : phase.isCompleted ? ', tamamlandı' : ''}`}
+                 style={{
+-                  ...TYPE.footnote,
+-                  color: phase.isActive ? colors.text : colors.textMuted,
+-                  fontWeight: phase.isActive ? '600' : '400',
++                  // 5+ fazda sütun dar: bir adım küçük, yoksa uzun ad kelime ortasından bölünüyor.
++                  ...(phases.length >= 5 ? TYPE.footnote : TYPE.caption),
++                  marginTop: SPACING.xs,
++                  paddingHorizontal: 2,
++                  textAlign: 'center',
++                  color: phase.isActive ? colors.text : colors.textSecondary,
++                  fontWeight: phase.isActive ? '800' : '600',
+                 }}
+               >
+                 {/* FIX (ux-pass5): phase_label'sız hedeflerde servis çiğ goal_type düşürür
+                     ('lose_weight' ekranda görünüyordu) — bilinen enum'ları insanileştir. */}
+-                {phase.label ? goalShortLabelTR(phase.label) : `${phase.targetWeeks} hafta`}
++                {label}
++              </Text>
++              <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.footnote, color: colors.textMuted }}>
++                {phase.targetWeeks} hf
+               </Text>
+             </View>
+           );
+         })}
+       </View>
+ 
+-      {/* Current position indicator */}
+-      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm }}>
+-        <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginRight: SPACING.xs }} />
+-        <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
++      {/* Current position — haftalık ilerleme çubuğu (oransal süre bilgisinin yeni evi). */}
++      <View style={{ marginTop: SPACING.md }}>
++        <ProgressBar progress={totalWeeks > 0 ? Math.min(currentWeek, totalWeeks) / totalWeeks : 0} color={colors.primary} height={10} trackColor={isDark ? colors.border : undefined} />
++        <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: SPACING.xs }}>
+           {/* FIX (audit phase-overflow): currentWeek totalWeeks'i aşarsa 'Hafta 20 / 16' yerine
+               clamp + aşım ek metni göster. */}
+           Hafta {Math.min(currentWeek, totalWeeks)} / {totalWeeks}{currentWeek > totalWeeks ? ` (+${currentWeek - totalWeeks} hafta)` : ''}
+diff --git a/src/components/plan/PlanActiveView.tsx b/src/components/plan/PlanActiveView.tsx
+index c866537..b69dbf0 100644
+--- a/src/components/plan/PlanActiveView.tsx
++++ b/src/components/plan/PlanActiveView.tsx
+@@ -2,22 +2,35 @@
+  * Active plan state (post-approval): plan is the primary content, optionally
+  * open a revision chat overlay, see history, and surface the drift banner
+  * when the user's profile has materially changed since approval.
++ *
++ * DUOLINGO DİLİ (2026-11-04): üst kart Koçko'lu bir "bugün" kartı — teşvik cümlesi öne,
++ * bugünün tamamlanması dolan ProgressBar (eski "Bugün 0/4 öğün" hapı yerine). Eylemler
++ * gövdeli Button. "Şimdi sırada" öğünün kendi tonunda. Gün başlıkları PlanDayHeader
++ * (gövdeli tuş; bugün dolu marka tuşu, en üstte). `celebrate` → plan onayının hemen
++ * ardından tek konfeti + sevinen Koçko (ölçülü kutlama).
+  */
+ import { useEffect, useMemo, useState } from 'react';
+-import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, LayoutAnimation } from 'react-native';
++import { View, Text, TouchableOpacity, ScrollView, Alert, LayoutAnimation } from 'react-native';
++import { useIsFocused } from '@react-navigation/native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useTheme } from '@/lib/theme';
+ import { getContrastColor } from '@/lib/accessibility';
+ import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
+ import { SPACING, RADIUS } from '@/lib/constants';
+-import { TYPE, MOTION } from '@/lib/design';
++import { TYPE, MOTION, mix } from '@/lib/design';
+ import { haptics } from '@/lib/haptics';
+ import { getEffectiveDate } from '@/lib/day-boundary';
+ import { supabase } from '@/lib/supabase';
+-import { MealCard } from './MealCard';
++import { Button } from '@/components/ui/Button';
++import { ProgressBar } from '@/components/ui/ProgressBar';
++import { ConfettiBurst } from '@/components/ui/ConfettiBurst';
++import { KochkoMascot } from '@/components/mascot/KochkoMascot';
++import { MealCard, MEAL_TONES, PlanTileBadge, pastel } from './MealCard';
++import { PlanDayHeader } from './PlanDayAccordion';
+ import { ExerciseCard } from './ExerciseCard';
+ import {
+   dayLabelTR,
++  DAY_SHORT_TR,
+   formatWeekStartTR,
+   isPlanStale,
+   planWeeksAgo,
+@@ -45,6 +58,8 @@ interface Props {
+    *  empty-state 'Plan oluştur'). Used by the stale-plan banner CTA. */
+   onCreateFresh?: () => void;
+   creatingRevision?: boolean;
++  /** Plan az önce onaylandı → tek seferlik ölçülü kutlama (konfeti + sevinen Koçko). */
++  celebrate?: boolean;
+ }
+ 
+ // 0 = Monday in our day_index convention (matches the dashboard helper).
+@@ -107,8 +122,10 @@ function detectDrift(
+   return { soft, hard };
+ }
+ 
+-export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, onCreateFresh, creatingRevision }: Props) {
+-  const { colors } = useTheme();
++export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, onCreateFresh, creatingRevision, celebrate }: Props) {
++  const { colors, isDark } = useTheme();
++  // Maskot döngüsü odak dışında durur (§0-A).
++  const isFocused = useIsFocused();
+ 
+   const drift = useMemo(() => detectDrift(plan, profile, goal ?? null), [plan, profile, goal]);
+ 
+@@ -323,29 +340,46 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+   const stale = isPlanStale(plan.week_start);
+   const staleWeeks = planWeeksAgo(plan.week_start);
+ 
++  // Gövdeli/çerçeveli yüzeylerin ortak grisi (Button outline / ChoiceTile ile aynı kural).
++  const grey = isDark ? colors.border : colors.progressTrack;
++  const todayAllDone = !!todayCompletion && todayCompletion.done >= todayCompletion.total;
++  // Az sayı, çok teşvik: sayı çubuğun yanında küçük; cümle öne.
++  const todayCheer = !todayCompletion ? null
++    : todayCompletion.done === 0
++      ? (isDiet ? 'Güne ilk öğünle başla' : 'İlk egzersizle ısın')
++      : todayAllDone
++        ? 'Bugün tamam — harika iş!'
++        : todayCompletion.total - todayCompletion.done === 1
++          ? 'Son bir tane kaldı!'
++          : 'İyi gidiyorsun, devam!';
++  const nextTone = nowNext?.kind === 'meal' ? (MEAL_TONES[nowNext.meal.meal_type] ?? MEAL_TONES.lunch) : null;
++  const nextPastel = pastel(nextTone?.tone ?? colors.primary, colors.card, isDark);
++  const hasToday = todayDayIndex >= 0 && orderedDays.some(d => d.day_index === todayDayIndex);
++
+   return (
+-    <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: SPACING.sm }}>
+-      {/* Header: summary + revision CTA */}
++    <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: SPACING.md }}>
++      {/* Header: Koçko + summary + today's progress + revision CTA.
++          Plan onayı anı (celebrate): maskot sevinir, kartın ortasından TEK konfeti patlar —
++          ölçülü kutlama (§0-A kural 5); reduce-motion'da ConfettiBurst hiç çizmez. */}
+       <View
+         style={{
+           backgroundColor: colors.card,
+-          borderRadius: RADIUS.xl,
+-          borderWidth: 1,
+-          borderColor: colors.border,
+-          padding: SPACING.md,
++          borderRadius: RADIUS.lg,
++          borderWidth: 2,
++          borderColor: grey,
++          padding: SPACING.lg,
+         }}
+       >
+-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+-          <Ionicons
+-            name={isDiet ? 'restaurant' : 'barbell'}
+-            size={20}
+-            color={isDiet ? colors.primary : colors.purple}
+-          />
+-          <View style={{ flex: 1, marginLeft: SPACING.sm }}>
+-            <Text style={{ ...TYPE.headline, color: colors.text }}>
+-              {isDiet ? 'Aktif diyet planın' : 'Aktif spor planın'}
++        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
++          <KochkoMascot size={64} mood={celebrate || todayAllDone ? 'cheer' : 'happy'} animated={isFocused && !!celebrate} />
++          <View style={{ flex: 1 }}>
++            <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
++              {(isDiet ? 'Aktif diyet planın' : 'Aktif spor planın').toLocaleUpperCase('tr-TR')}
+             </Text>
+-            <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
++            <Text style={{ ...TYPE.title3, color: colors.text, marginTop: 2 }}>
++              {celebrate ? 'Planın hazır, başlayalım!' : todayCheer ?? (isDiet ? 'Bu haftanın menüsü' : 'Bu haftanın programı')}
++            </Text>
++            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>
+               {/* FIX (fix-pass 07-12, item 4a): '2026-06-15 · onaylandı · 19.06.2026' karışık
+                   format yerine '15 Haziran haftası · onaylandı 19 Haziran'. */}
+               {formatWeekStartTR(plan.week_start)} · onaylandı
+@@ -355,6 +389,28 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+             </Text>
+           </View>
+         </View>
++        {/* FIX (ux-ideas #18/#19): today's completion at a glance — artık dolan bir çubuk. */}
++        {todayCompletion && (
++          <View
++            accessible
++            accessibilityRole="progressbar"
++            accessibilityLabel={`Bugün ${todayCompletion.done} / ${todayCompletion.total} ${todayCompletion.unit}`}
++            accessibilityValue={{ min: 0, max: todayCompletion.total, now: todayCompletion.done }}
++            style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md }}
++          >
++            <ProgressBar
++              progress={todayCompletion.done / todayCompletion.total}
++              color={todayAllDone ? colors.success : colors.primary}
++              height={12}
++              // Koyu temada progressTrack (0.08) kart üstünde neredeyse yok — kenar tonu (0.16).
++              trackColor={isDark ? colors.border : undefined}
++              style={{ flex: 1 }}
++            />
++            <Text style={{ ...TYPE.caption, color: colors.textSecondary, fontWeight: '700' }}>
++              {todayCompletion.done}/{todayCompletion.total} {todayCompletion.unit}
++            </Text>
++          </View>
++        )}
+         {/* FIX (ux-round4 #3): daily target / week overview — the yardstick the per-day numbers lacked.
+             08-04, cihazda: metin 13'e cikinca tek satira sigmadi ve flexWrap onu KOMPLE alt satira
+             atti — bayrak ikonu kendi basina bir satirda kaldi. flex:1 metni ikonun yaninda tutar
+@@ -378,80 +434,41 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+             </Text>
+           </View>
+         ) : null}
+-        {/* FIX (ux-ideas #18/#19): today's completion at a glance */}
+-        {todayCompletion && (
+-          <View style={{
+-            flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm,
+-            alignSelf: 'flex-start', backgroundColor: colors.primary + '18',
+-            borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 4,
+-          }}>
+-            <Ionicons name="checkmark-done-outline" size={13} color={colors.primary} />
+-            <Text style={{ ...TYPE.caption, color: colors.primary, fontWeight: '700' }}>
+-              Bugün {todayCompletion.done}/{todayCompletion.total} {todayCompletion.unit}
+-            </Text>
+-          </View>
+-        )}
+-        <View style={{ flexDirection: 'row', gap: SPACING.xs, marginTop: SPACING.sm }}>
+-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++        {/* Gövdeli Button'lar (§0-B). creatingRevision → loading: busy + disabled, a11y etiketi aynı. */}
++        <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
++          <Button
++            title="Kochko ile konuş"
+             onPress={onStartRevision}
+-            disabled={creatingRevision}
+-            // FIX (ux-pass5): announce as a button with busy/disabled state (was a text blob).
+-            accessibilityRole="button"
++            loading={creatingRevision}
+             accessibilityLabel="Kochko ile konuş"
+-            accessibilityState={{ disabled: !!creatingRevision, busy: !!creatingRevision }}
+-            style={{
+-              flex: 1,
+-              backgroundColor: colors.primary,
+-              borderRadius: RADIUS.md,
+-              paddingVertical: SPACING.sm,
+-              alignItems: 'center',
+-              flexDirection: 'row',
+-              justifyContent: 'center',
+-              gap: 6,
+-              opacity: creatingRevision ? 0.6 : 1,
+-            }}
+-          >
+-            <Ionicons name="chatbubble-ellipses-outline" size={14} color={getContrastColor(colors.primary)} />
+-            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>
+-              Kochko ile konuş
+-            </Text>
+-          </TouchableOpacity>
+-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++            icon={<Ionicons name="chatbubble-ellipses" size={16} color={getContrastColor(colors.primary)} />}
++            style={{ flex: 1 }}
++          />
++          <Button
++            title="Geçmiş"
++            variant="outline"
+             onPress={onOpenHistory}
+-            // FIX (ux-pass5): announce as a button (was a text blob to TalkBack).
+-            accessibilityRole="button"
+             accessibilityLabel="Plan geçmişi"
+-            style={{
+-              backgroundColor: colors.surfaceLight,
+-              borderRadius: RADIUS.md,
+-              paddingVertical: SPACING.sm,
+-              paddingHorizontal: SPACING.md,
+-              alignItems: 'center',
+-              flexDirection: 'row',
+-              gap: 4,
+-            }}
+-          >
+-            <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+-            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>
+-              Geçmiş
+-            </Text>
+-          </TouchableOpacity>
++            icon={<Ionicons name="time-outline" size={16} color={colors.primary} />}
++          />
+         </View>
++        <ConfettiBurst burstKey={celebrate ? plan.id : null} count={22} spread={150} />
+       </View>
+ 
+-      {/* FIX (ux-round4 #11): the coach's rationale, kept available after approval (collapsed). */}
++      {/* FIX (ux-round4 #11): the coach's rationale, kept available after approval (collapsed).
++          Koçko mini avatarı: gerekçe koçun ağzından (CoachingNudge ile aynı dil). */}
+       {data.reasoning ? (
+-        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: SPACING.md }}>
++        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 2, borderColor: grey, paddingHorizontal: SPACING.md }}>
+           <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+             onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setShowReasoning(v => !v); }}
+             accessibilityRole="button"
+             accessibilityLabel="Bu plan neden böyle"
+             accessibilityState={{ expanded: showReasoning }}
+-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: SPACING.sm }}
++            style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.sm }}
+           >
+-            <Ionicons name="bulb-outline" size={14} color={colors.textSecondary} />
+-            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary, flex: 1 }}>Bu plan neden böyle?</Text>
+-            <Ionicons name={showReasoning ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
++            <KochkoMascot size={30} />
++            <Text style={{ ...TYPE.bodyStrong, color: colors.text, flex: 1 }}>Bu plan neden böyle?</Text>
++            <Ionicons name={showReasoning ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
+           </TouchableOpacity>
+           {showReasoning ? (
+             <Text style={{ ...TYPE.body, color: colors.textSecondary, paddingBottom: SPACING.md }}>
+@@ -461,59 +478,57 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+         </View>
+       ) : null}
+ 
+-      {/* FIX (ux-ideas #9): "şimdi sırada" highlight — answers "ne şimdi?" without scrolling. */}
++      {/* FIX (ux-ideas #9): "şimdi sırada" highlight — answers "ne şimdi?" without scrolling.
++          Öğünün kendi tonunda pastel kart + dolu rozet; eylem gövdeli Button. */}
+       {nowNext && (
+         <View style={{
+-          backgroundColor: colors.primary + '12', borderRadius: RADIUS.lg,
+-          borderWidth: 1, borderColor: colors.primary + '40', padding: SPACING.md,
+-          flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
++          backgroundColor: nextPastel.face, borderRadius: RADIUS.lg,
++          borderWidth: 2, borderColor: nextPastel.edge, padding: SPACING.md,
++          flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+         }}>
+-          <Ionicons
+-            name={nowNext.kind === 'meal' ? 'restaurant' : nowNext.kind === 'rest' ? 'bed-outline' : 'barbell'}
+-            size={18} color={colors.primary}
+-          />
++          <PlanTileBadge tone={nextTone?.tone ?? colors.primary}>
++            <Ionicons
++              name={nowNext.kind === 'meal' ? (nextTone?.icon ?? 'restaurant') : nowNext.kind === 'rest' ? 'bed' : 'barbell'}
++              size={20}
++              color={nextTone?.fg ?? getContrastColor(colors.primary)}
++            />
++          </PlanTileBadge>
+           <View style={{ flex: 1 }}>
+-            <Text style={{ ...TYPE.overline, color: colors.primary }}>ŞİMDİ SIRADA</Text>
++            <Text style={{ ...TYPE.overline, color: colors.textSecondary }}>ŞİMDİ SIRADA</Text>
+             {/* This strip crammed meal type + time + name onto ONE line while a "Bunu yedim" button
+                 takes the right half, so the name — the only part that says WHAT to eat — was what
+                 got cut ("Kahvaltı · 08:30 — Peynirli to…"). Split it: the type/time is a label, the
+                 name is the content, and the name gets two lines if it needs them. */}
+             {nowNext.kind === 'meal' && (
+               <>
+-                <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>
++                <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
+                   {MEAL_TYPE_LABELS_TR[nowNext.meal.meal_type]}{nowNext.meal.time ? ` · ${nowNext.meal.time}` : ''}
+                 </Text>
+-                <Text style={{ ...TYPE.bodyStrong, color: colors.text }} numberOfLines={2}>
++                <Text style={{ ...TYPE.headline, color: colors.text }} numberOfLines={2}>
+                   {nowNext.meal.name}
+                 </Text>
+               </>
+             )}
+             {nowNext.kind === 'workout' && (
+-              <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>
++              <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }}>
+                 Bugünkü antrenman · {nowNext.count} egzersiz{nowNext.doneCount > 0 ? ` · ${nowNext.doneCount} bitti` : ''}
+               </Text>
+             )}
+             {nowNext.kind === 'rest' && (
+-              <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>Bugün dinlenme günü</Text>
++              <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }}>Bugün dinlenme günü</Text>
+             )}
+           </View>
+           {nowNext.kind === 'meal' && (
+             nowNext.done ? (
+-              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
++              <Ionicons name="checkmark-circle" size={28} color={colors.success} accessibilityLabel="Günlüğe eklendi" />
+             ) : (
+-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++              <Button
++                title="Bunu yedim"
++                size="sm"
+                 onPress={() => handleLogMeal(`0-${nowNext.mi}`, nowNext.meal)}
+-                disabled={mealLogState[`0-${nowNext.mi}`] === 'saving'}
+-                accessibilityRole="button"
++                loading={mealLogState[`0-${nowNext.mi}`] === 'saving'}
+                 accessibilityLabel={`${nowNext.meal.name}, bunu yedim, günlüğe ekle`}
+-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7 }}
+-              >
+-                {mealLogState[`0-${nowNext.mi}`] === 'saving'
+-                  ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} style={{ transform: [{ scale: 0.7 }] }} />
+-                  : <Ionicons name="add-circle-outline" size={14} color={getContrastColor(colors.primary)} />}
+-                <Text style={{ ...TYPE.caption, color: getContrastColor(colors.primary), fontWeight: '700' }}>Bunu yedim</Text>
+-              </TouchableOpacity>
++              />
+             )
+           )}
+         </View>
+@@ -526,15 +541,15 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+       {stale && onCreateFresh ? (
+         <View
+           style={{
+-            backgroundColor: colors.card,
++            backgroundColor: mix(colors.primary, colors.card, isDark ? 0.16 : 0.07),
+             borderRadius: RADIUS.lg,
+-            borderWidth: 1,
++            borderWidth: 2,
+             borderColor: colors.primary,
+             padding: SPACING.md,
+           }}
+         >
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+-            <Ionicons name="calendar-outline" size={16} color={colors.primary} />
++            <Ionicons name="calendar" size={16} color={colors.primary} />
+             <Text style={{ ...TYPE.bodyStrong, color: colors.primary, fontWeight: '700', flex: 1 }}>
+               Bu plan {Math.max(1, staleWeeks)} hafta önceydi
+             </Text>
+@@ -542,25 +557,13 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+           <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
+             Sana güncel bir haftalık plan hazırlayayım — onayladığında bu plan geçmişe kaydolur.
+           </Text>
+-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++          <Button
++            title="Yeni haftalık plan hazırla"
+             onPress={onCreateFresh}
+-            disabled={creatingRevision}
+-            accessibilityRole="button"
++            loading={creatingRevision}
+             accessibilityLabel="Yeni haftalık plan hazırla"
+-            accessibilityState={{ disabled: !!creatingRevision, busy: !!creatingRevision }}
+-            style={{
+-              backgroundColor: colors.primary,
+-              borderRadius: RADIUS.md,
+-              paddingVertical: SPACING.sm,
+-              alignItems: 'center',
+-              marginTop: SPACING.sm,
+-              opacity: creatingRevision ? 0.6 : 1,
+-            }}
+-          >
+-            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>
+-              {creatingRevision ? 'Hazırlanıyor...' : 'Yeni haftalık plan hazırla'}
+-            </Text>
+-          </TouchableOpacity>
++            style={{ marginTop: SPACING.md }}
++          />
+         </View>
+       ) : null}
+ 
+@@ -568,16 +571,17 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+       {drift.hard.length > 0 ? (
+         <View
+           style={{
+-            backgroundColor: colors.errorLight,
++            backgroundColor: mix(colors.error, colors.card, isDark ? 0.16 : 0.07),
+             borderRadius: RADIUS.lg,
+-            borderWidth: 1,
++            borderWidth: 2,
+             borderColor: colors.error,
+             padding: SPACING.md,
+           }}
+         >
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+-            <Ionicons name="warning" size={16} color={colors.error} />
+-            <Text style={{ ...TYPE.bodyStrong, color: colors.error, fontWeight: '700' }}>
++            <Ionicons name="warning" size={16} color={colors.errorText} />
++            {/* Kural 7: küçük kırmızı metin errorText (error kart üstünde AA altı). */}
++            <Text style={{ ...TYPE.bodyStrong, color: colors.errorText, fontWeight: '700', flex: 1 }}>
+               Güvenliğin için planı güncelleyelim
+             </Text>
+           </View>
+@@ -586,20 +590,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+               • {m}
+             </Text>
+           ))}
+-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+-            onPress={onStartRevision}
+-            style={{
+-              backgroundColor: colors.error,
+-              borderRadius: RADIUS.md,
+-              paddingVertical: SPACING.sm,
+-              alignItems: 'center',
+-              marginTop: SPACING.sm,
+-            }}
+-          >
+-            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.error), fontWeight: '700' }}>
+-              Planı güncelle
+-            </Text>
+-          </TouchableOpacity>
++          <Button title="Planı güncelle" variant="danger" onPress={onStartRevision} style={{ marginTop: SPACING.md }} />
+         </View>
+       ) : null}
+ 
+@@ -608,7 +599,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+           style={{
+             backgroundColor: colors.warningLight,
+             borderRadius: RADIUS.lg,
+-            borderWidth: 1,
++            borderWidth: 2,
+             borderColor: colors.warning,
+             padding: SPACING.md,
+           }}
+@@ -640,117 +631,104 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
+         </View>
+       ) : null}
+ 
+-      {/* Days */}
++      {/* Days — gövdeli gün tuşları (PlanDayHeader). Bugün en üstte dolu marka tuşu; kalan
++          günler "HAFTANIN KALANI" başlığı altında hafta sırasıyla. */}
+       {days.length === 0 ? (
+         <Text style={{ ...TYPE.body, color: colors.textMuted, textAlign: 'center', paddingVertical: SPACING.xl }}>
+           Bu planın içeriği eksik görünüyor. Plan sekmesinden yeni bir plan oluşturabilirsin.
+         </Text>
+-      ) : orderedDays.map((day, dayIdx) => {
+-        // FIX (audit UI-PLN-06): compare/key by array position, not day.day_index.
+-        const isOpen = expandedDay === dayIdx;
+-        const isToday = todayDayIndex >= 0 && day.day_index === todayDayIndex;
+-        // FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled labels ('Sali' → 'Salı').
+-        const label = dayLabelTR(day.day_index, day.day_label);
+-        return (
+-          <View key={`${day.day_index}-${dayIdx}`}>
+-            <TouchableOpacity
+-              onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(isOpen ? -1 : dayIdx); }}
+-              activeOpacity={MOTION.pressOpacity}
+-              // FIX (ux-pass5): same a11y treatment as the visually identical draft accordion
+-              // (PlanDayAccordion) — role + label + expanded state for the daily-use plan.
+-              accessibilityRole="button"
+-              accessibilityLabel={`${isToday ? `Bugün, ${label}` : label}, ${isOpen ? 'açık' : 'aç'}`}
+-              accessibilityState={{ expanded: isOpen }}
+-              style={{
+-                flexDirection: 'row',
+-                alignItems: 'center',
+-                backgroundColor: colors.surfaceLight,
+-                borderRadius: RADIUS.md,
+-                borderWidth: isToday ? 1 : 0,
+-                borderColor: isToday ? colors.primary + '66' : undefined,
+-                paddingHorizontal: SPACING.md,
+-                paddingVertical: SPACING.sm,
+-                gap: SPACING.sm,
+-              }}
+-            >
+-              <Text style={{ ...TYPE.bodyStrong, color: isToday ? colors.primary : colors.text, fontWeight: '700', flex: 1 }}>
+-                {isToday ? `Bugün · ${label}` : label}
+-              </Text>
+-              {isDiet ? (
+-                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
+-                  {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
+-                      ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal". */}
+-                  {Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal
+-                  {/* FIX (ux-round4 #7): protein is the macro the coaching model revolves around —
+-                      show it in the collapsed row instead of hiding it behind an expand. */}
+-                  {(day as DietPlanData['days'][number]).total_protein
+-                    ? ` · ${Math.round((day as DietPlanData['days'][number]).total_protein)}g P`
+-                    : ''}
+-                </Text>
+-              ) : (
+-                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
+-                  {(day as WorkoutPlanData['days'][number]).rest_day
+-                    ? 'Dinlenme'
+-                    : `${(day as WorkoutPlanData['days'][number]).exercises?.length ?? 0} egzersiz`}
+-                </Text>
+-              )}
+-              <Ionicons
+-                name={isOpen ? 'chevron-up' : 'chevron-down'}
+-                size={16}
+-                color={colors.textMuted}
+-              />
+-            </TouchableOpacity>
+-            {isOpen ? (
+-              <View style={{ marginTop: SPACING.sm }}>
+-                {isDiet ? (
+-                  ((day as DietPlanData['days'][number]).meals ?? []).map((meal, mi) => {
+-                    // FIX (audit UI-PLN-06 + ux-review): scope meal key by array position, NOT
+-                    // meal_type — a day with two 'snack' (ara öğün) meals would collide on
+-                    // '0-snack', so logging one marked BOTH done and over-counted the badge.
+-                    const key = `${dayIdx}-${mi}`;
+-                    return (
+-                      <MealCard
+-                        key={key}
+-                        meal={meal}
+-                        expanded={expandedMeal === key}
+-                        onToggle={() => setExpandedMeal(expandedMeal === key ? null : key)}
+-                        // 'Bunu yedim' only on the ACTIVE plan's TODAY (fix-pass 07-12, item 9).
+-                        onLogPress={isToday ? () => handleLogMeal(key, meal) : undefined}
+-                        logStatus={mealLogState[key]}
+-                      />
+-                    );
+-                  })
+-                ) : (day as WorkoutPlanData['days'][number]).rest_day ? (
+-                  <Text
+-                    style={{
+-                      ...TYPE.callout,
+-                      color: colors.textMuted,
+-                      fontStyle: 'italic',
+-                      textAlign: 'center',
+-                      paddingVertical: SPACING.md,
+-                    }}
+-                  >
+-                    Dinlenme günü.
++      ) : (
++        <View style={{ gap: SPACING.sm }}>
++          {orderedDays.map((day, dayIdx) => {
++            // FIX (audit UI-PLN-06): compare/key by array position, not day.day_index.
++            const isOpen = expandedDay === dayIdx;
++            const isToday = todayDayIndex >= 0 && day.day_index === todayDayIndex;
++            // FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled labels ('Sali' → 'Salı').
++            const label = dayLabelTR(day.day_index, day.day_label);
++            const wd = day as WorkoutPlanData['days'][number];
++            const isRest = !isDiet && !!wd.rest_day;
++            const summary = isDiet
++              // FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
++              // ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal".
++              // FIX (ux-round4 #7): protein is the macro the coaching model revolves around —
++              // show it in the collapsed row instead of hiding it behind an expand.
++              ? `${Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal${(day as DietPlanData['days'][number]).total_protein
++                ? ` · ${Math.round((day as DietPlanData['days'][number]).total_protein)}g protein` : ''}`
++              : isRest ? 'Dinlenme günü'
++              : [wd.focus, `${wd.exercises?.length ?? 0} egzersiz`].filter(Boolean).join(' · ');
++            return (
++              <View key={`${day.day_index}-${dayIdx}`} style={{ gap: SPACING.sm }}>
++                {hasToday && dayIdx === 1 ? (
++                  <Text style={{ ...TYPE.overline, color: colors.textMuted, marginTop: SPACING.sm, marginLeft: SPACING.xs }}>
++                    HAFTANIN KALANI
+                   </Text>
+-                ) : (
+-                  ((day as WorkoutPlanData['days'][number]).exercises ?? []).map((ex, i) => {
+-                    const exKey = `ex-${dayIdx}-${i}`;
+-                    return (
+-                      <ExerciseCard
+-                        key={i}
+-                        exercise={ex}
+-                        // 'Bunu yaptım' only on the ACTIVE plan's TODAY (ux-ideas #19).
+-                        onLogPress={isToday ? () => handleLogExercise(exKey, ex) : undefined}
+-                        logStatus={exLogState[exKey]}
+-                      />
+-                    );
+-                  })
+-                )}
++                ) : null}
++                <PlanDayHeader
++                  label={label}
++                  shortLabel={DAY_SHORT_TR[day.day_index] ?? label.slice(0, 3)}
++                  summary={summary}
++                  isOpen={isOpen}
++                  isToday={isToday}
++                  isRest={isRest}
++                  onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(isOpen ? -1 : dayIdx); }}
++                  // FIX (ux-pass5): same a11y treatment as the draft accordion (PlanDayAccordion) —
++                  // role + label + expanded state for the daily-use plan.
++                  accessibilityLabel={`${isToday ? `Bugün, ${label}` : label}, ${isOpen ? 'açık' : 'aç'}`}
++                />
++                {isOpen ? (
++                  <View>
++                    {isDiet ? (
++                      ((day as DietPlanData['days'][number]).meals ?? []).map((meal, mi) => {
++                        // FIX (audit UI-PLN-06 + ux-review): scope meal key by array position, NOT
++                        // meal_type — a day with two 'snack' (ara öğün) meals would collide on
++                        // '0-snack', so logging one marked BOTH done and over-counted the badge.
++                        const key = `${dayIdx}-${mi}`;
++                        return (
++                          <MealCard
++                            key={key}
++                            meal={meal}
++                            expanded={expandedMeal === key}
++                            onToggle={() => setExpandedMeal(expandedMeal === key ? null : key)}
++                            // 'Bunu yedim' only on the ACTIVE plan's TODAY (fix-pass 07-12, item 9).
++                            onLogPress={isToday ? () => handleLogMeal(key, meal) : undefined}
++                            logStatus={mealLogState[key]}
++                          />
++                        );
++                      })
++                    ) : isRest ? (
++                      <Text
++                        style={{
++                          ...TYPE.callout,
++                          color: colors.textMuted,
++                          fontStyle: 'italic',
++                          textAlign: 'center',
++                          paddingVertical: SPACING.md,
++                        }}
++                      >
++                        Dinlenme günü — toparlanmak da antrenmanın parçası.
++                      </Text>
++                    ) : (
++                      (wd.exercises ?? []).map((ex, i) => {
++                        const exKey = `ex-${dayIdx}-${i}`;
++                        return (
++                          <ExerciseCard
++                            key={i}
++                            exercise={ex}
++                            index={i}
++                            // 'Bunu yaptım' only on the ACTIVE plan's TODAY (ux-ideas #19).
++                            onLogPress={isToday ? () => handleLogExercise(exKey, ex) : undefined}
++                            logStatus={exLogState[exKey]}
++                          />
++                        );
++                      })
++                    )}
++                  </View>
++                ) : null}
+               </View>
+-            ) : null}
+-          </View>
+-        );
+-      })}
++            );
++          })}
++        </View>
++      )}
+     </ScrollView>
+   );
+ }
+diff --git a/src/components/plan/PlanChatComposer.tsx b/src/components/plan/PlanChatComposer.tsx
+index beb40cc..05184b9 100644
+--- a/src/components/plan/PlanChatComposer.tsx
++++ b/src/components/plan/PlanChatComposer.tsx
+@@ -7,21 +7,26 @@
+  *  - "Alternatif gör"    → onRequestAlternative
+  *  - "Baştan başla"      → onRegenerate
+  *  - "Onayla ve kaydet"  → onApprove (disabled until hasViewedFullPlan)
++ *
++ * DUOLINGO DİLİ (2026-11-04): keşif çipleri gri gövdeli kelime kutucukları (renk yalnız
++ * ikonda — üç renkli dolgu hap ekranda karnaval gibiydi), onay ekranın TEK dolu tuşu: gövdeli
++ * Button (lg). Gönder düğmesi de gövdeli yuvarlak tuş.
+  */
+ import { useState } from 'react';
+ import {
+   View,
+   Text,
+   TextInput,
+-  TouchableOpacity,
+   Keyboard,
+   Platform,
+   Alert,
+ } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useTheme } from '@/lib/theme';
+-import { SPACING, RADIUS } from '@/lib/constants';
+-import { TYPE, MOTION } from '@/lib/design';
++import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
++import { TYPE } from '@/lib/design';
++import { Button } from '@/components/ui/Button';
++import { ShelfPressable } from '@/components/ui/ShelfPressable';
+ import { getContrastColor } from '@/lib/accessibility';
+ import { haptics } from '@/lib/haptics';
+ 
+@@ -43,25 +48,18 @@ const Chip = ({
+   color,
+   onPress,
+   disabled,
+-  solid,
+ }: {
+   label: string;
+   icon: keyof typeof Ionicons.glyphMap;
+   color: string;
+   onPress: () => void;
+   disabled?: boolean;
+-  solid?: boolean;
+ }) => {
+-  const { colors } = useTheme();
+-  // Solid (filled) chips get the brand color as the fill with a contrast-safe
+-  // foreground; outline chips keep the subtle tinted background.
+-  const fg = disabled
+-    ? colors.textMuted
+-    : solid
+-      ? getContrastColor(color)
+-      : color;
++  const { colors, isDark } = useTheme();
++  // Gövdeli kelime kutucuğu: kart yüz + 2px gri çerçeve + gri raf (QuickSelectButtons ile aynı).
++  const grey = isDark ? colors.border : colors.progressTrack;
+   return (
+-    <TouchableOpacity
++    <ShelfPressable
+       onPress={() => {
+         haptics.tap();
+         onPress();
+@@ -70,37 +68,28 @@ const Chip = ({
+       accessibilityRole="button"
+       accessibilityLabel={label}
+       accessibilityState={{ disabled: !!disabled }}
+-      style={{
++      // 36 görsel + hitSlop → ≥44 etkin (eski minHeight 44'ün yerine; gövde yüksekliği büyütmesin).
++      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
++      radius={RADIUS.pill}
++      shelfColor={grey}
++      style={{ opacity: disabled ? 0.5 : 1 }}
++      faceStyle={{
+         flexDirection: 'row',
+         alignItems: 'center',
+         justifyContent: 'center',
+-        gap: 4,
+-        backgroundColor: disabled
+-          ? colors.surfaceLight
+-          : solid
+-            ? color
+-            : color + '18',
+-        borderRadius: RADIUS.full,
+-        paddingHorizontal: SPACING.sm + 2,
+-        paddingVertical: 6,
+-        minHeight: 44,
+-        opacity: disabled ? 0.5 : 1,
++        gap: 5,
++        minHeight: 36,
++        paddingHorizontal: SPACING.md,
++        backgroundColor: colors.card,
++        borderWidth: 2,
++        borderColor: grey,
+       }}
+-      activeOpacity={MOTION.pressOpacity}
+     >
+-      {/* Birincil taahhut (solid) okuma adiminda, kesif cipleri bir adim altinda:
+-          ikisi de 11'deydi, yani 'Onayla ve kaydet' ekranin en kucuk metniyle ayni boydaydi. */}
+-      <Ionicons name={icon} size={solid ? 15 : 13} color={fg} />
+-      <Text
+-        style={{
+-          ...(solid ? TYPE.bodyStrong : TYPE.caption),
+-          color: fg,
+-          fontWeight: solid ? '700' : '600',
+-        }}
+-      >
++      <Ionicons name={icon} size={15} color={disabled ? colors.textMuted : color} />
++      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, color: disabled ? colors.textMuted : colors.text, fontWeight: '700' }}>
+         {label}
+       </Text>
+-    </TouchableOpacity>
++    </ShelfPressable>
+   );
+ };
+ 
+@@ -115,7 +104,8 @@ export function PlanChatComposer({
+   disabled,
+   sending,
+ }: Props) {
+-  const { colors } = useTheme();
++  const { colors, isDark } = useTheme();
++  const grey = isDark ? colors.border : colors.progressTrack;
+   const [text, setText] = useState('');
+ 
+   const handleSend = () => {
+@@ -157,8 +147,8 @@ export function PlanChatComposer({
+         paddingHorizontal: SPACING.md,
+         paddingTop: SPACING.xs,
+         gap: SPACING.xs,
+-        borderTopWidth: 0.5,
+-        borderTopColor: colors.border,
++        borderTopWidth: 2,
++        borderTopColor: grey,
+         backgroundColor: colors.background,
+       }}
+     >
+@@ -189,13 +179,13 @@ export function PlanChatComposer({
+ 
+       {/* Primary commit action — own row, full-width solid, separated from the
+           destructive "Baştan başla" so the two can't be confused/mis-tapped. */}
+-      <Chip
+-        label="Onayla ve kaydet"
+-        icon="checkmark-circle"
+-        color={colors.success}
++      <Button
++        title="Onayla ve kaydet"
++        size="lg"
+         onPress={handleApprove}
+         disabled={disabled || sending || !canApprove}
+-        solid
++        accessibilityLabel="Onayla ve kaydet"
++        icon={<Ionicons name="checkmark-circle" size={20} color={getContrastColor(colors.primary)} />}
+       />
+ 
+       {approveHint && !canApprove ? (
+@@ -218,8 +208,8 @@ export function PlanChatComposer({
+           alignItems: 'flex-end',
+           backgroundColor: colors.card,
+           borderRadius: RADIUS.lg,
+-          borderWidth: 0.5,
+-          borderColor: colors.border,
++          borderWidth: 2,
++          borderColor: grey,
+           paddingHorizontal: SPACING.md,
+           paddingVertical: 6,
+           gap: 6,
+@@ -244,35 +234,35 @@ export function PlanChatComposer({
+           maxLength={2000}
+           editable={!disabled && !sending}
+         />
+-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++        <ShelfPressable
+           onPress={handleSend}
+           disabled={!text.trim() || disabled || sending}
+           accessibilityRole="button"
+           accessibilityLabel="Mesajı gönder"
+           accessibilityState={{ disabled: !text.trim() || !!disabled || !!sending, busy: !!sending }}
+-          // FIX (ux-pass5): 32x32 with no hitSlop was the app's only bare send target
+-          // (main chat's twin carries hitSlop 8) — 48x48 effective.
++          // FIX (ux-pass5): the app's only bare send target had no hitSlop — 48x48+ effective.
+           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+-          style={{
+-            width: 32,
+-            height: 32,
+-            borderRadius: 16,
++          radius={18}
++          shelfColor={!text.trim() || disabled || sending ? grey : colors.primaryDark}
++          faceStyle={{
++            width: 36,
++            height: 36,
+             backgroundColor:
+-              !text.trim() || disabled || sending ? colors.surfaceLight : colors.primary,
++              !text.trim() || disabled || sending ? (isDark ? colors.surfaceLight : colors.background) : colors.primary,
+             alignItems: 'center',
+             justifyContent: 'center',
+           }}
+         >
+           <Ionicons
+             name={sending ? 'hourglass-outline' : 'arrow-up'}
+-            size={16}
++            size={18}
+             color={
+               !text.trim() || disabled || sending
+                 ? colors.textMuted
+                 : getContrastColor(colors.primary)
+             }
+           />
+-        </TouchableOpacity>
++        </ShelfPressable>
+       </View>
+     </View>
+   );
+diff --git a/src/components/plan/PlanDayAccordion.tsx b/src/components/plan/PlanDayAccordion.tsx
+index cb5a5e4..654324a 100644
+--- a/src/components/plan/PlanDayAccordion.tsx
++++ b/src/components/plan/PlanDayAccordion.tsx
+@@ -5,16 +5,142 @@
+  * "Detayı görmek için dokun" preview card. Used by:
+  *   - FullPlanModal (full-screen review)
+  *   - app/plan/diet.tsx + workout.tsx draft view (inline review body)
++ *
++ * DUOLINGO DİLİ (2026-11-04): gün başlıkları GÖVDELİ tuşlar (`PlanDayHeader`, burada dışa
++ * verilir; PlanActiveView de aynısını kullanır). Solda gün kısaltmalı yastık rozet, açık gün
++ * marka tonunda (açık yüz + renkli çerçeve + koyu raf), "bugün" dolu marka tuşu. Taslak
++ * incelemesinde açılmış günler tik alır ve üstte "kaç gün kaldı" ProgressBar'ı durur —
++ * onay kapısı (onAllDaysViewed) artık görünmez bir koşul değil, dolan bir çubuk.
+  */
+ import { useState, useEffect, useRef } from 'react';
+-import { View, Text, TouchableOpacity, LayoutAnimation } from 'react-native';
++import { View, Text, LayoutAnimation } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useTheme } from '@/lib/theme';
+-import { SPACING, RADIUS } from '@/lib/constants';
+-import { TYPE, MOTION } from '@/lib/design';
++import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
++import { TYPE, mix, alpha } from '@/lib/design';
++import { getContrastColor } from '@/lib/accessibility';
++import { ShelfPressable } from '@/components/ui/ShelfPressable';
++import { ProgressBar } from '@/components/ui/ProgressBar';
+ import { MealCard } from './MealCard';
+ import { ExerciseCard } from './ExerciseCard';
+-import { dayLabelTR, type DietPlanData, type WorkoutPlanData, type PlanData } from '@/services/plan.service';
++import { dayLabelTR, DAY_SHORT_TR, type DietPlanData, type WorkoutPlanData, type PlanData } from '@/services/plan.service';
++
++/* ───────────── Gövdeli gün başlığı (paylaşılan) ───────────── */
++
++export interface PlanDayHeaderProps {
++  label: string;
++  /** Rozetteki kısaltma ("Pzt"). */
++  shortLabel: string;
++  /** Sağdaki ikincil satır ("1610 kcal · 99g P", "Üst vücut · 3 egzersiz"). */
++  summary: string;
++  isOpen: boolean;
++  isToday?: boolean;
++  isRest?: boolean;
++  /** Taslak incelemesinde bu gün en az bir kez açıldı → tik. */
++  viewed?: boolean;
++  /** Bugünün tamamlanma çubuğu (yalnız aktif planın bugünü). */
++  progress?: { done: number; total: number } | null;
++  onPress: () => void;
++  accessibilityLabel: string;
++}
++
++export function PlanDayHeader({
++  label, shortLabel, summary, isOpen, isToday, isRest, viewed, progress, onPress, accessibilityLabel,
++}: PlanDayHeaderProps) {
++  const { colors, isDark } = useTheme();
++  const accent = colors.primary;
++  const grey = isDark ? colors.border : colors.progressTrack;
++
++  // Üç hâl, üç ağırlık: bugün = dolu marka tuşu (ekranın odağı), açık gün = Duolingo seçili
++  // kutucuğu (açık yüz + marka çerçeve/raf), kapalı = gri gövdeli kart. Yüz HER ZAMAN opak.
++  const face = isToday ? accent : isOpen ? mix(accent, colors.card, isDark ? 0.2 : 0.08) : colors.card;
++  const edge = isToday || isOpen ? colors.primaryDark : grey;
++  const border = isToday ? accent : isOpen ? accent : grey;
++  const onFace = isToday ? getContrastColor(accent) : colors.text;
++  const subFace = isToday ? alpha(onFace === 'white' ? '#FFFFFF' : '#000000', 0.8) : colors.textSecondary;
++
++  // Rozet: bugün ters renk (yüz üstünde açık daire), açık gün dolu marka, kapalı soluk ton.
++  const badgeBg = isToday
++    ? (onFace === 'white' ? '#FFFFFF' : '#1A1A24')
++    : isOpen ? accent
++    : isRest ? (isDark ? colors.surfaceLight : colors.background)
++    : mix(accent, colors.card, isDark ? 0.24 : 0.12);
++  const badgeFg = isToday ? accent : isOpen ? getContrastColor(accent) : isRest ? colors.textMuted : accent;
++
++  return (
++    <ShelfPressable
++      onPress={onPress}
++      accessibilityRole="button"
++      accessibilityLabel={accessibilityLabel}
++      accessibilityState={{ expanded: isOpen }}
++      radius={RADIUS.md}
++      shelfColor={edge}
++      faceStyle={{
++        backgroundColor: face,
++        borderWidth: 2,
++        borderColor: border,
++        paddingHorizontal: SPACING.md,
++        paddingVertical: SPACING.sm + 2,
++      }}
++    >
++      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
++        <View
++          accessible={false}
++          style={{
++            width: 40, height: 40, borderRadius: 20,
++            backgroundColor: badgeBg, alignItems: 'center', justifyContent: 'center',
++          }}
++        >
++          {isRest && !isToday ? (
++            <Ionicons name="moon" size={16} color={badgeFg} />
++          ) : (
++            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '800', color: badgeFg }}>
++              {shortLabel}
++            </Text>
++          )}
++        </View>
++        {/* The day name ("Pazartesi") is the header of a whole collapsible section — it must
++            outrank the meal rows it contains, not match them.
++            08-04, cihazda: etiket flex:1 idi ve sagdaki ozet satiri (numberOfLines=1 olmasina
++            ragmen) tam genisligini talep ettigi icin "Pazartesi" UC satira bolunuyordu
++            ("Paz/arte/si"). Simdi ad + ozet ALT ALTA: ikisi ayni genisligi paylasmiyor, ad
++            asla bolunmez, ozet kendi satirinda kirpilir. */}
++        <View style={{ flex: 1 }}>
++          {isToday ? (
++            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.overline, color: subFace }}>BUGÜN</Text>
++          ) : null}
++          <Text style={{ ...TYPE.headline, fontWeight: '700', color: onFace }} numberOfLines={1}>
++            {label}
++          </Text>
++          <Text style={{ ...TYPE.caption, color: subFace }} numberOfLines={1}>
++            {summary}
++          </Text>
++        </View>
++        {viewed && !isOpen && !isToday ? (
++          <Ionicons name="checkmark-circle" size={20} color={colors.success} accessible={false} />
++        ) : null}
++        <Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={18} color={isToday ? onFace : colors.textMuted} />
++      </View>
++      {progress && progress.total > 0 ? (
++        <View style={{ marginTop: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
++          {/* İz yüze göre seçildi (§0-A tuzağı): dolu marka yüz üstünde ön plan rengin alfası. */}
++          <ProgressBar
++            progress={progress.done / progress.total}
++            color={onFace === 'white' ? '#FFFFFF' : '#1A1A24'}
++            trackColor={alpha(onFace === 'white' ? '#FFFFFF' : '#000000', 0.25)}
++            height={10}
++            style={{ flex: 1 }}
++          />
++          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '800', color: onFace }}>
++            {progress.done}/{progress.total}
++          </Text>
++        </View>
++      ) : null}
++    </ShelfPressable>
++  );
++}
++
++/* ───────────── Akordeon ───────────── */
+ 
+ interface Props {
+   plan: PlanData;
+@@ -48,6 +174,9 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
+     .map(({ i }) => i);
+   const viewedRef = useRef<Set<number>>(new Set([0]));
+   const firedRef = useRef(false);
++  // Görsel ayna: kapı mantığı ref'te kalır (aynı anda iki setState yarışmasın); bu state
++  // yalnız tikleri ve inceleme çubuğunu yeniden çizdirmek için.
++  const [viewedSnap, setViewedSnap] = useState<Set<number>>(() => new Set([0]));
+   const checkAllViewed = () => {
+     if (firedRef.current || !onAllDaysViewed) return;
+     if (contentDayIdxs.every(i => viewedRef.current.has(i))) {
+@@ -61,74 +190,79 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
+     setExpandedDay(0);
+     setExpandedMeal(null);
+     viewedRef.current = new Set([0]);
++    setViewedSnap(new Set([0]));
+     firedRef.current = false;
+     // Single-content-day plans are fully reviewed from the start.
+     checkAllViewed();
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [resetKey]);
+ 
++  // İnceleme çubuğu yalnız kapının bağlı olduğu yerde (taslak / tam ekran) anlamlı.
++  const reviewTotal = contentDayIdxs.length;
++  const reviewDone = contentDayIdxs.filter(i => viewedSnap.has(i)).length;
++  const reviewLeft = reviewTotal - reviewDone;
++
+   return (
+     <View>
++      {onAllDaysViewed && reviewTotal > 1 ? (
++        <View
++          accessible
++          accessibilityRole="progressbar"
++          accessibilityLabel={`Gözden geçirilen gün: ${reviewDone} / ${reviewTotal}`}
++          accessibilityValue={{ min: 0, max: reviewTotal, now: reviewDone }}
++          style={{ marginBottom: SPACING.md }}
++        >
++          <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 6 }}>
++            <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
++              {reviewLeft === 0 ? 'Hepsine baktın — onaya hazır!' : reviewLeft === 1 ? 'Son bir gün kaldı' : 'Günlere tek tek göz at'}
++            </Text>
++            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, color: colors.textMuted, fontWeight: '700' }}>
++              {reviewDone}/{reviewTotal}
++            </Text>
++          </View>
++          <ProgressBar progress={reviewTotal ? reviewDone / reviewTotal : 0} color={reviewLeft === 0 ? colors.success : colors.primary} height={10} />
++        </View>
++      ) : null}
++
+       {days.map((day, dayIdx) => {
+         // FIX (audit UI-PLN-06): key + expand-state by array position, not the
+         // untrusted LLM-authored day.day_index (duplicate indices would collide).
+         const isOpen = expandedDay === dayIdx;
+         // FIX (fix-pass 07-12, item 3): 'Sali'/'Carsamba' seen live — canonicalize.
+         const label = dayLabelTR(day.day_index, day.day_label);
++        const wd = day as WorkoutPlanData['days'][number];
++        const isRest = !isDiet && !!wd.rest_day;
++        const summary = isDiet
++          // FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
++          // ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal".
++          // FIX (ux-round4 #7): show protein alongside kcal in the collapsed row.
++          ? `${Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal${(day as DietPlanData['days'][number]).total_protein
++            ? ` · ${Math.round((day as DietPlanData['days'][number]).total_protein)}g protein` : ''}`
++          // FIX (ux-round3 #10/#11): surface the workout's focus (Push/Pull/Legs) and estimated
++          // duration in the header — both are AI-authored but were never rendered.
++          : isRest ? 'Dinlenme günü'
++          : [wd.focus, `${wd.exercises?.length ?? 0} egzersiz`, wd.estimated_duration_min ? `~${wd.estimated_duration_min} dk` : null].filter(Boolean).join(' · ');
++        const viewed = !!onAllDaysViewed && contentDayIdxs.includes(dayIdx) && viewedSnap.has(dayIdx);
+         return (
+-          <View key={`${day.day_index}-${dayIdx}`} style={{ marginBottom: SPACING.md }}>
+-            <TouchableOpacity
++          <View key={`${day.day_index}-${dayIdx}`} style={{ marginBottom: SPACING.sm }}>
++            <PlanDayHeader
++              label={label}
++              shortLabel={DAY_SHORT_TR[day.day_index] ?? label.slice(0, 3)}
++              summary={summary}
++              isOpen={isOpen}
++              isRest={isRest}
++              viewed={viewed}
+               // Keep at least one day expanded: re-tapping the open day is a no-op
+               // so the user can't collapse into a blank screen with nothing to re-open.
+-              onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(dayIdx); viewedRef.current.add(dayIdx); checkAllViewed(); }}
+-              activeOpacity={MOTION.pressOpacity}
+-              accessibilityRole="button"
+-              accessibilityLabel={`${label}, ${isOpen ? 'açık' : 'aç'}`}
+-              accessibilityState={{ expanded: isOpen }}
+-              style={{
+-                flexDirection: 'row',
+-                alignItems: 'center',
+-                backgroundColor: colors.surfaceLight,
+-                borderRadius: RADIUS.md,
+-                paddingHorizontal: SPACING.md,
+-                paddingVertical: SPACING.sm,
+-                gap: SPACING.sm,
++              onPress={() => {
++                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
++                setExpandedDay(dayIdx);
++                viewedRef.current.add(dayIdx);
++                setViewedSnap(new Set(viewedRef.current));
++                checkAllViewed();
+               }}
+-            >
+-              {/* The day name ("Pazartesi") is the header of a whole collapsible section — it must
+-                  outrank the meal rows it contains, not match them.
+-                  08-04, cihazda: etiket flex:1 idi ve sagdaki ozet satiri (numberOfLines=1 olmasina
+-                  ragmen) tam genisligini talep ettigi icin "Pazartesi" UC satira bolunuyordu
+-                  ("Paz/arte/si"). Kirpilmasi gereken ozet satiri; gun adi asla bolunmemeli. */}
+-              <Text style={{ ...TYPE.headline, color: colors.text, flexShrink: 0 }}>
+-                {label}
+-              </Text>
+-              {isDiet ? (
+-                <Text style={{ ...TYPE.caption, color: colors.textMuted, flex: 1, textAlign: 'right' }} numberOfLines={1}>
+-                  {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
+-                      ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal". */}
+-                  {Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal
+-                  {/* FIX (ux-round4 #7): show protein alongside kcal in the collapsed row. */}
+-                  {(day as DietPlanData['days'][number]).total_protein
+-                    ? ` · ${Math.round((day as DietPlanData['days'][number]).total_protein)}g P`
+-                    : ''}
+-                </Text>
+-              ) : (() => {
+-                // FIX (ux-round3 #10/#11): surface the workout's focus (Push/Pull/Legs) and estimated
+-                // duration in the header — both are AI-authored but were never rendered, so the
+-                // review surface showed only "5 egzersiz" (says nothing about what/how long).
+-                const wd = day as WorkoutPlanData['days'][number];
+-                if (wd.rest_day) return <Text style={{ ...TYPE.caption, color: colors.textMuted, flex: 1, textAlign: 'right' }} numberOfLines={1}>Dinlenme</Text>;
+-                const n = wd.exercises?.length ?? 0;
+-                const parts = [wd.focus, `${n} egzersiz`, wd.estimated_duration_min ? `~${wd.estimated_duration_min} dk` : null].filter(Boolean);
+-                return <Text style={{ ...TYPE.caption, color: colors.textMuted, flex: 1, textAlign: 'right' }} numberOfLines={1}>{parts.join(' · ')}</Text>;
+-              })()}
+-              <Ionicons
+-                name={isOpen ? 'chevron-up' : 'chevron-down'}
+-                size={16}
+-                color={colors.textMuted}
+-              />
+-            </TouchableOpacity>
++              accessibilityLabel={`${label}, ${isOpen ? 'açık' : 'aç'}${viewed ? ', incelendi' : ''}`}
++            />
+ 
+             {isOpen ? (
+               <View style={{ marginTop: SPACING.sm }}>
+@@ -136,9 +270,12 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
+                     "form odaklı hafif gün") was silently dropped — it carries WHY the day looks the
+                     way it does. Surface it at the top of the open body. */}
+                 {day.notes ? (
+-                  <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontStyle: 'italic', marginBottom: SPACING.sm }}>
+-                    {day.notes}
+-                  </Text>
++                  <View style={{ flexDirection: 'row', gap: 6, marginBottom: SPACING.sm, paddingHorizontal: SPACING.xs }}>
++                    <Ionicons name="chatbubble-ellipses" size={14} color={colors.primary} style={{ marginTop: 3 }} />
++                    <Text style={{ ...TYPE.callout, color: colors.textSecondary, fontStyle: 'italic', flex: 1 }}>
++                      {day.notes}
++                    </Text>
++                  </View>
+                 ) : null}
+                 {isDiet ? (
+                   ((day as DietPlanData['days'][number]).meals ?? []).length === 0 ? (
+@@ -175,7 +312,7 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
+                       );
+                     })
+                   )
+-                ) : (day as WorkoutPlanData['days'][number]).rest_day ? (
++                ) : isRest ? (
+                   <Text
+                     style={{
+                       ...TYPE.callout,
+@@ -188,8 +325,8 @@ export function PlanDayAccordion({ plan, resetKey, highlightedCells, onMealEdit,
+                     Dinlenme günü — hafif yürüyüş ve esneme yeterli.
+                   </Text>
+                 ) : (
+-                  ((day as WorkoutPlanData['days'][number]).exercises ?? []).map((ex, i) => (
+-                    <ExerciseCard key={i} exercise={ex} />
++                  (wd.exercises ?? []).map((ex, i) => (
++                    <ExerciseCard key={i} exercise={ex} index={i} />
+                   ))
+                 )}
+               </View>
+diff --git a/src/components/plan/PlanEmptyState.tsx b/src/components/plan/PlanEmptyState.tsx
+index 6112a80..196276f 100644
+--- a/src/components/plan/PlanEmptyState.tsx
++++ b/src/components/plan/PlanEmptyState.tsx
+@@ -2,17 +2,26 @@
+  * Empty state for plan screens — shown when no active and no draft exists.
+  * CTA is disabled when prerequisites are missing; each missing field becomes
+  * a clickable card routing to the correct onboarding task chat.
++ *
++ * DUOLINGO DİLİ (2026-11-04): ikonlu hale yerine Koçko (boş durum karakterin sahnesi, §0-A).
++ * TEK NET EYLEM: ekranın tek dolu tuşu "Plan oluştur" (gövdeli Button, lg). Eksik bilgi
++ * satırları ve "daha iyi olabilir" çipleri gövdeli ama gri (ikincil) — dolu tuşla yarışmaz.
++ * Plan hazırlanırken Koçko sevinir ve kıpırdar (odaktayken, reduce-motion'a uyar); boştayken
++ * statik: dikkat kopya + CTA'da kalmalı (EmptyState ile aynı karar).
+  */
+-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
++import { View, Text, ScrollView, Alert } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
+ import { router } from 'expo-router';
++import { useIsFocused } from '@react-navigation/native';
+ import { useTheme } from '@/lib/theme';
+ import { haptics } from '@/lib/haptics';
+-import { SPACING, RADIUS } from '@/lib/constants';
+-import { TYPE, MOTION } from '@/lib/design';
++import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
++import { TYPE, mix } from '@/lib/design';
+ import { getContrastColor } from '@/lib/accessibility';
+ import { SkeletonCard } from '@/components/ui/Skeleton';
++import { Button } from '@/components/ui/Button';
++import { ShelfPressable } from '@/components/ui/ShelfPressable';
++import { KochkoMascot } from '@/components/mascot/KochkoMascot';
+ import { getOrCreateActiveSession } from '@/services/chat.service';
+ import { getTaskByKey } from '@/services/onboarding-tasks.service';
+ import type { MissingField } from '@/lib/plan-readiness';
+@@ -26,7 +35,7 @@ interface Props {
+ }
+ 
+ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, creating }: Props) {
+-  const { colors } = useTheme();
++  const { colors, isDark } = useTheme();
+   const ready = missingCore.length === 0;
+ 
+   const openTaskChat = async (taskKey: string, _taskTitle: string) => {
+@@ -53,111 +62,90 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
+     router.push({ pathname: `/chat/${id}` as never, params });
+   };
+ 
+-  const accent = planType === 'diet' ? colors.primary : colors.purple;
++  const isFocused = useIsFocused();
++  const grey = isDark ? colors.border : colors.progressTrack;
++  const isDiet = planType === 'diet';
+ 
+   return (
+     <ScrollView contentContainerStyle={{ padding: SPACING.lg, gap: SPACING.md }}>
+       <View style={{ alignItems: 'center', marginTop: SPACING.xl }}>
+-        {/* Decorative radial-gradient halo behind the icon */}
+-        <View
+-          style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center' }}
+-          accessible={false}
+-          importantForAccessibility="no-hide-descendants"
+-        >
+-          <Svg width={180} height={180} style={{ position: 'absolute' }}>
+-            <Defs>
+-              <RadialGradient id="halo" cx="50%" cy="50%" rx="50%" ry="50%">
+-                <Stop offset="0%" stopColor={accent} stopOpacity={0.32} />
+-                <Stop offset="60%" stopColor={accent} stopOpacity={0.08} />
+-                <Stop offset="100%" stopColor={accent} stopOpacity={0} />
+-              </RadialGradient>
+-            </Defs>
+-            <Circle cx={90} cy={90} r={90} fill="url(#halo)" />
+-            <Circle cx={90} cy={90} r={60} fill="none" stroke={accent} strokeOpacity={0.18} strokeWidth={1.5} />
+-            <Circle cx={90} cy={90} r={75} fill="none" stroke={accent} strokeOpacity={0.10} strokeWidth={1} strokeDasharray="3,4" />
+-          </Svg>
+-          <View
+-            style={{
+-              width: 88,
+-              height: 88,
+-              borderRadius: 28,
+-              backgroundColor: accent + '22',
+-              alignItems: 'center',
+-              justifyContent: 'center',
+-              borderWidth: 1,
+-              borderColor: accent + '44',
+-            }}
+-          >
+-            <Ionicons
+-              name={planType === 'diet' ? 'restaurant' : 'barbell'}
+-              size={44}
+-              color={accent}
+-            />
+-          </View>
+-        </View>
++        <KochkoMascot size={128} mood={creating || ready ? 'cheer' : 'happy'} animated={!!creating && isFocused} />
+         {/* textAlign was missing here while the subtitle right below it centers — so when the
+             heading wrapped, the second word ("yok") hung left under a centered first line and the
+-            block looked broken. Driven on a device that is exactly how it rendered. Centering fixes
+-            the alignment; if it still wraps, that is a container-width question, not an alignment one. */}
++            block looked broken. Driven on a device that is exactly how it rendered. */}
+         <Text
+           accessibilityRole="header"
+-          style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md, textAlign: 'center' }}
++          style={{ ...TYPE.title2, color: colors.text, marginTop: SPACING.lg, textAlign: 'center' }}
+         >
+-          {planType === 'diet' ? 'Diyet planın yok' : 'Spor planın yok'}
++          {creating
++            ? (isDiet ? 'Menünü hazırlıyorum…' : 'Programını hazırlıyorum…')
++            : (isDiet ? 'Diyet planın yok' : 'Spor planın yok')}
+         </Text>
+         <Text
+           style={{
+             ...TYPE.body,
+-            color: colors.textMuted,
++            color: colors.textSecondary,
+             textAlign: 'center',
+-            marginTop: 4,
+-            maxWidth: 280,
++            marginTop: SPACING.xs,
++            maxWidth: 300,
+           }}
+         >
+-          {planType === 'diet'
+-            ? 'Profiline bakarak haftalık bir menü hazırlayacağım. İstediğin zaman değiştirebilirsin.'
+-            : 'Seviyene ve ekipmanına göre haftalık bir program hazırlayacağım.'}
++          {creating
++            ? 'Biraz sürebilir — profilini ve hedefini harmanlıyorum.'
++            : !ready
++              ? 'Önce birkaç bilgiye ihtiyacım var. Tamamlayınca planını hemen hazırlarım.'
++              : isDiet
++                ? 'Profiline bakarak haftalık bir menü hazırlayacağım. İstediğin zaman değiştirebilirsin.'
++                : 'Seviyene ve ekipmanına göre haftalık bir program hazırlayacağım.'}
+         </Text>
+       </View>
+ 
+-      {/* Missing core — block plan creation */}
++      {/* Missing core — block plan creation. Kehribar uyarı kartı (statik) + gövdeli satırlar. */}
+       {missingCore.length > 0 ? (
+         <View
+           style={{
+-            backgroundColor: colors.card,
++            backgroundColor: mix(colors.warning, colors.card, isDark ? 0.14 : 0.07),
+             borderRadius: RADIUS.lg,
+-            borderWidth: 1,
+-            borderColor: colors.warning + '44',
++            borderWidth: 2,
++            borderColor: mix(colors.warning, colors.card, 0.5),
+             padding: SPACING.md,
+-            marginTop: SPACING.md,
++            marginTop: SPACING.sm,
+           }}
+         >
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+-            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
++            <Ionicons name="alert-circle" size={18} color={colors.warning} />
+             <Text style={{ ...TYPE.bodyStrong, color: colors.warning, fontWeight: '700' }}>
+               Plan için eksik bilgiler
+             </Text>
+           </View>
+-          <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 4 }}>
++          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
+             Şu bilgileri tamamlayınca plan oluşturulabilir:
+           </Text>
+-          <View style={{ marginTop: SPACING.sm, gap: SPACING.xs }}>
++          <View style={{ marginTop: SPACING.md, gap: SPACING.xs }}>
+             {missingCore.map((f, i) => (
+-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++              <ShelfPressable
+                 key={i}
+                 onPress={() => openTaskChat(f.taskKey, f.taskTitle)}
+                 accessibilityRole="button"
+                 accessibilityLabel={`${f.field} bilgisi eksik, ${f.taskTitle} kartından tamamla`}
+-                style={{
++                radius={RADIUS.md}
++                shelfColor={grey}
++                faceStyle={{
+                   flexDirection: 'row',
+                   alignItems: 'center',
+-                  backgroundColor: colors.surfaceLight,
+-                  borderRadius: RADIUS.md,
+-                  padding: SPACING.sm + 2,
+-                  gap: SPACING.sm,
++                  backgroundColor: colors.card,
++                  borderWidth: 2,
++                  borderColor: grey,
++                  paddingHorizontal: SPACING.md,
++                  paddingVertical: SPACING.sm + 2,
++                  gap: SPACING.md,
+                 }}
+               >
+-                <Ionicons name="arrow-forward-circle" size={16} color={colors.primary} />
++                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
++                  <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '800', color: getContrastColor(colors.primary) }}>
++                    {i + 1}
++                  </Text>
++                </View>
+                 <View style={{ flex: 1 }}>
+                   <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
+                     {f.field}
+@@ -166,8 +154,8 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
+                     {f.taskTitle} kartından tamamla
+                   </Text>
+                 </View>
+-                <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+-              </TouchableOpacity>
++                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
++              </ShelfPressable>
+             ))}
+           </View>
+         </View>
+@@ -175,85 +163,61 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
+ 
+       {/* Generation preview — content-shaped placeholder during the slow LLM wait */}
+       {creating ? (
+-        <View style={{ marginTop: SPACING.md, gap: SPACING.xs }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
++        <View style={{ marginTop: SPACING.sm, gap: SPACING.xs }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+           <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+-            {planType === 'diet' ? 'MENÜN HAZIRLANIYOR' : 'PROGRAMIN HAZIRLANIYOR'}
++            {isDiet ? 'MENÜN HAZIRLANIYOR' : 'PROGRAMIN HAZIRLANIYOR'}
+           </Text>
+           <SkeletonCard lines={4} />
+         </View>
+       ) : null}
+ 
+-      {/* CTA */}
+-      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++      {/* CTA — ekranın TEK dolu tuşu. loading → spinner + busy/disabled (a11y etiketi korunur). */}
++      <Button
++        title={ready ? 'Plan oluştur' : 'Önce bilgileri tamamla'}
++        size="lg"
+         onPress={onCreate}
+-        disabled={!ready || creating}
+-        accessibilityRole="button"
+-        accessibilityLabel={ready ? `${planType === 'diet' ? 'Diyet' : 'Spor'} planı oluştur` : 'Önce eksik bilgileri tamamla'}
+-        accessibilityState={{ disabled: !ready || !!creating, busy: !!creating }}
+-        style={{
+-          marginTop: SPACING.md,
+-          backgroundColor: ready && !creating ? colors.primary : colors.surfaceLight,
+-          borderRadius: RADIUS.xl,
+-          paddingVertical: SPACING.md,
+-          alignItems: 'center',
+-        }}
+-      >
+-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+-          {creating ? (
+-            <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
+-          ) : null}
+-          <Text
+-            style={{
+-              ...TYPE.headline,
+-              color: ready && !creating ? getContrastColor(colors.primary) : colors.textMuted,
+-              fontWeight: '800',
+-            }}
+-          >
+-            {creating ? 'Hazırlanıyor...' : ready ? 'Plan oluştur' : 'Önce bilgileri tamamla'}
+-          </Text>
+-        </View>
+-      </TouchableOpacity>
++        disabled={!ready}
++        loading={!!creating}
++        accessibilityLabel={ready ? `${isDiet ? 'Diyet' : 'Spor'} planı oluştur` : 'Önce eksik bilgileri tamamla'}
++        icon={ready ? <Ionicons name="sparkles" size={18} color={getContrastColor(colors.primary)} /> : undefined}
++        style={{ marginTop: SPACING.sm }}
++      />
+ 
+-      {/* Weak spots — optional */}
+-      {weakSpots.length > 0 && ready ? (
+-        <View
+-          style={{
+-            backgroundColor: colors.card,
+-            borderRadius: RADIUS.lg,
+-            borderWidth: 1,
+-            borderColor: colors.border,
+-            padding: SPACING.md,
+-            marginTop: SPACING.sm,
+-          }}
+-        >
++      {/* Weak spots — optional, ikincil: gri gövdeli kelime kutucukları (sohbet hızlı cevaplarıyla aynı). */}
++      {weakSpots.length > 0 && ready && !creating ? (
++        <View style={{ marginTop: SPACING.md, alignItems: 'center' }}>
+           <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+             PLAN DAHA İYİ OLABİLİR
+           </Text>
+-          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
++          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4, textAlign: 'center' }}>
+             Şunları da konuşursak plan daha kişisel olur:
+           </Text>
+-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm }}>
++          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.sm }}>
+             {weakSpots.slice(0, 4).map((f, i) => (
+-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
++              <ShelfPressable
+                 key={i}
+                 onPress={() => openTaskChat(f.taskKey, f.taskTitle)}
+                 accessibilityRole="button"
+                 accessibilityLabel={`${f.field} ekle: ${f.taskTitle}`}
+-                style={{
++                hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
++                radius={RADIUS.pill}
++                shelfColor={grey}
++                faceStyle={{
+                   flexDirection: 'row',
+                   alignItems: 'center',
+-                  gap: 4,
+-                  backgroundColor: colors.surfaceLight,
+-                  borderRadius: RADIUS.full,
+-                  paddingHorizontal: SPACING.sm,
+-                  paddingVertical: 4,
++                  gap: 5,
++                  minHeight: 36,
++                  paddingHorizontal: SPACING.md,
++                  backgroundColor: colors.card,
++                  borderWidth: 2,
++                  borderColor: grey,
+                 }}
+               >
+-                <Ionicons name="add-circle-outline" size={12} color={colors.primary} />
+-                <Text style={{ ...TYPE.caption, color: colors.text, fontWeight: '600' }}>
++                <Ionicons name="add" size={16} color={colors.primary} />
++                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.callout, color: colors.text, fontWeight: '600' }}>
+                   {f.field}
+                 </Text>
+-              </TouchableOpacity>
++              </ShelfPressable>
+             ))}
+           </View>
+         </View>
+diff --git a/src/components/plan/PlanPreviewCard.tsx b/src/components/plan/PlanPreviewCard.tsx
+index 09e92ec..42ecece 100644
+--- a/src/components/plan/PlanPreviewCard.tsx
++++ b/src/components/plan/PlanPreviewCard.tsx
+@@ -7,16 +7,21 @@
+  * time a new snapshot arrives. This pairs with hasViewedFullPlan reset
+  * (MASTER_PLAN §4.2 rev2.1) so users can tell which version they'd be
+  * approving.
++ *
++ * DUOLINGO DİLİ (2026-11-04): kart gövdeli tuş (ShelfPressable; 2px gri çerçeve + gri raf,
++ * basınca iner — eski PressableCard küçülmesi yerine). Gün şeridi yastık kutucuklar: içerikli
++ * gün markanın/antrenmanın açık tonunda opak yüz + 2px ton kenar, boş/dinlenme günü gri.
+  */
+ import { useMemo } from 'react';
+ import { View, Text } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useTheme } from '@/lib/theme';
++import { mix } from '@/lib/design';
+ import { SPACING, RADIUS } from '@/lib/constants';
+ import { TYPE } from '@/lib/design';
+ import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
+ import { DAY_LABELS_TR, DAY_SHORT_TR, formatWeekStartTR } from '@/services/plan.service';
+-import { PressableCard } from '@/components/ui/PressableCard';
++import { ShelfPressable } from '@/components/ui/ShelfPressable';
+ 
+ interface Props {
+   plan: PlanData;
+@@ -35,24 +40,35 @@ function dayShort(dayIndex: number, position: number): string {
+   return DAY_SHORT_TR[dayIndex] ?? DAY_SHORT_TR[position] ?? '';
+ }
+ 
++/** Şerit kutucuğunun tonları — opak (gövdeli kartın içinde de yarı saydamlık yok). */
++function useTileTones(accent: string) {
++  const { colors, isDark } = useTheme();
++  return {
++    on: { bg: mix(accent, colors.card, isDark ? 0.22 : 0.12), bd: mix(accent, colors.card, isDark ? 0.6 : 0.45), fg: accent },
++    off: { bg: isDark ? colors.surfaceLight : colors.background, bd: isDark ? colors.border : colors.progressTrack, fg: colors.textMuted },
++  };
++}
++
+ function DietStrip({ plan }: { plan: DietPlanData }) {
+   const { colors } = useTheme();
++  const tones = useTileTones(colors.primary);
+   // plan_data is raw LLM JSON; guard days/meals so a malformed snapshot can't crash the card.
+   const days = Array.isArray(plan?.days) ? plan.days : [];
+   return (
+     <View style={{ flexDirection: 'row', gap: 4, marginTop: SPACING.xs }}>
+       {days.map((d, i) => {
+         const hasMeals = (d.meals?.length ?? 0) > 0;
++        const tone = hasMeals ? tones.on : tones.off;
+         return (
+         // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
+         <View key={`${d.day_index}-${i}`} style={{ flex: 1 }}>
+           <View
+             style={{
+-              height: 28,
+-              borderRadius: 6,
+-              backgroundColor: hasMeals ? colors.primary + '22' : colors.surfaceLight,
+-              borderWidth: 0.5,
+-              borderColor: hasMeals ? colors.primary : colors.border,
++              height: 32,
++              borderRadius: 10,
++              backgroundColor: tone.bg,
++              borderWidth: 2,
++              borderColor: tone.bd,
+               alignItems: 'center',
+               justifyContent: 'center',
+             }}
+@@ -60,8 +76,8 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
+             <Text
+               style={{
+                 ...TYPE.caption,
+-                color: hasMeals ? colors.primary : colors.textMuted,
+-                fontWeight: '700',
++                color: tone.fg,
++                fontWeight: '800',
+               }}
+             >
+               {DAY_LABELS_TR[d.day_index]?.[0]}
+@@ -82,30 +98,33 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
+ 
+ function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
+   const { colors } = useTheme();
++  const tones = useTileTones(colors.purple);
+   const days = Array.isArray(plan?.days) ? plan.days : [];
+   return (
+     <View style={{ flexDirection: 'row', gap: 4, marginTop: SPACING.xs }}>
+       {days.map((d, i) => {
+-        const tone = d.rest_day
+-          ? { bg: colors.surfaceLight, bd: colors.border, fg: colors.textMuted }
+-          : { bg: colors.purple + '22', bd: colors.purple, fg: colors.purple };
++        const tone = d.rest_day ? tones.off : tones.on;
+         return (
+           // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
+           <View key={`${d.day_index}-${i}`} style={{ flex: 1 }}>
+             <View
+               style={{
+-                height: 28,
+-                borderRadius: 6,
++                height: 32,
++                borderRadius: 10,
+                 backgroundColor: tone.bg,
+-                borderWidth: 0.5,
++                borderWidth: 2,
+                 borderColor: tone.bd,
+                 alignItems: 'center',
+                 justifyContent: 'center',
+               }}
+             >
+-              <Text style={{ ...TYPE.caption, color: tone.fg, fontWeight: '700' }}>
+-                {d.rest_day ? '–' : `${d.exercises?.length ?? 0}`}
+-              </Text>
++              {d.rest_day ? (
++                <Ionicons name="moon" size={13} color={tone.fg} />
++              ) : (
++                <Text style={{ ...TYPE.caption, color: tone.fg, fontWeight: '800' }}>
++                  {`${d.exercises?.length ?? 0}`}
++                </Text>
++              )}
+             </View>
+             {/* FIX (ux-pass5): fontSize 8 → 10, see DietStrip. */}
+             <Text style={{ ...TYPE.footnote, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
+@@ -130,7 +149,8 @@ function isStaleWeek(weekStart: string | null | undefined): boolean {
+ }
+ 
+ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekStart }: Props) {
+-  const { colors } = useTheme();
++  const { colors, isDark } = useTheme();
++  const grey = isDark ? colors.border : colors.progressTrack;
+ 
+   const summary = useMemo(() => {
+     if (plan.plan_type === 'diet') {
+@@ -155,23 +175,29 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
+   }, [plan]);
+ 
+   return (
+-    <PressableCard
++    <ShelfPressable
+       onPress={onPress}
+-      style={{
++      accessibilityRole="button"
++      accessibilityLabel={`${planType === 'diet' ? 'Bu haftaki diyetin' : 'Bu haftaki sporun'}, ${summary.primary}`}
++      accessibilityHint="Planın tamamını tam ekranda aç"
++      radius={RADIUS.lg}
++      shelfColor={grey}
++      faceStyle={{
+         backgroundColor: colors.card,
+-        borderRadius: RADIUS.xl,
+         padding: SPACING.md,
+-        borderWidth: 1,
+-        borderColor: colors.border,
++        borderWidth: 2,
++        borderColor: grey,
+       }}
+     >
+       {/* Header row */}
+       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+-        <Ionicons
+-          name={planType === 'diet' ? 'restaurant-outline' : 'barbell-outline'}
+-          size={18}
+-          color={planType === 'diet' ? colors.primary : colors.purple}
+-        />
++        <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: planType === 'diet' ? colors.primary : colors.purple, alignItems: 'center', justifyContent: 'center' }}>
++          <Ionicons
++            name={planType === 'diet' ? 'restaurant' : 'barbell'}
++            size={18}
++            color="#FFFFFF"
++          />
++        </View>
+         <View style={{ flex: 1 }}>
+           <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
+             {planType === 'diet' ? 'Bu haftaki diyetin' : 'Bu haftaki sporun'}
+@@ -187,13 +213,7 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
+               : `${formatWeekStartTR(weekStart ?? plan.week_start)} · v${plan.version ?? 1}${updatedLabel ? ` · ${updatedLabel}` : ''}`}
+           </Text>
+         </View>
+-        <View style={{ alignItems: 'flex-end' }}>
+-          <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
+-            {summary.primary}
+-          </Text>
+-          <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>{summary.secondary}</Text>
+-        </View>
+-        <Ionicons name="expand-outline" size={14} color={colors.textMuted} />
++        <Ionicons name="expand-outline" size={16} color={colors.textMuted} />
+       </View>
+ 
+       {/* Day strip */}
+@@ -203,16 +223,16 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
+         <WorkoutStrip plan={plan as WorkoutPlanData} />
+       )}
+ 
+-      <Text
+-        style={{
+-          ...TYPE.caption,
+-          color: colors.textMuted,
+-          marginTop: SPACING.xs,
+-          textAlign: 'center',
+-        }}
+-      >
+-        Detayı görmek için dokun
+-      </Text>
+-    </PressableCard>
++      {/* Özet artık başlığın sağında değil, şeridin altında: sağ sütun başlığı ikiye bölüyordu
++          ("Bu haftaki / diyetin") — 390dp'de rozet + başlık + özet tek satıra sığmıyor. */}
++      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm, gap: SPACING.sm }}>
++        <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>
++          <Text style={{ fontWeight: '800', color: colors.text }}>{summary.primary}</Text>
++          {`  ·  ${summary.secondary}`}
++        </Text>
++        <Text style={{ ...TYPE.caption, color: colors.primary, fontWeight: '700' }}>Detay</Text>
++        <Ionicons name="chevron-forward" size={14} color={colors.primary} />
++      </View>
++    </ShelfPressable>
+   );
+ }
+diff --git a/src/screens/PlanManagerScreen.tsx b/src/screens/PlanManagerScreen.tsx
+index fa9bbbd..d8dbd2a 100644
+--- a/src/screens/PlanManagerScreen.tsx
++++ b/src/screens/PlanManagerScreen.tsx
+@@ -15,6 +15,10 @@
+  * explicitly-marked `planType === ...` branches. Branches tagged
+  * "drift preserved" reproduce pre-consolidation asymmetries between the two
+  * screens VERBATIM — do not unify them without a deliberate behavior decision.
++ *
++ * Sunum notu (2026-11-04, Duolingo dili): onay başarılı olunca `justApproved` yalnız görsel
++ * bir bayrak — PlanActiveView'a `celebrate` olarak gider (tek konfeti + sevinen Koçko).
++ * Görünüm aktiften çıkınca (revizyon/taslak/boş) söner; akışın kendisine dokunmaz.
+  */
+ import { useState, useEffect, useCallback, useRef } from 'react';
+ import {
+@@ -160,6 +164,11 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
+   const accent = planType === 'diet' ? colors.primary : colors.purple;
+ 
+   const [view, setView] = useState<ViewState>('loading');
++  // Yalnız sunum: az önce onaylandı → aktif görünümde bir kez kutla.
++  const [justApproved, setJustApproved] = useState(false);
++  useEffect(() => {
++    if (view !== 'active') setJustApproved(false);
++  }, [view]);
+   const [active, setActive] = useState<PlanRow | null>(null);
+   const [draft, setDraft] = useState<PlanRow | null>(null);
+   const [goal, setGoal] = useState<{ goal_type?: string; target_weight_kg?: number } | null>(null);
+@@ -570,6 +579,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
+     // SECOND plan/revision reads the stale count, skips the up-front quota warning, and only walls at
+     // "Onayla" (the invest-then-wall this warning was added to prevent).
+     if (user?.id) await fetchProfile(user.id);
++    setJustApproved(true);
+     // Reload to switch to active view.
+     await load();
+     setChatSessionId(null);
+@@ -761,6 +771,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
+           // the same generation flow as the empty-state 'Plan oluştur'.
+           onCreateFresh={startDraftCreation}
+           creatingRevision={sending}
++          celebrate={justApproved}
+         />
+       </View>
+     );
+@@ -937,7 +948,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
+ }
+ 
+ function DraftChatBubble({ msg, accent }: { msg: ChatMsg; accent: string }) {
+-  const { colors } = useTheme();
++  const { colors, isDark } = useTheme();
+   const isUser = msg.role === 'user';
+   const hiddenTrigger = msg.content.startsWith('[PLAN_INIT]') || msg.content.startsWith('[ALT]');
+   if (isUser && hiddenTrigger) return null;
+@@ -963,8 +974,9 @@ function DraftChatBubble({ msg, accent }: { msg: ChatMsg; accent: string }) {
+         borderBottomLeftRadius: isUser ? 16 : 4,
+         paddingHorizontal: SPACING.lg,
+         paddingVertical: SPACING.md,
+-        borderWidth: isUser ? 0 : 0.5,
+-        borderColor: colors.border,
++        // Koç balonu: gövdeli kartlarla aynı 2px gri kenar (açıkta progressTrack, koyuda border).
++        borderWidth: isUser ? 0 : 2,
++        borderColor: isDark ? colors.border : colors.progressTrack,
+       }}
+     >
+       {/* Taslak sohbeti ana sohbetle ayni okuma adiminda olmali — 14/20 kendi basina bir spec'ti. */}
