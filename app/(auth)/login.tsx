@@ -1,6 +1,12 @@
+/**
+ * Giriş ekranı. Sunum (2026-11-04, Duolingo karşılaması): Koçko girişte yayla belirir
+ * (KochkoMascot `enter`, sonra nefes döngüsü), "Kayıt ol" metin linki yerine gövdeli outline
+ * Button (Duolingo'nun ikincil eylemi). Hata akışı (Alert) bilinçli olarak AYNI: bu ekranda
+ * Input'a bağlanacak bir hata state'i yok, yeni mantık eklenmedi.
+ */
 import { useState, useRef } from 'react';
 import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert, TouchableOpacity, Linking, TextInput } from 'react-native';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
@@ -118,7 +124,7 @@ export default function LoginScreen() {
       >
         <View style={{ alignItems: 'center', marginBottom: SPACING.xl }}>
           {/* Koçko: markanın ilk izlenimi artık soyut bir kelime-mark değil, karakter (§0-A). */}
-          <KochkoMascot size={84} animated />
+          <KochkoMascot size={96} animated enter />
           <Text style={{ ...TYPE.title1, color: colors.primary, letterSpacing: 2, marginTop: SPACING.sm }}>Kochko</Text>
           <Text style={{ ...TYPE.headline, fontWeight: '400', color: colors.textSecondary, marginTop: SPACING.xs }}>Yaşam tarzı koçun</Text>
         </View>
@@ -227,10 +233,12 @@ export default function LoginScreen() {
         </TouchableOpacity>
 
         <Button title="Giriş yap" onPress={handleLogin} loading={loading} size="lg" />
-        <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.lg }}>
-          <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Hesabın yok mu? </Text>
-          <Link href="/(auth)/register" style={{ ...TYPE.bodyStrong, color: colors.primary }}>Kayıt ol</Link>
-        </View>
+        {/* İkincil eylem gövdeli outline Button (eski: satır içi metin linki). Link'in varsayılanı
+            gibi navigate — yığına aynı rotayı ikinci kez itmez. */}
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginTop: SPACING.xl, marginBottom: SPACING.sm }}>
+          Hesabın yok mu?
+        </Text>
+        <Button title="Kayıt ol" variant="outline" size="lg" onPress={() => router.navigate('/(auth)/register')} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

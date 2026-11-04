@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { useAuthStore } from '@/stores/auth.store';
 import { trackEvent } from '@/services/analytics.service';
 import { flushTelemetry } from '@/services/telemetry.service';
@@ -9,12 +9,16 @@ import { flushTelemetry } from '@/services/telemetry.service';
 // yedektir — açık tema açıldıktan sonra da geçerli: çökme ekranı tek seferlik bir kurtarma
 // yüzeyi, tema tutarlılığı değil okunabilirlik önceliklidir.
 import { DARK_COLORS as c } from '@/lib/theme';
-import { getContrastColor } from '@/lib/accessibility';
 // FIX (audit UI-DS-05): consume the numeric scale tokens instead of raw literals.
 // (Class component can't call useTheme(), but the SPACING/FONT/RADIUS tokens are
 // plain constants and import fine here — only the *colors* need the dark fallback.)
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
+// 2026-11-04: elle yazılmış iki TouchableOpacity buton yerine gövdeli Button + teselli eden
+// Koçko. İkisi de useTheme() kullanır; sağlayıcının DIŞINDA oldukları için bağlamın
+// varsayılanı (DARK_COLORS) gelir — bu sınırın bilinçli koyu yedeğiyle aynı palet.
+import { Button } from '@/components/ui/Button';
+import { MascotStage } from '@/components/ui/EmptyState';
 
 interface Props {
   children: React.ReactNode;
@@ -31,6 +35,10 @@ interface State {
  * show a recovery UI with three escape hatches: retry (re-render children),
  * sign-out (nuke the session, often fixes stale-state crashes), and — in
  * dev — the raw stack so we can see what broke.
+ *
+ * Sunum (§0-A/§0-B): Koçko `cheerup` (kalp uzatan koç) + koç ağzından teselli kopyası; TEK net
+ * eylem dolu "Tekrar dene", çıkış ikincil (ghost — gövdesiz, dikkat çekmez). a11y etiketleri
+ * eski butonlarla aynı ("Tekrar Dene" / "Çıkış Yap").
  */
 export class ErrorBoundary extends React.Component<Props, State> {
   state: State = { hasError: false, error: null, errorInfo: null };
@@ -76,34 +84,21 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
     return (
       <View style={{ flex: 1, backgroundColor: c.background }}>
-        {/* FIX (audit UI-DS-05): tokenize spacing/font/radius literals. `padding: 32` and
-            `minWidth: 200` have no scale token so they stay as layout literals; everything
-            with an exact token (18->FONT.xl2, 14->FONT.md, 8->SPACING.sm, 24->SPACING.xxl,
-            12->SPACING.md/RADIUS.md) is replaced. Metinler TYPE olceginde; 10 -> TYPE.footnote. */}
+        {/* FIX (audit UI-DS-05): tokenize spacing/font/radius literals. `padding: 32` and the
+            320 reading width have no scale token so they stay as layout literals. Metinler
+            TYPE olceginde; 10 -> TYPE.footnote. Butonlar artik Button primitifi (raf/hitSlop/a11y). */}
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 }}>
-          <Text style={{ ...TYPE.title2, color: c.text, marginBottom: SPACING.sm }}>
+          <MascotStage mood="cheerup" size={112} halo={136} />
+          <Text style={{ ...TYPE.title2, color: c.text, marginTop: SPACING.lg, marginBottom: SPACING.sm, textAlign: 'center' }}>
             Bir şeyler ters gitti
           </Text>
-          <Text style={{ ...TYPE.body, color: c.textMuted, textAlign: 'center', marginBottom: SPACING.xxl }}>
-            Beklenmeyen bir hata oluştu. Tekrar deneyebilir ya da hesaptan çıkıp yeniden girebilirsin.
+          <Text style={{ ...TYPE.body, color: c.textSecondary, textAlign: 'center', marginBottom: SPACING.xxl, maxWidth: 320 }}>
+            Sorun değil, bir daha deneyelim. Düzelmezse çıkış yapıp yeniden girmek çoğu zaman işe yarar.
           </Text>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-            onPress={this.handleRetry}
-            style={{ backgroundColor: c.primary, paddingHorizontal: SPACING.xxl, paddingVertical: SPACING.md, borderRadius: RADIUS.md, minWidth: 200, alignItems: 'center' }}
-            accessibilityRole="button"
-            accessibilityLabel="Tekrar Dene"
-          >
-            {/* FIX (audit ui-errorboundary): contrast-correct foreground (matches Button primitive). */}
-            <Text style={{ color: getContrastColor(c.primary), fontWeight: '600' }}>Tekrar Dene</Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-            onPress={this.handleSignOut}
-            style={{ marginTop: SPACING.md, paddingHorizontal: SPACING.xxl, paddingVertical: SPACING.md, borderRadius: RADIUS.md, borderWidth: 1, borderColor: c.border, minWidth: 200, alignItems: 'center' }}
-            accessibilityRole="button"
-            accessibilityLabel="Çıkış Yap"
-          >
-            <Text style={{ color: c.textSecondary, fontWeight: '500' }}>Çıkış Yap</Text>
-          </TouchableOpacity>
+          <View style={{ width: '100%', maxWidth: 320, gap: SPACING.sm }}>
+            <Button title="Tekrar dene" onPress={this.handleRetry} size="lg" accessibilityLabel="Tekrar Dene" />
+            <Button title="Çıkış yap" onPress={this.handleSignOut} variant="ghost" accessibilityLabel="Çıkış Yap" />
+          </View>
         </View>
         {devDetails && (
           <ScrollView style={{ maxHeight: 200, backgroundColor: c.surface, padding: SPACING.md }}>

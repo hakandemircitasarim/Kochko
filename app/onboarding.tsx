@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Ionicons } from '@expo/vector-icons';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, mix } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { haptics } from '@/lib/haptics';
@@ -25,6 +25,8 @@ import { FREE_LAUNCH } from '@/lib/premium-gate';
 import { formatDecimal } from '@/lib/units';
 import { ChipSelect } from '@/components/ui/ChoiceTile';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
+import { ProgressBar } from '@/components/ui/ProgressBar';
+import { ConfettiBurst } from '@/components/ui/ConfettiBurst';
 const { width } = Dimensions.get('window');
 
 // FIX (audit UX-ONB-05): tek bir 18+ doğum yılı kuralı. Bu ekrandaki OAuth doğum-yılı
@@ -290,8 +292,20 @@ function SlideDot({ active }: { active: boolean }) {
 
 // ─── Quick Form (Katman 1) ───
 
+/**
+ * QuickForm — Duolingo soru akışı sunumu (2026-11-04):
+ *  - Üstte BÖLÜM şeridi: Beden / Cinsiyet / Hedef / Aktivite, her biri kendi ProgressBar'ı
+ *    (dolduruldukça akar, bitince etiket tik alır). Bölümler `requiredFilled` ile AYNI
+ *    alanlardan türetilir — sayaç ile şerit hiçbir an çelişmez (bkz. aşağıdaki pay/payda notu).
+ *  - Koçko konuşma balonuyla soruyu sorar (başlık balonun içinde, header rolü korunur).
+ *  - Plan önizlemesi İLK kez belirdiği an (form gerçekten geçerli + hesap tuttu) ölçülü kutlama:
+ *    kartta sevinen Koçko yayla girer + tek konfeti patlaması. Taslaktan dolu dönen formda
+ *    patlamaz (geçiş yok), güncelleme modunda önizleme yok → kutlama da yok. Kaydederken
+ *    karttaki Koçko düşünür (`thinking`).
+ *  Doğrulama/kaydetme mantığı DEĞİŞMEDİ — burada yalnız sunum var.
+ */
 function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingDraft | null; isReOnboarding?: boolean }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const { update, fetch: fetchProfile, profile } = useProfileStore();
@@ -401,6 +415,20 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
   // would strand the meter at 6/7 once a requirement legitimately disappears.
   const totalCount = requiredFilled.length;
 
+  // Bölüm şeridi: requiredFilled'ın AYNI alanları, ekrandaki sırayla bölümlere ayrılmış
+  // (toplam payda = totalCount). Sunum için; isValid/missingLabel'a karışmaz.
+  const sections = [
+    { key: 'body', label: 'Beden', fields: [!!heightCm, !!weightKg, ...(needsBirthYear ? [!!birthYear] : [])] },
+    { key: 'gender', label: 'Cinsiyet', fields: [!!gender] },
+    { key: 'goal', label: 'Hedef', fields: [!!goalType, ...(needsTargetWeight ? [!!targetWeightKg] : [])] },
+    { key: 'activity', label: 'Aktivite', fields: [!!activity] },
+  ].map((sec) => {
+    const done = sec.fields.filter(Boolean).length;
+    return { ...sec, progress: done / sec.fields.length, complete: done === sec.fields.length };
+  });
+  // Gri iz tek ton (§0-B gri gövde): açıkta progressTrack, koyuda border (0.08 orada fazla sessiz).
+  const grayBody = isDark ? colors.border : colors.progressTrack;
+
   // FIX (ux-round4 #4): inline range errors for boy/kilo (comma-aware for kilo) instead of a
   // full-screen Alert only at submit — matches the target-weight inline treatment (#19).
   const heightNum = parseInt(heightCm);
@@ -445,6 +473,22 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
       return null;
     }
   }, [isValid, isReOnboarding, weightKg, heightCm, birthYear, gender, activity, goalType, targetWeightKg, needsTargetWeight, needsBirthYear, knownBirthYear, nowYear, heightError, weightError]);
+
+  // Kutlama anı: önizleme null → dolu İLK geçişinde, ekran başına BİR kez (mount'ta zaten
+  // doluysa patlamaz). Tek seferlik çünkü sayı alanını düzeltirken ("84" → "8" → "84") önizleme
+  // bir an kaybolup geri gelir — her seferinde konfeti "ölçülü kutlama"yı gürültüye çevirirdi.
+  const planReady = !!planPreview;
+  const wasPlanReady = useRef(planReady);
+  const celebrated = useRef(false);
+  const [burstKey, setBurstKey] = useState<number | null>(null);
+  useEffect(() => {
+    if (planReady && !wasPlanReady.current && !celebrated.current) {
+      celebrated.current = true;
+      setBurstKey(Date.now());
+      haptics.success();
+    }
+    wasPlanReady.current = planReady;
+  }, [planReady]);
 
   // First missing field, so the disabled button can say *what* is blocking instead of just greying out.
   // FIX (audit copy): fiil alana göre — yazılan alanlar için 'gir', chip alanları için 'seç'
@@ -723,44 +767,72 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
       behavior="padding"
     >
       <ScrollView contentContainerStyle={{ padding: SPACING.md, paddingTop: SPACING.md + insets.top, paddingBottom: SPACING.xxl + insets.bottom }} keyboardShouldPersistTaps="handled">
-        {/* Son adım pill — the slide dots are gone here, so signal the form is finite.
-            FIX (audit re-onboarding): güncelleme modunda "Son adım" pill'i anlamsız — gizle. */}
+        {/* Bölüm şeridi — eski "Son adım" hapı + tek ince çubuğun yerine (FIX ux-round4 #30'un
+            "bitiş çizgisine ivme" amacı aynı). Form sonlu ve dört parçalı görünür; dolan bölüm
+            tik alır. Güncelleme modunda gizli (orada "son adım" anlamsız — FIX audit re-onboarding). */}
         {!isReOnboarding && (
-          // FIX (ux-round4 #30): pair the "Son adım" pill with a live "X/N hazır" meter + fill bar
-          // so the form signals momentum toward a finish line, not just what's still missing.
-          <View style={{ alignSelf: 'stretch', marginBottom: SPACING.sm }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: RADIUS.pill, backgroundColor: colors.primary + '20' }}>
-                <Ionicons name="flag" size={12} color={colors.primary} />
-                <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.primary }}>Son adım</Text>
+          <View
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel={`${filledCount}/${totalCount} bilgi hazır`}
+            accessibilityValue={{ min: 0, max: totalCount, now: filledCount }}
+            style={{ flexDirection: 'row', gap: 6, marginBottom: SPACING.lg }}
+          >
+            {sections.map((sec) => (
+              <View key={sec.key} style={{ flex: 1 }}>
+                <ProgressBar progress={sec.progress} color={colors.primary} height={10} trackColor={grayBody} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, marginTop: 6 }}>
+                  {sec.complete && <Ionicons name="checkmark-circle" size={13} color={colors.primary} />}
+                  <Text
+                    numberOfLines={1}
+                    style={{ ...TYPE.caption, fontWeight: '700', color: sec.complete ? colors.primary : colors.textSecondary }}
+                  >
+                    {sec.label}
+                  </Text>
+                </View>
               </View>
-              <Text style={{ ...TYPE.caption, fontWeight: '700', color: filledCount === totalCount ? colors.primary : colors.textSecondary }}>
-                {filledCount}/{totalCount} hazır
-              </Text>
-            </View>
-            <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: 'hidden' }}>
-              <View style={{ height: '100%', width: `${Math.round((filledCount / totalCount) * 100)}%`, backgroundColor: colors.primary, borderRadius: 2 }} />
-            </View>
+            ))}
           </View>
         )}
-        {/* FIX (audit re-onboarding): mevcut kullanıcıya yeni-kullanıcı kopyası ("Seni
+        {/* Koçko soruyu sorar: maskot + konuşma balonu (Duolingo soru ekranı). Başlık balonun
+            içinde; header rolü ve metinler aynı.
+            FIX (audit re-onboarding): mevcut kullanıcıya yeni-kullanıcı kopyası ("Seni
             Tanıyalım") gösterme — bu bir güncelleme ekranı. */}
-        <Text
-          style={{ ...TYPE.title1, color: colors.text, marginBottom: SPACING.xs }}
-          accessibilityRole="header"
-        >
-          {isReOnboarding ? 'Bilgilerini güncelle' : 'Seni tanıyalım'}
-        </Text>
-        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>
-          {isReOnboarding
-            ? 'Bilgilerin mevcut hallerinle dolu geliyor — sadece değişenleri düzelt.'
-            /* Was "Sadece 5 bilgi ile başlayalım". Live-driven on a fresh account, the meter next
-               to this line read 0/6, then 5/7 after a goal was picked, then 6/6 — three different
-               totals while the copy insisted on a fourth. The count genuinely varies (a
-               lose/gain goal adds a target weight), so the honest fix is to stop naming a number
-               here and let the meter be the single source of truth. */
-            : 'Birkaç bilgiyle başlayalım — sonra Koç seni tanımaya başlayacak.'}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.xl }}>
+          <KochkoMascot size={76} animated enter />
+          <View
+            style={{
+              flex: 1, backgroundColor: colors.card, borderRadius: RADIUS.lg,
+              borderWidth: 2, borderColor: grayBody, padding: SPACING.md,
+            }}
+          >
+            {/* Balon kuyruğu: maskota bakan, çerçevesi balonla aynı 45° kare. */}
+            <View
+              pointerEvents="none"
+              style={{
+                position: 'absolute', left: -8, top: '50%', marginTop: -7, width: 14, height: 14,
+                backgroundColor: colors.card, borderLeftWidth: 2, borderBottomWidth: 2, borderColor: grayBody,
+                transform: [{ rotate: '45deg' }],
+              }}
+            />
+            <Text
+              style={{ ...TYPE.title2, fontWeight: '800', color: colors.text, marginBottom: SPACING.xs }}
+              accessibilityRole="header"
+            >
+              {isReOnboarding ? 'Bilgilerini güncelle' : 'Seni tanıyalım'}
+            </Text>
+            <Text style={{ ...TYPE.callout, color: colors.textSecondary }}>
+              {isReOnboarding
+                ? 'Bilgilerin mevcut hallerinle dolu geliyor — sadece değişenleri düzelt.'
+                /* Was "Sadece 5 bilgi ile başlayalım". Live-driven on a fresh account, the meter next
+                   to this line read 0/6, then 5/7 after a goal was picked, then 6/6 — three different
+                   totals while the copy insisted on a fourth. The count genuinely varies (a
+                   lose/gain goal adds a target weight), so the honest fix is to stop naming a number
+                   here and let the meter be the single source of truth. */
+                : 'Birkaç bilgiyle başlayalım — sonra Koç seni tanımaya başlayacak.'}
+            </Text>
+          </View>
+        </View>
 
         {/* Physical */}
         <View style={{ marginBottom: SPACING.md }}>
@@ -830,24 +902,39 @@ function QuickForm({ initialDraft, isReOnboarding }: { initialDraft: OnboardingD
           </Text>
         )}
 
-        {/* FIX (ux-round4 #22): first-value preview above the commit button. */}
+        {/* FIX (ux-round4 #22): first-value preview above the commit button.
+            Kutlama kartı: sevinen Koçko (ilk belirişte yayla) + tek konfeti patlaması (burstKey
+            yalnız null→dolu geçişinde değişir). Kaydederken Koçko düşünür. Yüz opak `mix`. */}
         {planPreview && (
-          <View style={{ backgroundColor: colors.primary + '12', borderWidth: 1, borderColor: colors.primary + '33', borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.md }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-              <Ionicons name="sparkles" size={13} color={colors.primary} />
-              <Text style={{ ...TYPE.overline, color: colors.primary }}>TAHMİNİ BAŞLANGIÇ PLANIN</Text>
+          <View style={{ marginBottom: SPACING.md }}>
+            <View
+              style={{
+                flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+                backgroundColor: mix(colors.primary, colors.background, isDark ? 0.16 : 0.08),
+                borderWidth: 2, borderColor: mix(colors.primary, colors.background, isDark ? 0.42 : 0.28),
+                borderRadius: RADIUS.lg, padding: SPACING.md,
+              }}
+            >
+              <KochkoMascot size={68} mood={saving ? 'thinking' : 'cheer'} enter />
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                  <Ionicons name="sparkles" size={13} color={colors.primary} />
+                  <Text style={{ ...TYPE.overline, color: colors.primary }}>TAHMİNİ BAŞLANGIÇ PLANIN</Text>
+                </View>
+                <Text style={{ ...TYPE.title3, fontWeight: '800', color: colors.text }}>
+                  ~{planPreview.kcalMin}–{planPreview.kcalMax} kcal/gün
+                </Text>
+                {planPreview.showGoal && (
+                  <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>
+                    {String(planPreview.w).replace('.', ',')} → {String(planPreview.tw).replace('.', ',')} kg · ~12 hafta
+                  </Text>
+                )}
+                <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
+                  Koç bunları seninle konuşarak inceltecek.
+                </Text>
+              </View>
             </View>
-            <Text style={{ ...TYPE.title3, fontWeight: '800', color: colors.text }}>
-              ~{planPreview.kcalMin}–{planPreview.kcalMax} kcal/gün
-            </Text>
-            {planPreview.showGoal && (
-              <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }}>
-                {String(planPreview.w).replace('.', ',')} → {String(planPreview.tw).replace('.', ',')} kg · ~12 hafta
-              </Text>
-            )}
-            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 4 }}>
-              Koç bunları seninle konuşarak inceltecek.
-            </Text>
+            <ConfettiBurst burstKey={burstKey} count={28} spread={150} />
           </View>
         )}
 
