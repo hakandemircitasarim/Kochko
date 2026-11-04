@@ -396,13 +396,27 @@ interface Props {
   size?: number;
   mood?: MascotMood;
   animated?: boolean;
+  /** Mount'ta bir kez yayla belirir (küçükten büyür + hafif yükselir) — giriş/boş durum
+   *  karşılaması için. Döngü değil; `animated`'dan bağımsız. Reduce-motion → anında yerinde. */
+  enter?: boolean;
 }
 
-export function KochkoMascot({ size = 96, mood = 'happy', animated = false }: Props) {
+export function KochkoMascot({ size = 96, mood = 'happy', animated = false, enter = false }: Props) {
   const reduceMotion = useReduceMotion();
   const [blink, setBlink] = useState(false);
   const bob = useRef(new Animated.Value(0)).current;
+  const entrance = useRef(new Animated.Value(enter ? 0 : 1)).current;
   const avatar = size < 48;
+
+  // Giriş yayı: yalnız mount'ta. Bayrak sonradan true'ya dönerse cleanup durdurur, bu dal
+  // son duruma oturtur (yarı küçük takılı kalmaz).
+  useEffect(() => {
+    if (!enter || reduceMotion) { entrance.setValue(1); return; }
+    const a = Animated.spring(entrance, { toValue: 1, friction: 5, tension: 70, useNativeDriver: true });
+    a.start();
+    return () => a.stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reduceMotion]);
 
   // Nefes: 0 → 1 → 0 yumuşak sinüs; yalnız animated + hareket kısıtı yokken.
   useEffect(() => {
@@ -431,10 +445,17 @@ export function KochkoMascot({ size = 96, mood = 'happy', animated = false }: Pr
   // Avatar küçük olduğu için bob oranı da küçük (boyutun ~%4'ü, en çok 3px).
   const lift = Math.min(3, size * 0.04);
   const translateY = bob.interpolate({ inputRange: [0, 1], outputRange: [0, -lift] });
+  const enterY = entrance.interpolate({ inputRange: [0, 1], outputRange: [size * 0.12, 0] });
+  const enterScale = entrance.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] });
+  // Yay 1'i aşıp geri döner; opaklık ilk %40'ta tamamlanır ki aşma anında saydam kalmasın.
+  const enterOpacity = entrance.interpolate({ inputRange: [0, 0.4, 2], outputRange: [0, 1, 1] });
 
   return (
     <Animated.View
-      style={{ width: size, height: size, transform: [{ translateY }] }}
+      style={{
+        width: size, height: size, opacity: enterOpacity,
+        transform: [{ translateY }, { translateY: enterY }, { scale: enterScale }],
+      }}
       // Dekoratif (v3 ile aynı): her yerleşimin yanında zaten metin var; görseli de okutmak
       // ekran okuyucuya "Koçko"yu iki kez söyletiyordu.
       accessible={false}
