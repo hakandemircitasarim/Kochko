@@ -26,7 +26,8 @@ import { deriveNutritionTargets } from '@/lib/nutrition-targets';
 import { checkSuspiciousInput } from '@/lib/guardrails-client';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, FONT, WATER_INCREMENT } from '@/lib/constants';
-import { TYPE, MOTION, alpha } from '@/lib/design';
+import { TYPE, MOTION, alpha, mix } from '@/lib/design';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { setupAutoSync } from '@/services/offline-queue.service';
@@ -107,7 +108,7 @@ function deriveCoachLine(a: {
 }
 
 export default function TodayScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const profile = useProfileStore(s => s.profile);
@@ -606,21 +607,26 @@ export default function TodayScreen() {
             <Text accessibilityRole="header" style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.lg, textAlign: 'center' }}>
               Su Ekle
             </Text>
+            {/* Gövdeli su hapları (§0-B) — kayıt ekranındakiyle aynı: pastel yüz zeminle
+                karıştırılmış opak ton, raf aynı mavinin koyusu, basınca rafa iner. */}
             {[250, 500, 750].map((ml) => (
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              <ShelfPressable
                 key={ml}
-                onPress={() => { setWaterMenu(false); addWaterAmount(ml / 1000); }}
+                onPress={() => { haptics.tap(); setWaterMenu(false); addWaterAmount(ml / 1000); }}
                 accessibilityRole="button"
                 accessibilityLabel={`${ml} mililitre ekle`}
-                style={{
+                radius={RADIUS.sm}
+                shelfColor={mix(METRIC_COLORS.water, colors.card, isDark ? 0.42 : 0.34)}
+                style={{ marginBottom: SPACING.sm }}
+                faceStyle={{
                   flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
                   paddingVertical: SPACING.md, paddingHorizontal: SPACING.md,
-                  borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight, marginBottom: SPACING.sm,
+                  backgroundColor: mix(METRIC_COLORS.water, colors.card, isDark ? 0.18 : 0.13),
                 }}
               >
                 <Ionicons name="water" size={18} color={METRIC_COLORS.water} />
                 <Text style={{ color: colors.text, ...TYPE.headline }}>{ml} ml</Text>
-              </TouchableOpacity>
+              </ShelfPressable>
             ))}
             <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); setWaterMenu(false); }}
@@ -781,17 +787,11 @@ export default function TodayScreen() {
               {welcomeBackMsg ?? returnStatus.welcomeMessage}
             </Text>
             {returnStatus.needsReOnboarding && (
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              <Button
+                title="Güncelleme yap"
                 onPress={() => router.push('/onboarding?mode=re_onboarding')}
-                accessibilityRole="button"
-                accessibilityLabel="Güncelleme yap"
-                style={{
-                  marginTop: SPACING.sm, paddingVertical: SPACING.sm,
-                  borderRadius: RADIUS.sm, backgroundColor: colors.primary, alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Güncelleme yap</Text>
-              </TouchableOpacity>
+                style={{ marginTop: SPACING.sm }}
+              />
             )}
             <TouchableOpacity activeOpacity={MOTION.pressOpacity}
               onPress={() => { haptics.tap(); setReturnBannerDismissed(true); if (user?.id) markDismissed(user.id, 'return_banner', 'day', dayBoundaryHour); }}
@@ -925,24 +925,20 @@ export default function TodayScreen() {
                 İlk adımın: bugünkü ilk kaydını ekle ya da koçunla konuşarak başla. Kaydettikçe burası sana özel hâle gelecek.
               </Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+                {/* Gövdeli (§0-B): ortak Button — ilk eylem dolu + raf, ikincisi outline gövde. */}
+                <Button
+                  title="İlk kaydını ekle"
                   onPress={() => { haptics.tap(); router.push('/log'); }}
-                  accessibilityRole="button"
-                  accessibilityLabel="İlk kaydını ekle"
-                  style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.primary }}
-                >
-                  <Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />
-                  <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong, fontWeight: '700' }}>İlk kaydını ekle</Text>
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+                  icon={<Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Koçla konuş"
+                  variant="outline"
                   onPress={() => { haptics.tap(); router.push('/(tabs)/chat' as never); }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Koçla konuş"
-                  style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight }}
-                >
-                  <Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />
-                  <Text style={{ color: colors.primary, ...TYPE.bodyStrong, fontWeight: '700' }}>Koçla konuş</Text>
-                </TouchableOpacity>
+                  icon={<Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} />}
+                  style={{ flex: 1 }}
+                />
               </View>
             </View>
           </View>
