@@ -6,11 +6,12 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
-import { SPACING, RADIUS } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { OFFER_TRIGGERS } from '@/services/coaching-messages.service';
 import type { CoachingMessage } from '@/services/coaching-messages.service';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
+import { Button } from '@/components/ui/Button';
 
 // FIX (ux-ideas #17): trigger types that are an accept/decline OFFER — these get inline
 // "Evet / Sonra" buttons so the user can act in one tap instead of open-chat-then-type-"evet".
@@ -111,24 +112,22 @@ export function CoachingNudge({
                 "Sonra" dismisses. Turns a 3-step accept (find card → open chat → type "evet")
                 into a single tap so the habit-stacking loop actually closes. */}
             {showOffer && (
+              // Gövdeli (§0-B): elle yazılmış düz kutular yerine ortak Button — Evet dolu + raf,
+              // Sonra outline gövde. Etiketler ve a11y adları aynen.
               <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm }}>
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+                <Button
+                  title="Evet"
                   onPress={() => onAccept!(msg)}
-                  accessibilityRole="button"
                   accessibilityLabel="Evet, uygulayalım"
-                  style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 4, paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.primary }}
-                >
-                  <Ionicons name="checkmark" size={14} color={getContrastColor(colors.primary)} />
-                  <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>Evet</Text>
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+                  icon={<Ionicons name="checkmark" size={14} color={getContrastColor(colors.primary)} />}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  title="Sonra"
+                  variant="outline"
                   onPress={() => onDismiss(msg.id)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Sonra"
-                  style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: SPACING.sm, borderRadius: RADIUS.sm, backgroundColor: colors.surfaceLight }}
-                >
-                  <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary, fontWeight: '700' }}>Sonra</Text>
-                </TouchableOpacity>
+                  style={{ flex: 1 }}
+                />
               </View>
             )}
           </View>

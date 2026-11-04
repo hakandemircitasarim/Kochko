@@ -7,7 +7,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, HERO, CARD_SHADOW } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, alpha } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { mealTypeLabelTR } from '@/lib/labels';
 import { showToast } from '@/components/ui/Toast';
@@ -147,14 +147,16 @@ export function ActivityTimeline({ meals, workouts, onDeleteMeal, onDeleteWorkou
           accessibilityLabel="Bugün henüz kayıt yok. Koçuna ne yediğini yazmak için dokun"
           style={{ alignItems: 'center', paddingVertical: SPACING.xl }}
         >
+          {/* Sönük gri kutu + gri ikon "kapalı" okunuyordu (§0-A canlı renk). Kalori/marka
+              tonunda pastel yastık + dolu ikon: boş gün bir davet, bir hata değil. */}
           <View style={{
             width: 56, height: 56, borderRadius: 18,
-            backgroundColor: colors.surfaceLight,
+            backgroundColor: alpha(METRIC_COLORS.calories, isDark ? 0.2 : 0.12),
             alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm,
           }}>
-            <Ionicons name="restaurant-outline" size={28} color={colors.textMuted} />
+            <Ionicons name="restaurant" size={26} color={METRIC_COLORS.calories} />
           </View>
-          <Text style={{ ...TYPE.body, color: colors.textMuted }}>Bugün henüz kayıt yok</Text>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>Bugün henüz kayıt yok</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
             <Text style={{ ...TYPE.bodyStrong, color: colors.primary }}>Koçuna ne yediğini yaz</Text>
             <Ionicons name="chevron-forward" size={14} color={colors.primary} />
