@@ -6,6 +6,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, View, type ViewStyle, type DimensionValue } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { RADIUS, SPACING, FONT } from '@/lib/constants';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 interface BlockProps {
   width?: DimensionValue;
@@ -18,8 +19,11 @@ interface BlockProps {
 export function SkeletonBlock({ width = '100%', height = 16, radius = RADIUS.sm, style }: BlockProps) {
   const { colors } = useTheme();
   const pulse = useRef(new Animated.Value(0.4)).current;
+  // Reduce-motion: nabız yok, blok sabit orta opaklıkta (yer tutucu olduğu yine okunur).
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
+    if (reduceMotion) { pulse.setValue(0.65); return; }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 0.9, duration: 700, useNativeDriver: true }),
@@ -28,7 +32,7 @@ export function SkeletonBlock({ width = '100%', height = 16, radius = RADIUS.sm,
     );
     loop.start();
     return () => loop.stop();
-  }, [pulse]);
+  }, [pulse, reduceMotion]);
 
   return (
     <Animated.View

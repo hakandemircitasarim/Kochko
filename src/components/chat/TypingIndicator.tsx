@@ -11,6 +11,7 @@ import { useTheme } from '@/lib/theme';
 import { SPACING } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 const DOT_SIZE = 6;
 const DOT_GAP = 4;
@@ -18,8 +19,11 @@ const CYCLE_MS = 900;
 
 export function Dot({ delay, color, cycleMs = CYCLE_MS }: { delay: number; color: string; cycleMs?: number }) {
   const t = useRef(new Animated.Value(0)).current;
+  // Reduce-motion: zıplayan döngü yok; noktalar sabit ve tam görünür (anlamı etiket taşıyor).
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
+    if (reduceMotion) { t.setValue(1); return; }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.delay(delay),
@@ -39,9 +43,9 @@ export function Dot({ delay, color, cycleMs = CYCLE_MS }: { delay: number; color
     );
     loop.start();
     return () => loop.stop();
-  }, [t, delay, cycleMs]);
+  }, [t, delay, cycleMs, reduceMotion]);
 
-  const translateY = t.interpolate({ inputRange: [0, 1], outputRange: [0, -4] });
+  const translateY = t.interpolate({ inputRange: [0, 1], outputRange: reduceMotion ? [0, 0] : [0, -4] });
   const opacity = t.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] });
 
   return (
