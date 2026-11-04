@@ -10,6 +10,11 @@
  *    updateUser "session yok" ile düşüyordu. Artık gelen URL'den fragment
  *    token'ları (implicit flow) veya ?code= (PKCE) yakalanıp oturum kurulur;
  *    form ancak oturum hazır olunca açılır, geçersiz/bayat linkte dürüst hata.
+ *
+ * Sunum (2026-11-04, Duolingo dili): üç durumun üçü de karakterli — doğrulanırken DÜŞÜNEN
+ * Koçko (`thinking`), geçersiz linkte TESELLİ eden Koçko (`cheerup`, halka üstünde), formda
+ * yayla giren Koçko. Şifre tekrarı eşleşmiyorsa register.tsx'teki gibi Input `error`'u
+ * (türetilmiş değer, yeni state yok); kaydetme/doğrulama akışı aynı.
  */
 import { useEffect, useState } from 'react';
 import { View, Text, ScrollView, KeyboardAvoidingView, Alert, ActivityIndicator } from 'react-native';
@@ -23,6 +28,8 @@ import { Input } from '@/components/ui/Input';
 import { SPACING } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
+import { MascotStage } from '@/components/ui/EmptyState';
 
 type LinkState = 'checking' | 'ready' | 'invalid';
 
@@ -55,6 +62,8 @@ export default function ResetPasswordScreen() {
   const [saving, setSaving] = useState(false);
   const [linkState, setLinkState] = useState<LinkState>('checking');
   const signOut = useAuthStore((s) => s.signOut);
+  // register.tsx kalıbı: tekrar alanı doluyken anında geri bildirim (submit kontrolü aynen duruyor).
+  const mismatch = confirm.length > 0 && password !== confirm;
 
   useEffect(() => {
     let cancelled = false;
@@ -107,8 +116,11 @@ export default function ResetPasswordScreen() {
   if (linkState === 'checking') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', gap: SPACING.md }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Bağlantı doğrulanıyor…</Text>
+        <KochkoMascot size={112} mood="thinking" animated enter />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Bağlantı doğrulanıyor…</Text>
+        </View>
       </View>
     );
   }
@@ -116,13 +128,16 @@ export default function ResetPasswordScreen() {
   if (linkState === 'invalid') {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center', padding: SPACING.xl }}>
-        <Text style={{ ...TYPE.title2, color: colors.text, marginBottom: SPACING.sm, textAlign: 'center' }}>
+        <MascotStage mood="cheerup" size={112} halo={136} />
+        <Text style={{ ...TYPE.title2, color: colors.text, marginTop: SPACING.lg, marginBottom: SPACING.sm, textAlign: 'center' }}>
           Bağlantı geçersiz
         </Text>
-        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.xl, textAlign: 'center' }}>
-          Sıfırlama bağlantısının süresi dolmuş ya da bağlantı eksik. Giriş ekranından yeni bir bağlantı isteyebilirsin.
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.xl, textAlign: 'center', maxWidth: 340 }}>
+          Sıfırlama bağlantısının süresi dolmuş ya da bağlantı eksik. Sorun değil — giriş ekranından yeni bir bağlantı isteyebilirsin.
         </Text>
-        <Button title="Giriş ekranına dön" onPress={() => router.replace('/(auth)/login')} size="lg" />
+        <View style={{ width: '100%', maxWidth: 340 }}>
+          <Button title="Giriş ekranına dön" onPress={() => router.replace('/(auth)/login')} size="lg" />
+        </View>
       </View>
     );
   }
@@ -133,19 +148,29 @@ export default function ResetPasswordScreen() {
         contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: SPACING.xl, paddingTop: insets.top + 40, paddingBottom: insets.bottom + 40 }}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={{ ...TYPE.title2, fontWeight: '800', color: colors.text, marginBottom: SPACING.xs }}>
+        <View style={{ alignItems: 'center', marginBottom: SPACING.lg }}>
+          <KochkoMascot size={88} animated enter />
+        </View>
+        <Text style={{ ...TYPE.title2, fontWeight: '800', color: colors.text, marginBottom: SPACING.xs, textAlign: 'center' }}>
           Yeni şifre belirle
         </Text>
-        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.xl }}>
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.xl, textAlign: 'center' }}>
           Hesabın için yeni bir şifre gir.
         </Text>
 
-        <Input label="Yeni Şifre" value={password} onChangeText={setPassword} secureToggle placeholder="••••••••" />
-        <Input label="Yeni Şifre (Tekrar)" value={confirm} onChangeText={setConfirm} secureToggle placeholder="••••••••" />
+        <Input label="Yeni Şifre" value={password} onChangeText={setPassword} secureToggle placeholder="En az 6 karakter" />
+        <Input
+          label="Yeni Şifre (Tekrar)"
+          value={confirm}
+          onChangeText={setConfirm}
+          secureToggle
+          placeholder="Tekrar gir"
+          error={mismatch ? 'Şifreler eşleşmiyor' : undefined}
+        />
 
         <Button title="Şifreyi güncelle" onPress={handleSave} loading={saving} size="lg" style={{ marginTop: SPACING.lg }} />
-          {/* ux-sweep (RST-EXIT-02): tek butonlu ekranda vazgeçme yolu yoktu. */}
-          <Button title="Vazgeç" variant="ghost" onPress={() => router.replace('/')} />
+        {/* ux-sweep (RST-EXIT-02): tek butonlu ekranda vazgeçme yolu yoktu. */}
+        <Button title="Vazgeç" variant="ghost" onPress={() => router.replace('/')} style={{ marginTop: SPACING.sm }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );

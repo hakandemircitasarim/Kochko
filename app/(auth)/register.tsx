@@ -1,6 +1,11 @@
+/**
+ * Kayıt ekranı. Sunum (2026-11-04, Duolingo karşılaması): login ile aynı başlık bloğu — Koçko
+ * girişte yayla belirir; "Giriş yap" metin linki yerine gövdeli outline Button. Şifre eşleşme
+ * hatası zaten Input `error`'unda (2px kırmızı çerçeve + sallanma); doğrulama mantığı aynı.
+ */
 import { useState, useRef } from 'react';
 import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Alert, Linking, TextInput } from 'react-native';
-import { Link, router } from 'expo-router';
+import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
@@ -148,7 +153,7 @@ export default function RegisterScreen() {
         {/* FIX (audit ui-auth-header): login.tsx ile birebir aynı logo/başlık bloğu (letterSpacing/boşluk) */}
         <View style={{ alignItems: 'center', marginBottom: SPACING.xxl }}>
           {/* login.tsx ile aynı blok: maskot + kelime-mark (§0-A karakter). */}
-          <KochkoMascot size={84} animated />
+          <KochkoMascot size={96} animated enter />
           <Text style={{ ...TYPE.title1, color: colors.primary, letterSpacing: 2, marginTop: SPACING.sm }}>Kochko</Text>
           <Text style={{ ...TYPE.headline, fontWeight: '400', color: colors.textSecondary, marginTop: SPACING.xs }}>Hesap oluştur</Text>
         </View>
@@ -259,10 +264,11 @@ export default function RegisterScreen() {
           hint={passwordsMatch ? 'Şifreler eşleşiyor' : undefined}
         />
         <Button title="Kayıt ol" onPress={handleRegister} loading={loading} size="lg" />
-        <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: SPACING.lg }}>
-          <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Zaten hesabın var mı? </Text>
-          <Link href="/(auth)/login" style={{ ...TYPE.bodyStrong, color: colors.primary }}>Giriş yap</Link>
-        </View>
+        {/* İkincil eylem gövdeli outline Button (eski: satır içi metin linki); Link gibi navigate. */}
+        <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginTop: SPACING.xl, marginBottom: SPACING.sm }}>
+          Zaten hesabın var mı?
+        </Text>
+        <Button title="Giriş yap" variant="outline" size="lg" onPress={() => router.navigate('/(auth)/login')} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
