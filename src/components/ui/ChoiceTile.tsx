@@ -14,7 +14,7 @@
  * `shelf` aşağıda başlayan mutlak bir katman — sabit yükseklik gerekmez (flexWrap hapları).
  */
 import { useEffect, useRef } from 'react';
-import { Animated, Pressable, Text, View } from 'react-native';
+import { Animated, Pressable, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
 import { TYPE, MOTION, alpha } from '@/lib/design';
@@ -27,9 +27,13 @@ interface TileProps {
   onPress: () => void;
   /** Ekran okuyucu etiketi (ör. "Cinsiyet: Kadın"). */
   accessibilityLabel?: string;
+  /** Yalnız dış kutunun yerleşimi (ör. eşit genişlikli satır için `{ flex: 1 }`). */
+  style?: StyleProp<ViewStyle>;
+  /** Etiketi ortala (eşit genişlikli satırlarda). */
+  centered?: boolean;
 }
 
-export function ChoiceTile({ label, selected, onPress, accessibilityLabel }: TileProps) {
+export function ChoiceTile({ label, selected, onPress, accessibilityLabel, style, centered }: TileProps) {
   const { colors, isDark } = useTheme();
   const reduceMotion = useReduceMotion();
   const pop = useRef(new Animated.Value(1)).current;
@@ -55,7 +59,7 @@ export function ChoiceTile({ label, selected, onPress, accessibilityLabel }: Til
   const shelf = MOTION.shelf;
 
   return (
-    <Animated.View style={{ transform: [{ scale: pop }] }}>
+    <Animated.View style={[{ transform: [{ scale: pop }] }, style]}>
       <Pressable
         onPress={() => { haptics.tap(); onPress(); }}
         hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
@@ -74,6 +78,7 @@ export function ChoiceTile({ label, selected, onPress, accessibilityLabel }: Til
               style={{
                 minHeight: 44 - shelf,
                 justifyContent: 'center',
+                alignItems: centered ? 'center' : undefined,
                 paddingVertical: SPACING.sm,
                 paddingHorizontal: SPACING.md,
                 borderRadius: RADIUS.sm,
