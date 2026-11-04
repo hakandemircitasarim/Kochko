@@ -1,5 +1,9 @@
+/**
+ * Ayarlar merkezi — 35 ekranın aranabilir listesi (Duolingo dili: SettingsList grupları,
+ * pastel ikon kutucukları, gövdeli Çıkış/Sil tuşları). Satır davranışı veri modelinde.
+ */
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView, type ViewStyle } from 'react-native';
+import { View, Text, ScrollView, Alert, TouchableOpacity, Modal, TextInput, KeyboardAvoidingView } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,9 +17,12 @@ import { exportJSON, exportCSV } from '@/services/export.service';
 import { requestAccountDeletion } from '@/services/privacy.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
+import { SettingsGroup, SettingsRow, SettingsIcon } from '@/components/settings/SettingsList';
+import { SectionHeader } from '@/components/settings/SectionHeader';
 import { SyncStatusCard } from '@/components/common/SyncStatusCard';
-import { useTheme, type ThemeColors } from '@/lib/theme';
-import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { useTheme } from '@/lib/theme';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 
@@ -225,8 +232,8 @@ export default function SettingsScreen() {
       <SyncStatusCard />
 
       {/* Search — FIX (ux-ideas #13): one box to filter all 35 settings screens */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, paddingHorizontal: SPACING.md, marginTop: SPACING.lg }}>
-        <Ionicons name="search" size={16} color={colors.textMuted} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 2, borderColor: isDark ? colors.border : colors.progressTrack, paddingHorizontal: SPACING.md, marginTop: SPACING.sm }}>
+        <Ionicons name="search" size={18} color={colors.textMuted} />
         <TextInput
           value={search}
           onChangeText={setSearch}
@@ -248,46 +255,52 @@ export default function SettingsScreen() {
       {/* Data-driven settings groups (filtered by search) */}
       {visibleSections.map(section => (
         <View key={section.title}>
-          <SectionTitle label={section.title} colors={colors} />
-          <MenuGroup colors={colors}>
+          <SectionHeader title={section.title} />
+          <SettingsGroup>
             {section.rows.map((r, i) => (
-              <Row
+              <SettingsRow
                 key={r.key}
                 icon={r.icon}
-                iconColor={r.iconColor}
+                color={r.iconColor}
                 label={r.label}
                 premium={!isPremium && !!r.premiumFeature}
                 value={r.value}
                 onPress={rowOnPress(r)}
-                colors={colors}
                 last={i === section.rows.length - 1}
               />
             ))}
-          </MenuGroup>
+          </SettingsGroup>
         </View>
       ))}
 
       {searching && visibleSections.length === 0 && (
         <View style={{ alignItems: 'center', paddingVertical: SPACING.xxl }}>
-          <Ionicons name="search-outline" size={28} color={colors.textMuted} />
-          <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.sm }}>"{search.trim()}" için sonuç yok</Text>
+          {/* Boş durum karakterli (kural 4): uykulu Koçko "bulamadım" der. */}
+          <KochkoMascot size={72} mood="sleepy" />
+          <Text style={{ ...TYPE.headline, color: colors.text, marginTop: SPACING.sm }}>"{search.trim()}" için sonuç yok</Text>
+          <Text style={{ ...TYPE.callout, color: colors.textSecondary, marginTop: 2 }}>Başka bir kelime dene — ör. "oruç", "tema", "şifre".</Text>
         </View>
       )}
 
       {!searching && (
         <>
           {/* Privacy */}
-          <Card title="Gizlilik ve Güvenlik" style={{ marginTop: SPACING.lg }}>
+          <SettingsGroup style={{ marginTop: SPACING.xl, padding: SPACING.lg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm }}>
+              <SettingsIcon icon="lock-closed" color={colors.success} size={40} />
+              <Text accessibilityRole="header" style={{ ...TYPE.headline, color: colors.text, fontWeight: '700', flex: 1 }}>Gizlilik ve Güvenlik</Text>
+            </View>
             <Text style={{ ...TYPE.body, color: colors.textSecondary }}>
               Verilerin şifrelenerek saklanır. Tüm verilerini dışa aktarabilir veya hesabını silebilirsin. Kochko'nun senin hakkında bildiklerini Profil {'>'} "Kochko Seni Nasıl Tanıyor" bölümünden görebilir, düzeltebilir veya silebilirsin.
             </Text>
-          </Card>
+          </SettingsGroup>
 
           {/* Danger */}
           <View style={{ marginTop: SPACING.xl, gap: SPACING.sm }}>
+            {/* Çıkış gövdeli ikincil tuş (outline); yıkıcı "Hesabımı Sil" altında dolu kırmızı. */}
             <Button
               title="Çıkış Yap"
-              variant="ghost"
+              variant="outline"
               onPress={() => {
                 haptics.tap();
                 Alert.alert('Çıkış', 'Emin misin?', [
@@ -314,7 +327,7 @@ export default function SettingsScreen() {
           dönüşü sayesinde kullanıcı geri dönüşsüz onay sözünü uyarıyı görmeden yazmaz. */}
       <KeyboardAvoidingView behavior="padding" style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: SPACING.xl }} keyboardShouldPersistTaps="handled">
-        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.xl }}>
+        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 2, borderColor: isDark ? colors.border : colors.progressTrack, padding: SPACING.xl }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.md }}>
             <Ionicons name="warning-outline" size={22} color={colors.error} />
             <Text style={{ ...TYPE.title3, color: colors.text, flexShrink: 1 }}>Hesabı Sil</Text>
@@ -325,7 +338,7 @@ export default function SettingsScreen() {
           <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary, marginBottom: SPACING.xs + 2 }}>
             {/* FIX (ux-pass5): display the correct Turkish spelling 'SİL' — the copy told users
                 to type an ASCII string the forced-caps TR keyboard can't naturally produce. */}
-            Onaylamak için <Text style={{ color: colors.error, fontWeight: '700' }}>SİL</Text> yaz
+            Onaylamak için <Text style={{ color: colors.errorText, fontWeight: '700' }}>SİL</Text> yaz
           </Text>
           <TextInput
             value={deleteConfirm}
@@ -342,8 +355,8 @@ export default function SettingsScreen() {
               paddingVertical: SPACING.md,
               ...TYPE.body,
               color: colors.text,
-              borderWidth: 0.5,
-              borderColor: canDelete ? colors.error : colors.border,
+              borderWidth: 2,
+              borderColor: canDelete ? colors.error : (isDark ? colors.border : colors.progressTrack),
               marginBottom: SPACING.lg,
             }}
           />
@@ -369,70 +382,6 @@ export default function SettingsScreen() {
   );
 }
 
-function SectionTitle({ label, colors }: { label: string; colors: ThemeColors }) {
-  // FIX (ux-pass5): textTransform:'uppercase' uppercases locale-blind (i→I), misspelling the
-  // dotted-i labels ('PROFIL', 'TAKIP VE ILERLEME', 'TERCIHLER'...); pre-uppercase with
-  // tr-TR instead (same fix class as PlanOverviewCards #11e).
-  return (
-    <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginTop: SPACING.lg, marginBottom: SPACING.sm }}>
-      {label.toLocaleUpperCase('tr-TR')}
-    </Text>
-  );
-}
-
-function MenuGroup({ children, colors }: { children: React.ReactNode; colors: ThemeColors }) {
-  return (
-    <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, overflow: 'hidden' }}>
-      {children}
-    </View>
-  );
-}
-
-function Row({ icon, iconColor, label, onPress, colors, last, premium, value }: {
-  icon: IconName;
-  iconColor: string;
-  label: string;
-  onPress: () => void;
-  colors: ThemeColors;
-  last?: boolean;
-  premium?: boolean;
-  value?: string;
-}) {
-  const rowStyle: ViewStyle = {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    minHeight: 48,
-    borderBottomWidth: last ? 0 : 0.5,
-    borderBottomColor: colors.border,
-  };
-  return (
-    <TouchableOpacity
-      style={rowStyle}
-      onPress={() => { haptics.tap(); onPress(); }}
-      activeOpacity={MOTION.pressOpacity}
-      accessibilityRole="button"
-      accessibilityLabel={premium ? `${label}, Premium özellik` : label}
-    >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 }}>
-        <Ionicons name={icon} size={18} color={iconColor} />
-        {/* Ayarlar merkezinin satir etiketi: ~40 satirin tamami bu tek tanimdan geliyordu ve
-            13px'te, uygulamanin okuma basamaginin bir kademe altindaydi. */}
-        <Text style={{ ...TYPE.body, color: colors.text, flexShrink: 1 }}>{label}</Text>
-      </View>
-      {premium && (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primaryLight, borderRadius: RADIUS.pill, paddingHorizontal: SPACING.sm, paddingVertical: 2, marginRight: SPACING.sm }}>
-          <Ionicons name="lock-closed" size={12} color={colors.primary} />
-          <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '600', color: colors.primary }}>Premium</Text>
-        </View>
-      )}
-      {/* FIX (ux-round4 #25): current value (hidden when the row is premium-locked). */}
-      {!premium && value ? (
-        <Text numberOfLines={1} style={{ ...TYPE.caption, color: colors.textMuted, marginRight: SPACING.xs, maxWidth: 140 }}>{value}</Text>
-      ) : null}
-      <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
-    </TouchableOpacity>
-  );
-}
+// FIX (audit profile-card-drift): yerel SectionTitle/MenuGroup/Row kaldırıldı — Profil sekmesiyle
+// aynı SettingsList (2px gri kenarlı grup + pastel ikon kutucuğu) ve SectionHeader kullanılıyor;
+// satırın a11y etiketi ("X, Premium özellik"), değer gizleme kuralı ve haptik aynen taşındı.

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Alert, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import { useRouter } from 'expo-router';
@@ -7,6 +7,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getActiveChallenges, getCompletedChallenges, startChallenge, pauseChallenge, resumeChallenge, abandonChallenge, SYSTEM_CHALLENGES, type Challenge , markManualDay } from '@/services/challenges.service';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { Input } from '@/components/ui/Input';
+import { ChipSelect } from '@/components/ui/ChoiceTile';
+import { ChallengeCard } from '@/components/profile/ChallengeCard';
 import { SPACING, FONT } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
@@ -148,23 +151,11 @@ export default function ChallengesScreen() {
       {active.length === 0 ? (
         <Card><Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center', paddingVertical: SPACING.md }}>Aktif challenge yok.</Text></Card>
       ) : (
+        // ChallengeCard (kulvar D): madalyon + kalın ProgressBar + teşvik cümlesi; eylemler
+        // aşağıda aynen (gövdeli Button), kart onları altına dizer.
         active.map(c => (
-          <Card key={c.id} title={c.title}>
-            <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>
-              {c.target.duration_days} gün · {c.status === 'paused' ? 'Duraklatıldı' : 'Aktif'}
-            </Text>
-            {/* Progress bar */}
-            <View style={{ height: 6, backgroundColor: colors.surfaceLight, borderRadius: 3, overflow: 'hidden', marginBottom: SPACING.sm }}>
-              <View style={{
-                height: '100%',
-                width: `${Math.min(100, (c.progress.filter(p => p.met).length / c.target.duration_days) * 100)}%`,
-                backgroundColor: colors.success, borderRadius: 3,
-              }} />
-            </View>
-            <Text style={{ color: colors.textMuted, ...TYPE.caption, marginBottom: SPACING.sm }}>
-              {c.progress.filter(p => p.met).length} / {c.target.duration_days} gün tamamlandı
-            </Text>
-            <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+          <ChallengeCard key={c.id} challenge={c} actions={
+            <>
               {/* ux-sweep (CH-01): 'manual' metriği otomatik değerlendirilemez — gün kullanıcıdan. */}
               {c.status === 'active' && c.target?.metric === 'manual' && (
                 <Button title="Bugünü işaretle" variant="primary" size="sm" onPress={() => runAction(async () => {
@@ -181,8 +172,8 @@ export default function ChallengesScreen() {
                   { text: 'Bırak', style: 'destructive', onPress: () => runAction(() => abandonChallenge(c.id)) },
                 ]);
               }} />
-            </View>
-          </Card>
+            </>
+          } />
         ))
       )}
 
@@ -220,57 +211,31 @@ export default function ChallengesScreen() {
           <Text style={{ color: colors.text, ...TYPE.headline, marginBottom: SPACING.sm }}>
             Kendi Challenge'ını Tanımla
           </Text>
-          <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: SPACING.sm }}>
-            Başlık (örn. "10 gün şekersiz")
-          </Text>
-          <TextInput
+          {/* Ortak Input (2px gövde, odakta marka rengi; label a11y adı da olur) ve tip seçimi
+              ChipSelect (gövdeli seçim kutucukları) — elle yazılmış çıplak TextInput'lar yerine. */}
+          <Input
+            label={'Başlık (örn. "10 gün şekersiz")'}
             value={customTitle} onChangeText={setCustomTitle}
-            placeholder="Challenge başlığı" placeholderTextColor={colors.textMuted}
-            style={{
-              backgroundColor: colors.surfaceLight, borderRadius: 8,
-              padding: SPACING.sm, color: colors.text, ...TYPE.body,
-              marginBottom: SPACING.sm,
-            }}
+            placeholder="Challenge başlığı"
+            accessibilityLabel="Başlık"
           />
-          <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: SPACING.sm }}>Tip</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginBottom: SPACING.sm }}>
-            {/* FIX (final sweep): steps type hidden on Android — Pedometer is iOS-only, the metric would never fill. */}
-            {(['water', 'protein', 'steps', 'sleep', 'custom'] as const).filter(t => Platform.OS !== 'android' || t !== 'steps').map(t => (
-              <Button
-                key={t}
-                title={t === 'water' ? 'Su' : t === 'protein' ? 'Protein' : t === 'steps' ? 'Adım' : t === 'sleep' ? 'Uyku' : 'Özel'}
-                size="sm"
-                variant={customType === t ? 'primary' : 'outline'}
-                onPress={() => setCustomType(t)}
-              />
-            ))}
-          </View>
-          <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm }}>
+          {/* FIX (final sweep): steps type hidden on Android — Pedometer is iOS-only, the metric would never fill. */}
+          <ChipSelect
+            label="Tip"
+            options={(['water', 'protein', 'steps', 'sleep', 'custom'] as const)
+              .filter(t => Platform.OS !== 'android' || t !== 'steps')
+              .map(t => ({ value: t, label: t === 'water' ? 'Su' : t === 'protein' ? 'Protein' : t === 'steps' ? 'Adım' : t === 'sleep' ? 'Uyku' : 'Özel' }))}
+            selected={customType}
+            onChange={(v) => setCustomType(v as typeof customType)}
+          />
+          <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: 4 }}>Süre (gün)</Text>
-              {/* FIX (audit a11y): screen readers get the visible label. */}
-              <TextInput
-                value={customDays} onChangeText={setCustomDays} keyboardType="numeric"
-                accessibilityLabel="Süre (gün)"
-                style={{
-                  backgroundColor: colors.surfaceLight, borderRadius: 8,
-                  padding: SPACING.sm, color: colors.text, ...TYPE.body,
-                }}
-              />
+              {/* FIX (audit a11y): screen readers get the visible label (Input label'ı a11y adı yapar). */}
+              <Input label="Süre (gün)" value={customDays} onChangeText={setCustomDays} keyboardType="numeric" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginBottom: 4 }}>Eşik (ops.)</Text>
-              {/* FIX (audit a11y): screen readers get the visible label. */}
-              <TextInput
-                value={customThreshold} onChangeText={setCustomThreshold} keyboardType="numeric"
-                placeholder="örn. 10000"
-                placeholderTextColor={colors.textMuted}
-                accessibilityLabel="Eşik"
-                style={{
-                  backgroundColor: colors.surfaceLight, borderRadius: 8,
-                  padding: SPACING.sm, color: colors.text, ...TYPE.body,
-                }}
-              />
+              <Input label="Eşik (ops.)" value={customThreshold} onChangeText={setCustomThreshold} keyboardType="numeric"
+                placeholder="örn. 10000" accessibilityLabel="Eşik" />
             </View>
           </View>
           <Button title="Başlat" onPress={handleStartCustom} />
@@ -281,22 +246,8 @@ export default function ChallengesScreen() {
       {completed.length > 0 && (
         <View style={{ marginTop: SPACING.lg }}>
           <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.sm }}>Tamamlanan / Geçmiş</Text>
-          {completed.map(c => {
-            const done = c.progress.filter(p => p.met).length;
-            return (
-              <Card key={c.id}>
-                <Text style={{ color: colors.text, ...TYPE.headline }}>
-                  {c.status === 'completed' ? '🏆 ' : ''}{c.title}
-                </Text>
-                <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>
-                  {c.status === 'completed' ? 'Tamamlandı' : 'Bırakıldı'} · {done}/{c.target.duration_days} gün
-                </Text>
-                <View style={{ height: 6, backgroundColor: colors.surfaceLight, borderRadius: 3, overflow: 'hidden', marginTop: SPACING.sm }}>
-                  <View style={{ height: '100%', width: `${Math.min(100, (done / c.target.duration_days) * 100)}%`, backgroundColor: c.status === 'completed' ? colors.success : colors.textMuted, borderRadius: 3 }} />
-                </View>
-              </Card>
-            );
-          })}
+          {/* Geçmiş de aynı kart: tamamlanan canlı kupa, bırakılan gri silüet (BadgeMedal). */}
+          {completed.map(c => <ChallengeCard key={c.id} challenge={c} />)}
         </View>
       )}
     </ScrollView>

@@ -1,24 +1,23 @@
+/**
+ * Başarımlar — Duolingo rozet vitrini (sunum: components/profile/AchievementShowcase).
+ * Bu ekran yalnız veri yükleme / hata / iskelet ve paylaşım eşlemesini tutar.
+ */
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { Ionicons } from '@expo/vector-icons';
 import { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getAchievements, type Achievement } from '@/services/achievements.service';
 import { shareMilestone } from '@/services/sharing.service';
 import { shareMilestoneCard, type MilestoneCardData } from '@/services/share-card.service';
 import { Card } from '@/components/ui/Card';
-import { SPACING, FONT } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { SPACING } from '@/lib/constants';
+import { AchievementShowcase } from '@/components/profile/AchievementShowcase';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 
-// ux-sweep (AC-02): '*', '!!!!', 'M1' yer tutucuları GERÇEK ikonlara çevrildi.
-const TYPE_ICONS: Record<string, string> = {
-  first_kg: 'trending-down-outline', five_kg: 'trending-down', half_goal: 'flag-outline', goal_reached: 'trophy',
-  streak_7: 'flame-outline', streak_30: 'flame', streak_100: 'bonfire', pr: 'barbell',
-  maintenance_1m: 'shield-checkmark-outline', maintenance_3m: 'shield-checkmark', maintenance_6m: 'shield',
-};
+// ux-sweep (AC-02): rozet ikonları artık components/profile/BadgeMedal BADGE_CATALOG'da
+// (kazanılmamış rozetlerin silüeti de aynı katalogdan çiziliyor).
 
 // P1#8: map an achievement to a shareable 1080x1920 card (share-card.service).
 function achievementToCard(a: Achievement): MilestoneCardData {
@@ -67,49 +66,13 @@ export default function AchievementsScreen() {
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {/* FIX (audit duplicate-title): Native header renders the title; in-body H1 removed as redundant. */}
 
-      {items.length === 0 ? (
-        <Card>
-          <View style={{ alignItems: 'center', paddingVertical: SPACING.xl, gap: SPACING.sm }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: colors.primary, ...TYPE.title3 }}>★</Text>
-            </View>
-            <Text style={{ color: colors.text, ...TYPE.headline, textAlign: 'center' }}>Henüz başarımın yok</Text>
-            <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center' }}>Kilo, antrenman ve seri kayıtların biriktikçe başarımların burada görünecek. Kayıt girmeye devam et!</Text>
-          </View>
-        </Card>
-      ) : (
-        items.map(a => (
-          <View key={a.id} style={{ backgroundColor: colors.card, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.sm, borderWidth: 1, borderColor: colors.primary, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
-            {/* FIX (ux-polish): decorative placeholder glyph — hide from screen readers so TalkBack
-                doesn't read the raw characters before each title (the title already names it). */}
-            <View importantForAccessibility="no-hide-descendants" accessibilityElementsHidden style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name={(TYPE_ICONS[a.achievement_type] ?? 'ribbon-outline') as never} size={22} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.text, ...TYPE.headline }}>{a.title}</Text>
-              {a.description && <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 2 }}>{a.description}</Text>}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
-                <Text style={{ color: colors.textMuted, ...TYPE.caption }}>
-                  {new Date(a.achieved_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                </Text>
-                {/* D17: Share button */}
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-                  onPress={async () => { haptics.tap(); const ok = await shareMilestoneCard(achievementToCard(a)); if (!ok) shareMilestone(a.title, a.description ?? ''); }}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${a.title} başarımını paylaş`}
-                  style={{
-                    paddingVertical: 4, paddingHorizontal: SPACING.sm, borderRadius: 8,
-                    backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '40',
-                  }}
-                >
-                  <Text style={{ color: colors.primary, ...TYPE.caption, fontWeight: '600' }}>Paylaş</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        ))
-      )}
+      {/* Duolingo rozet vitrini: kahraman kart + kazanılanlar (canlı, gövdeli) + sıradakiler
+          (gri silüet). Boş durum da vitrinin kendisi — kilitli rozetler neyin peşinden
+          koşulacağını gösterir (eski "★ Henüz başarımın yok" kartının yerine). */}
+      <AchievementShowcase
+        items={items}
+        onShare={async (a) => { haptics.tap(); const ok = await shareMilestoneCard(achievementToCard(a)); if (!ok) shareMilestone(a.title, a.description ?? ''); }}
+      />
     </ScrollView>
   );
 }

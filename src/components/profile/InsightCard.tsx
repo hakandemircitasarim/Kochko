@@ -1,11 +1,14 @@
 /**
- * AI Insight Card - Theme-aware
+ * AI Insight Card — "Koçun seni tanıyor" (Duolingo dili, §0-A)
+ * Kart profil listeleriyle aynı yastık: RADIUS.lg + 2px gri kenar. Başlıkta soyut göz
+ * ikonu yerine Koçko'nun kendisi konuşuyor (karakter); porsiyon çipleri opak pastel.
  */
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, mix } from '@/lib/design';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 
 interface Pattern { type: string; description: string; trigger?: string; intervention?: string; }
 interface Props {
@@ -28,22 +31,26 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
   return (
     <View style={{
       // FIX (audit radius-scale): kart yarıçapını Card primitive ile tutarlı RADIUS.md yap.
-      backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md,
-      // FIX (audit UI-DS-07): light branch used CARD_SHADOW (rgba(255,255,255,0.08) — an
-      // invisible white border on the white light-mode card). Use colors.border in BOTH
-      // themes so the elevation affordance is visible everywhere.
-      borderWidth: isDark ? 1 : 0.5, borderColor: colors.border,
+      backgroundColor: colors.card, borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.md,
+      // FIX (audit UI-DS-07): light branch used CARD_SHADOW (an invisible white border).
+      // Duolingo grup kenarı: 2px gri (açıkta progressTrack, koyuda border — Button outline kuralı).
+      borderWidth: 2, borderColor: isDark ? colors.border : colors.progressTrack,
     }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-          <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="eye" size={20} color={colors.primary} />
+          <View
+            importantForAccessibility="no-hide-descendants"
+            accessibilityElementsHidden
+            style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: mix(colors.primary, colors.card, isDark ? 0.24 : 0.12), alignItems: 'center', justifyContent: 'center' }}
+          >
+            <KochkoMascot size={36} />
           </View>
           <Text style={{ ...TYPE.headline, color: colors.text }}>Koçun seni tanıyor</Text>
         </View>
         {onResetAll && (
           <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => Alert.alert('Sıfırla', 'Tüm notlar silinecek.', [{ text: 'İptal' }, { text: 'Sıfırla', style: 'destructive', onPress: onResetAll }])}>
-            <Text style={{ ...TYPE.caption, color: colors.error, fontWeight: '600' }}>Sıfırla</Text>
+            {/* Küçük kırmızı metin errorText (AA, kural 7). */}
+            <Text style={{ ...TYPE.caption, color: colors.errorText, fontWeight: '700' }}>Sıfırla</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -76,7 +83,7 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
           {patterns.map((p, i) => (
             // FIX (audit destructive-delete): görünür/a11y sil butonu ekle, long-press kısayolu korunur.
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 4, gap: SPACING.xs }}>
-              <View style={{ width: 3, height: 14, backgroundColor: PATTERN_COLORS[p.type] ?? colors.textMuted, borderRadius: 2, marginTop: 3 }} />
+              <View style={{ width: 4, height: 16, backgroundColor: PATTERN_COLORS[p.type] ?? colors.textMuted, borderRadius: 2, marginTop: 3 }} />
               <TouchableOpacity activeOpacity={MOTION.pressOpacity} style={{ flex: 1 }} onLongPress={() => handleDeleteNote(p.description)}>
                 <Text style={{ ...TYPE.body, color: colors.text }}>{p.description}</Text>
                 {p.intervention && <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }}>Müdahale: {p.intervention}</Text>}
@@ -103,8 +110,8 @@ export function InsightCard({ generalSummary, patterns, portionCalibration, coac
           <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.xs }}>PORSİYON</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs }}>
             {Object.entries(portionCalibration).map(([food, grams]) => (
-              <View key={food} style={{ backgroundColor: colors.surfaceLight, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 3 }}>
-                <Text style={{ ...TYPE.caption, color: colors.text }}>{food}: {String(grams)}g</Text>
+              <View key={food} style={{ backgroundColor: mix(colors.protein, colors.card, isDark ? 0.22 : 0.12), borderRadius: RADIUS.pill, paddingHorizontal: SPACING.sm + 2, paddingVertical: 4 }}>
+                <Text style={{ ...TYPE.caption, color: colors.text, fontWeight: '600' }}>{food}: {String(grams)}g</Text>
               </View>
             ))}
           </View>

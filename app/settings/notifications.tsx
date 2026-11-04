@@ -7,11 +7,13 @@ import { useAuthStore } from '@/stores/auth.store';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DateTimeField } from '@/components/ui/DateTimeField';
+import { ChoiceTile } from '@/components/ui/ChoiceTile';
+import { SettingsGroup, SettingsIcon } from '@/components/settings/SettingsList';
 import { Toggle } from '@/components/settings/ToggleRow'; // FIX (audit UI-DS-03): shared toggle primitive
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
-import { a11ySwitch, getContrastColor } from '@/lib/accessibility';
+import { a11ySwitch } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
 const TYPE_LABELS: Record<string, string> = {
@@ -150,7 +152,7 @@ export default function NotificationsScreen() {
           onPress={() => Linking.openSettings().catch(() => {})}
           accessibilityRole="button"
           accessibilityLabel="Bildirim izni kapalı. Telefon ayarlarını açmak için dokun."
-          style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.warningLight, borderWidth: 1, borderColor: colors.warning, borderRadius: 12, padding: SPACING.md, marginBottom: SPACING.lg }}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: colors.warningLight, borderWidth: 2, borderColor: colors.warning, borderRadius: RADIUS.lg, padding: SPACING.md, marginBottom: SPACING.lg }}
         >
           <Ionicons name="notifications-off-outline" size={20} color={colors.warning} />
           <View style={{ flex: 1 }}>
@@ -163,29 +165,36 @@ export default function NotificationsScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Main toggle */}
-      <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={toggleMain} {...a11ySwitch(`Bildirimler ${prefs.enabled ? 'Açık' : 'Kapalı'}`, prefs.enabled)} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.lg, minHeight: 44 }}>
-        {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns the switch role + press). */}
-        <Toggle value={prefs.enabled} onToggle={toggleMain} />
-        <Text style={{ color: colors.text, ...TYPE.headline }}>Bildirimler {prefs.enabled ? 'Açık' : 'Kapalı'}</Text>
-      </TouchableOpacity>
+      {/* Main toggle — gruplu kart (SettingsList dili): ikon kutucuğu + başlık + marka renkli
+          anahtar sağda. Satır switch rolünü ve basışı taşımaya devam ediyor. */}
+      <SettingsGroup style={{ marginBottom: SPACING.lg }}>
+        <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={toggleMain} {...a11ySwitch(`Bildirimler ${prefs.enabled ? 'Açık' : 'Kapalı'}`, prefs.enabled)} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, padding: SPACING.md, minHeight: 64 }}>
+          <SettingsIcon icon={prefs.enabled ? 'notifications' : 'notifications-off-outline'} color={prefs.enabled ? colors.primary : colors.textMuted} size={40} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.text, ...TYPE.headline, fontWeight: '700' }}>Bildirimler {prefs.enabled ? 'Açık' : 'Kapalı'}</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>{prefs.enabled ? 'Koçun seni doğru anda dürtecek.' : 'Koçun sana mesaj göndermeyecek.'}</Text>
+          </View>
+          {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns the switch role + press). */}
+          <Toggle value={prefs.enabled} onToggle={toggleMain} />
+        </TouchableOpacity>
+      </SettingsGroup>
 
       {prefs.enabled && (
         <>
           {/* Daily limit */}
           <Card title="Günlük Sınır">
             <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.sm }}>Günde en fazla kaç bildirim almak istiyorsun?</Text>
-            <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+            {/* Seçim grubu = ChoiceTile (gövdeli Duolingo cevap kutucuğu); eskiden elle yazılmış
+                dolu menekşe kutular basınca soluyordu. a11y: radio + "Günde en fazla N bildirim". */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }} accessibilityRole="radiogroup" accessibilityLabel="Günlük bildirim sınırı">
               {[3, 5, 7, 10].map(n => (
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={n} onPress={() => persist({ ...prefs, dailyLimit: n })}
-                  accessibilityRole="button"
+                <ChoiceTile
+                  key={n}
+                  label={`${n} bildirim`}
+                  selected={prefs.dailyLimit === n}
+                  onPress={() => persist({ ...prefs, dailyLimit: n })}
                   accessibilityLabel={`Günde en fazla ${n} bildirim`}
-                  accessibilityState={{ selected: prefs.dailyLimit === n }}
-                  style={{ flex: 1, minHeight: 44, paddingVertical: SPACING.sm, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-                    backgroundColor: prefs.dailyLimit === n ? colors.primary : colors.surfaceLight,
-                    borderWidth: 1, borderColor: prefs.dailyLimit === n ? colors.primary : colors.border }}>
-                  <Text style={{ color: prefs.dailyLimit === n ? getContrastColor(colors.primary) : colors.textSecondary, ...TYPE.headline }}>{n}</Text>
-                </TouchableOpacity>
+                />
               ))}
             </View>
           </Card>
@@ -209,9 +218,9 @@ export default function NotificationsScreen() {
               // by the parent's explicit accessibilityLabel).
               <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={key} onPress={() => toggleType(key)}
                 {...a11ySwitch(TYPE_DESCRIPTIONS[key] ? `${label}. ${TYPE_DESCRIPTIONS[key]}` : label, !!isOn)}
-                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.md, minHeight: 44, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+                style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: SPACING.md, minHeight: 56, paddingVertical: SPACING.sm, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ color: colors.text, ...TYPE.body }}>{label}</Text>
+                  <Text style={{ color: colors.text, ...TYPE.body, fontWeight: '600' }}>{label}</Text>
                   {/* FIX (ux-round3 #15): describe what the type actually does. */}
                   {TYPE_DESCRIPTIONS[key] ? (
                     <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 1 }}>{TYPE_DESCRIPTIONS[key]}</Text>

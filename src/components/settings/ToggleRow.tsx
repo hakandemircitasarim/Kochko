@@ -1,11 +1,19 @@
 /**
  * Toggle Row - reusable toggle switch row for settings screens.
+ *
+ * Duolingo dili (§0-A/§0-B): açıkken iz MARKA menekşesi, kapalıyken Button/ChoiceTile'ın gri
+ * gövdesi (açıkta progressTrack, koyuda border — eski surfaceLight açık temada #F0F2F5 idi,
+ * #F5F7FA zeminde kapalı anahtar neredeyse görünmüyordu). Topuz her iki temada beyaz ve
+ * altında ince bir raf var (gövdeli topuz); konum değişince yaylanarak kayar
+ * (translateX, native driver). Reduce-motion → anında yerine oturur.
  */
-import { View, Text, TouchableOpacity } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, Animated } from 'react-native';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { useTheme } from '@/lib/theme'; // FIX (audit UI-DS-03): theme-react (was static COLORS snapshot)
 import { SPACING } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
-import { a11ySwitch, getContrastColor } from '@/lib/accessibility'; // FIX (audit UI-PR-01)
+import { a11ySwitch } from '@/lib/accessibility'; // FIX (audit UI-PR-01)
 
 // FIX (audit UI-DS-03): single themed iOS-style toggle primitive. The 48x28 r14 track +
 // 24x24 r12 knob markup was duplicated as raw inline JSX in notifications.tsx (twice),
@@ -20,11 +28,22 @@ interface ToggleProps {
 }
 
 export function Toggle({ value, onToggle, disabled, accessibilityLabel }: ToggleProps) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const reduceMotion = useReduceMotion();
+  const travel = 48 - 24 - 4; // iz genişliği - topuz - 2x padding
+  const pos = useRef(new Animated.Value(value ? 1 : 0)).current;
 
-  // Knob color: contrast token over primary when ON, theme text when OFF (theme-aware,
-  // generalizes the old hard-coded #fff while preserving the if-settings contrast fix).
-  const knobColor = value ? getContrastColor(colors.primary) : colors.text;
+  useEffect(() => {
+    if (reduceMotion) { pos.setValue(value ? 1 : 0); return; }
+    const anim = Animated.spring(pos, { toValue: value ? 1 : 0, friction: 7, tension: 160, useNativeDriver: true });
+    anim.start();
+    return () => anim.stop();
+  }, [value, reduceMotion, pos]);
+
+  // Topuz beyaz: menekşe izde de gri izde de okunur (eski kapalı topuz `colors.text` koyu
+  // temada açık griydi, açık temada siyah bir nokta gibi duruyordu).
+  const knobColor = '#FFFFFF';
+  const offTrack = isDark ? colors.border : colors.progressTrack;
 
   // a11y: when this is the interactive element (label given), announce it as a switch and
   // make the track/knob the touch target. When used decoratively inside another switch row,
@@ -42,14 +61,16 @@ export function Toggle({ value, onToggle, disabled, accessibilityLabel }: Toggle
     <View
       style={{
         width: 48, height: 28, borderRadius: 14,
-        backgroundColor: value ? colors.primary : colors.surfaceLight,
+        backgroundColor: value ? colors.primary : offTrack,
         justifyContent: 'center', padding: 2,
         opacity: disabled ? 0.5 : 1,
       }}
     >
-      <View style={{
+      <Animated.View style={{
         width: 24, height: 24, borderRadius: 12, backgroundColor: knobColor,
-        alignSelf: value ? 'flex-end' : 'flex-start',
+        // Topuzun rafı: alt kenarda koyu ince şerit — gövdeli tuş dilinin minyatürü.
+        borderBottomWidth: 2, borderBottomColor: value ? colors.primaryDark : (isDark ? 'rgba(0,0,0,0.35)' : '#C3C8D2'),
+        transform: [{ translateX: pos.interpolate({ inputRange: [0, 1], outputRange: [0, travel] }) }],
       }} />
     </View>
   );
@@ -84,12 +105,12 @@ export function ToggleRow({ label, description, value, onToggle, disabled }: Pro
       accessibilityState={{ checked: value, disabled: !!disabled }}
       style={{
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: colors.border,
+        paddingVertical: SPACING.md, minHeight: 56, borderBottomWidth: 1, borderBottomColor: colors.border,
         opacity: disabled ? 0.5 : 1, // FIX (audit UI-PR-01)
       }}
     >
       <View style={{ flex: 1, marginRight: SPACING.md }}>
-        <Text style={{ ...TYPE.body, color: colors.text }}>{label}</Text>
+        <Text style={{ ...TYPE.body, fontWeight: '600', color: colors.text }}>{label}</Text>
         {description && <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>{description}</Text>}
       </View>
       {/* FIX (audit UI-DS-03): shared <Toggle/> primitive (decorative; row owns the switch role). */}
