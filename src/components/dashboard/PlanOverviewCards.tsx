@@ -17,7 +17,7 @@ import { TYPE, MOTION } from '@/lib/design';
 import { getActive, getDraft, isoDateMondayOfWeek, type PlanRow, type DietPlanData, type WorkoutPlanData } from '@/services/plan.service';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { PressableCard } from '@/components/ui/PressableCard';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
 
 interface Props {
   userId: string | undefined;
@@ -163,8 +163,10 @@ function PlanCard({
   currentWeekStart: string;
   onPress: () => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const idx = todayIdx;
+  // Gövdeli kart grisi — Button outline / ChoiceTile / kayıt kutucuklarıyla aynı.
+  const cardEdge = isDark ? colors.border : colors.progressTrack;
 
   const { primary, secondary, chip } = (() => {
     if (!plan) {
@@ -237,19 +239,21 @@ function PlanCard({
   })();
 
   return (
-    <PressableCard
+    <ShelfPressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${title}. ${primary}. ${secondary}`}
       accessibilityHint={plan ? 'Plan detayları için aç' : hasDraft ? 'Taslağı gözden geçir' : 'Yeni plan oluştur'}
-      style={{
+      radius={RADIUS.md}
+      shelfColor={cardEdge}
+      // Gövdeli kart (§0-A): dokunulabilir kart bir tuş — 2px gri çerçeve + aynı gri raf,
+      // basınca rafa iner. Kardeşi StatStrip kartları da artık gövdeli; eski 0.5 hairline
+      // uyumu (ux-pass5) yerini bu ortak dile bıraktı.
+      faceStyle={{
         backgroundColor: colors.card,
-        borderRadius: RADIUS.md,
         padding: SPACING.md,
-        // FIX (ux-pass5): kardeş dashboard kartları (StatStrip, HeroSection, CoachingNudge,
-        // ui/Card) 0.5 hairline — 1'lik kenarlık aynı ekranda 2x kalın görünüyordu.
-        borderWidth: 0.5,
-        borderColor: colors.border,
+        borderWidth: 2,
+        borderColor: cardEdge,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
@@ -306,6 +310,6 @@ function PlanCard({
         </View>
         <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
       </View>
-    </PressableCard>
+    </ShelfPressable>
   );
 }

@@ -16,7 +16,7 @@ import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import type { GoalProgress, PaceStatus } from '@/lib/goal-progress';
 import { formatISODateTR } from '@/lib/day-boundary';
-import { PressableCard } from '@/components/ui/PressableCard';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 
 interface Props {
@@ -28,7 +28,9 @@ interface Props {
 const nf = (n: number) => String(n).replace('.', ',');
 
 export function GoalProgressCard({ progress, goalType, onPress }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  // Gövdeli kart grisi — Button outline / ChoiceTile / plan kartlarıyla aynı.
+  const cardEdge = isDark ? colors.border : colors.progressTrack;
 
   const isWeightGoal = goalType === 'lose_weight' || goalType === 'gain_weight' || goalType === 'gain_muscle';
   if (!isWeightGoal) return null;
@@ -66,7 +68,7 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
       : colors.primary;
 
   return (
-    <PressableCard
+    <ShelfPressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={
@@ -74,11 +76,13 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
           ? 'Hedefine ulaştın. Hedef ayarlarını açmak için dokun'
           : `Hedef: ${a11yProgressLine}. ${badge.label}.${etaText ? ` Tahmini bitiş ${etaText}.` : ''} Detay için dokun`
       }
-      style={{
+      // Gövdeli kart (§0-A): 2px gri çerçeve + aynı gri raf, basınca rafa iner.
+      radius={RADIUS.md}
+      shelfColor={cardEdge}
+      faceStyle={{
         backgroundColor: colors.card,
-        borderRadius: RADIUS.md,
-        borderWidth: 0.5,
-        borderColor: colors.border,
+        borderWidth: 2,
+        borderColor: cardEdge,
         padding: SPACING.lg,
       }}
     >
@@ -124,6 +128,6 @@ export function GoalProgressCard({ progress, goalType, onPress }: Props) {
           )}
         </>
       )}
-    </PressableCard>
+    </ShelfPressable>
   );
 }
