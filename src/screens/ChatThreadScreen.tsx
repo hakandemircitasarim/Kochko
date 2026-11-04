@@ -13,9 +13,10 @@ import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity, ScrollView,
-  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Animated,
+  KeyboardAvoidingView, Platform, ActivityIndicator, Image, Alert, Keyboard, Share, Animated, Easing,
   NativeSyntheticEvent, NativeScrollEvent, BackHandler, Modal, Linking,
 } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { PlanPreviewCard } from '@/components/plan/PlanPreviewCard';
 import { FullPlanModal } from '@/components/plan/FullPlanModal';
@@ -49,6 +50,13 @@ import { ThinkingIndicator } from '@/components/chat/ThinkingIndicator';
 import { buildThinkingScript, predictTurnKind, type ThinkingScript, type TurnKind } from '@/lib/thinking-stages';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { SkeletonBlock } from '@/components/ui/Skeleton';
+import { Button } from '@/components/ui/Button';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
+import { ChatChip } from '@/components/chat/ChatChip';
+import {
+  CoachAvatar, SpeechTail, bodyEdge, COACH_AVATAR, COACH_SLOT, BUBBLE_RADIUS, BUBBLE_TAIL_RADIUS, BUBBLE_BORDER,
+} from '@/components/chat/CoachSpeech';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
 import {
   MacroSummary, MacroRing, SimulationCard, WeeklyBudgetBar, QuickSelectButtons,
@@ -59,7 +67,7 @@ import {
 import { useNetworkStatus } from '@/hooks/useNetworkStatus';
 import { useTheme } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, alpha, mix } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { getContrastColor } from '@/lib/accessibility';
 import { isActivePremium } from '@/lib/premium-gate';
@@ -315,21 +323,23 @@ function isEmergencyMessage(text: string): boolean {
 function CrisisBlock({ text }: { text: string }) {
   const { colors } = useTheme();
   return (
-    <View style={{ backgroundColor: colors.errorLight, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: colors.error, padding: SPACING.md }}>
+    // Balonun içinde ayrı bir acil durum yastığı: opak gül pastel + 2px kırmızı çerçeve;
+    // arama tuşu ortak gövdeli danger Button (lg) — en kritik eylem en "basılabilir" görünen.
+    <View style={{ backgroundColor: mix(colors.error, colors.card, 0.1), borderRadius: RADIUS.sm + 2, borderWidth: 2, borderColor: colors.error, padding: SPACING.md }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.sm }}>
-        <Ionicons name="alert-circle" size={20} color={colors.error} />
-        <Text style={{ color: colors.error, ...TYPE.overline }}>ACİL DESTEK</Text>
+        <Ionicons name="alert-circle" size={20} color={colors.errorText} />
+        <Text style={{ color: colors.errorText, ...TYPE.overline }}>ACİL DESTEK</Text>
       </View>
       <Text selectable style={{ ...TYPE.body, color: colors.text }}>{text}</Text>
-      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-        onPress={() => { haptics.tap(); Linking.openURL('tel:112').catch(() => {}); }}
-        accessibilityRole="button"
+      <Button
+        title="Hemen 112'yi Ara"
+        variant="danger"
+        size="lg"
         accessibilityLabel="Hemen 112'yi ara"
-        style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, minHeight: 48, borderRadius: RADIUS.md, backgroundColor: colors.error }}
-      >
-        <Ionicons name="call" size={18} color={getContrastColor(colors.error)} />
-        <Text style={{ color: getContrastColor(colors.error), ...TYPE.headline }}>Hemen 112'yi Ara</Text>
-      </TouchableOpacity>
+        icon={<Ionicons name="call" size={18} color={getContrastColor(colors.error)} />}
+        onPress={() => { haptics.tap(); Linking.openURL('tel:112').catch(() => {}); }}
+        style={{ marginTop: SPACING.md }}
+      />
     </View>
   );
 }
@@ -575,6 +585,8 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
   // FIX (kullanıcı bulgusu: "klavye düzeni çok kalabalık"): kamera + barkod + geçmiş
   // tarih tek "+" düğmesinin arkasında — açılınca composer ÜSTÜNDE kompakt çip sırası.
   const [showAttachTray, setShowAttachTray] = useState(false);
+  // Yalnız sunum: besteleyici çerçevesi odakta marka rengine döner (ui/Input ile aynı dil).
+  const [composerFocused, setComposerFocused] = useState(false);
   // FIX (ux-round2 #8): in-thread search — the one continuous thread grows for weeks and "geçen
   // hafta koç ne demişti" had no answer but endless scrolling. A live client-side FILTER over the
   // loaded window (safer than scrollToIndex on an inverted list); honestly scoped to loaded msgs.
@@ -2021,20 +2033,8 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         {/* ux-pass2: no back chevron — this is a TAB now, the tab bar below is the
             navigation. (Hardware back still exits to the home tab via handleBack.) */}
         {/* Başlıktaki kimlik plakası soyut ✨ değil KOÇKO — sohbetin muhatabı karakter (§0-A). */}
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 12,
-            backgroundColor: colors.primary + '22',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.primary + '44',
-          }}
-        >
-          <KochkoMascot size={28} />
-        </View>
+        {/* Mesajlardaki avatarla AYNI plaka (CoachSpeech) — başlıktaki kişi balondaki kişi. */}
+        <CoachAvatar />
         <View style={{ flex: 1 }}>
           <Text style={{ ...TYPE.title3, color: colors.text }}>Kochko</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
@@ -2147,35 +2147,34 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             inverted
             data={displayRows}
             keyExtractor={item => item.kind === 'separator' ? `sep-${item.key}` : (item.msg as UIMessage).id}
-            renderItem={({ item }) => {
+            renderItem={({ item, index }) => {
               if (item.kind === 'separator') return <DateSeparator label={item.label} />;
               const m = item.msg as UIMessage;
               if (m.topicMarker) return <TopicMarker label={m.topicMarker} />;
-              return <MessageBubble message={m} incompleteKeys={incompleteKeys} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={stableRetry} onEditUser={handleEditUserMessage} onOpenPhoto={setFullscreenPhoto} onOpenPlan={stableOpenPlan} sending={sending} isLastPending={m.id === lastPendingUserId} />;
+              // Yalnız sunum — mesajlaşma gruplaması: veri ters sıralı (en yeni başta), yani
+              // GÖRSEL olarak altındaki satır index-1. O satır aynı konuşmacının sıradan bir
+              // mesajı değilse bu balon grubun sonudur (avatar + kuyruk + ferah aralık).
+              const below = index > 0 ? displayRows[index - 1] : undefined;
+              const belowMsg = below && below.kind === 'message' ? (below.msg as UIMessage) : null;
+              const groupEnd = !belowMsg || !!belowMsg.topicMarker || belowMsg.role !== m.role;
+              return <MessageBubble groupEnd={groupEnd} message={m} incompleteKeys={incompleteKeys} dashboardMacros={dashboardMacros} macroTargets={macroTargets} onQuickSelect={handleQuickSelect} onConfirm={handlePlanConfirm} onPlanRejectReason={handlePlanRejectReason} onLowConfConfirm={handleLowConfConfirm} onLowConfReject={handleLowConfReject} onPersonaConfirm={handlePersonaConfirm} onPersonaReject={handlePersonaReject} onSaveRecipe={handleSaveRecipe} totalCalories={totalCalories} weeklyBudgetRemaining={weeklyBudgetRemaining} onTTSToggle={handleTTSToggle} speakingMsgId={speakingMsgId} onRetry={stableRetry} onEditUser={handleEditUserMessage} onOpenPhoto={setFullscreenPhoto} onOpenPlan={stableOpenPlan} sending={sending} isLastPending={m.id === lastPendingUserId} />;
             }}
             // Inverted list: ListFooter renders at the VISUAL TOP — that's where the
             // "load older" control belongs (FIX audit UX-CHT-06).
             ListFooterComponent={!searchQuery.trim() && hasMoreOlder ? (
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-                onPress={handleLoadOlder}
+              // Gövdeli küçük çip (ChatChip) — yüklenirken kilitli; a11y etiketi aynı.
+              <ChatChip
+                size="sm"
+                style={{ alignSelf: 'center', marginBottom: SPACING.md }}
                 disabled={loadingOlder}
-                accessibilityRole="button"
+                haptic={false}
+                icon={loadingOlder ? 'hourglass-outline' : olderLoadFailed ? 'refresh' : 'arrow-up'}
+                iconColor={colors.textSecondary}
                 accessibilityLabel="Daha eski mesajları yükle"
-                style={{
-                  alignSelf: 'center', marginBottom: SPACING.sm, paddingVertical: 6,
-                  paddingHorizontal: SPACING.lg, borderRadius: RADIUS.pill,
-                  backgroundColor: colors.surfaceLight, flexDirection: 'row',
-                  alignItems: 'center', gap: 6, opacity: loadingOlder ? 0.6 : 1,
-                }}
-              >
-                {loadingOlder
-                  ? <ActivityIndicator size="small" color={colors.textSecondary} />
-                  : <Ionicons name={olderLoadFailed ? 'refresh' : 'arrow-up'} size={13} color={colors.textSecondary} />}
-                <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.textSecondary }}>
-                  {/* FIX (ux-pass5): failed page fetch shows a retry cue instead of vanishing */}
-                  {loadingOlder ? 'Yükleniyor…' : olderLoadFailed ? 'Yüklenemedi — tekrar dene' : 'Daha eski mesajları yükle'}
-                </Text>
-              </TouchableOpacity>
+                // FIX (ux-pass5): failed page fetch shows a retry cue instead of vanishing
+                label={loadingOlder ? 'Yükleniyor…' : olderLoadFailed ? 'Yüklenemedi — tekrar dene' : 'Daha eski mesajları yükle'}
+                onPress={handleLoadOlder}
+              />
             ) : null}
             // Inverted list: ListHeader renders at the VISUAL BOTTOM — starter suggestions
             // sit under the lone first message (FIX audit UX-CHT-03).
@@ -2202,40 +2201,38 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               #1): widens into a labeled "Yeni yanıt" pill when a reply landed below while scrolled
               up, so "new content" is visually distinct from "just older history below". */}
           {showScrollToBottom && (
-            <TouchableOpacity
+            // Gövdeli yüzen tuş: menekşe yüz + koyu raf, basınca rafa iner (solmaz).
+            <ShelfPressable
               onPress={() => scrollToBottom(true)}
-              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel={hasNewBelow ? 'Yeni yanıt geldi, en sona git' : 'En sona git'}
-              style={{
-                position: 'absolute',
-                right: SPACING.xl,
-                bottom: SPACING.md,
-                width: hasNewBelow ? undefined : 44,
+              radius={22}
+              shelfColor={colors.primaryDark}
+              style={{ position: 'absolute', right: SPACING.xl, bottom: SPACING.md }}
+              faceStyle={{
+                minWidth: 44,
                 height: 44,
                 paddingHorizontal: hasNewBelow ? SPACING.md : 0,
-                borderRadius: RADIUS.full,
                 backgroundColor: colors.primary,
                 flexDirection: 'row',
                 gap: hasNewBelow ? 6 : 0,
                 alignItems: 'center',
                 justifyContent: 'center',
-                borderWidth: 0.5,
-                borderColor: colors.border,
               }}
             >
               {hasNewBelow && (
                 <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', ...TYPE.bodyStrong, fontWeight: '700' }}>Yeni yanıt</Text>
               )}
               <Ionicons name="chevron-down" size={22} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
-            </TouchableOpacity>
+            </ShelfPressable>
           )}
         </View>
       )}
 
       {/* Typing indicator — ux-ideas #7: rotating stage label + cancel after a long wait */}
       {sending && (
-        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+        // Liste ile aynı yatay boşluk (md): göstergenin Koçko avatarı mesajlardaki avatarla hizalı.
+        <View style={{ paddingHorizontal: SPACING.md, paddingBottom: SPACING.sm, flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.sm }}>
           {thinking
             ? <ThinkingIndicator script={thinking.script} startedAt={thinking.startedAt} />
             : <TypingIndicator label={typingLabel} />}
@@ -2331,23 +2328,21 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
         </View>
       )}
 
-      {/* Undo banner */}
+      {/* Undo banner — gövdeli kehribar çip (ChatChip warning); a11y ve işleyici aynı. */}
       {undoAction && Date.now() < undoAction.expiresAt && (
-        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs, alignItems: 'center' }}>
+          <ChatChip
+            tone="warning"
+            size="sm"
+            haptic={false}
+            icon="arrow-undo"
+            label="Geri Al (10sn)"
+            accessibilityLabel="Son kaydı geri al"
             // FIX (audit UX-CHT-02): route undo through handleUndo (visible send
             // path with typing + AI bubble + dashboard refresh + error surfacing)
             // instead of a fire-and-forget request that discarded its result.
             onPress={() => handleUndo(undoAction)}
-            style={{
-              backgroundColor: colors.warning, borderRadius: RADIUS.pill,
-              paddingVertical: 6, paddingHorizontal: SPACING.xl, alignSelf: 'center',
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="Son kaydı geri al"
-          >
-            <Text style={{ ...TYPE.caption, color: getContrastColor(colors.warning) === 'black' ? '#0D0D12' : '#fff' }}>Geri Al (10sn)</Text>
-          </TouchableOpacity>
+          />
         </View>
       )}
 
@@ -2355,19 +2350,15 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
       {!isPremium && remainingMsgs != null && remainingMsgs <= 10 && (
         <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: 2 }}>
           {remainingMsgs === 0 ? (
-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+            <ChatChip
+              tone="brand"
+              size="sm"
+              haptic={false}
+              icon="lock-closed"
+              label="Günlük 50 mesaj hakkın bitti — Premium'a geç"
+              style={{ alignSelf: 'center', marginBottom: SPACING.xs }}
               onPress={() => router.push('/settings/premium')}
-              style={{
-                flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-                gap: SPACING.xs, paddingVertical: SPACING.xs,
-                backgroundColor: colors.primary + '15', borderRadius: RADIUS.pill,
-              }}
-            >
-              <Ionicons name="lock-closed" size={12} color={colors.primary} />
-              <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.primary }}>
-                Günlük 50 mesaj hakkın bitti — Premium'a geç
-              </Text>
-            </TouchableOpacity>
+            />
           ) : (
             <Text style={{
               color: remainingMsgs <= 5 ? colors.warning : colors.textMuted,
@@ -2396,34 +2387,27 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
 
       {/* #S1 Task rail — COMPACT one-line chips (the old full-height cards swallowed a third of
           the conversation and truncated their own text mid-word). Topics open inside THIS
-          conversation. Hidden while a task topic is active and while the keyboard is up. */}
+          conversation. Hidden while a task topic is active and while the keyboard is up.
+          Gövdeli çipler (ChatChip) — raf payı için sıra dikeyde 4px fazladan yer alır. */}
       {railTasks.length > 0 && !taskModeHint && !keyboardVisible && (
-        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
+        <View style={{ paddingBottom: SPACING.xs }}>
           <FlatList
             data={railTasks.slice(0, 5)}
             keyExtractor={t => t.key}
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ gap: SPACING.xs }}
+            contentContainerStyle={{ gap: SPACING.sm, paddingHorizontal: SPACING.md }}
             renderItem={({ item }) => (
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-                onPress={() => { haptics.tap(); openTaskTopic(item); }}
-                accessibilityRole="button"
+              // maxWidth 200, 11px etikete göre kesilmişti; okuma basamağına çıkınca
+              // "Beslenme alışkanlıklarını anlat" gibi başlıklar sınıra dayanıyordu. Sıra
+              // zaten yatay kaydırmalı — genişlik bedava, kırpılmış görev başlığı değil.
+              <ChatChip
+                icon="add-circle"
+                label={item.title}
+                maxLabelWidth={240}
                 accessibilityLabel={`Koçuna anlat: ${item.title}`}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  backgroundColor: colors.card, borderWidth: 1, borderColor: colors.primary + '33',
-                  borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7,
-                }}
-              >
-                <Ionicons name={'add-circle-outline' as keyof typeof Ionicons.glyphMap} size={14} color={colors.primary} />
-                {/* maxWidth 200, 11px etikete göre kesilmişti; okuma basamağına çıkınca
-                    "Beslenme alışkanlıklarını anlat" gibi başlıklar sınıra dayanıyordu. Sıra
-                    zaten yatay kaydırmalı — genişlik bedava, kırpılmış görev başlığı değil. */}
-                <Text numberOfLines={1} style={{ color: colors.text, ...TYPE.caption, fontWeight: '600', maxWidth: 240 }}>
-                  {item.title}
-                </Text>
-              </TouchableOpacity>
+                onPress={() => openTaskTopic(item)}
+              />
             )}
           />
         </View>
@@ -2435,41 +2419,37 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
           underway (≥2 msgs), and the last turn isn't already awaiting an inline choice/reply. */}
       {!taskModeHint && !keyboardVisible && !sending && input.trim() === ''
         && railTasks.length === 0 && messages.length >= 2 && !suppressQuickReplies && (
-        <View style={{ paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xs }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.xs }} keyboardShouldPersistTaps="handled">
+        <View style={{ paddingBottom: SPACING.xs }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.sm, paddingHorizontal: SPACING.md }} keyboardShouldPersistTaps="handled">
             {QUICK_REPLIES.map((q) => (
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              <ChatChip
                 key={q}
+                haptic={false}
+                icon="chatbubble-ellipses"
+                label={q}
                 onPress={() => handleQuickSelect(q)}
-                accessibilityRole="button"
-                accessibilityLabel={q}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 6,
-                  backgroundColor: colors.surfaceLight, borderWidth: 0.5, borderColor: colors.border,
-                  borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7,
-                }}
-              >
-                <Ionicons name="chatbubble-ellipses-outline" size={13} color={colors.primary} />
-                <Text style={{ color: colors.text, ...TYPE.caption, fontWeight: '600' }}>{q}</Text>
-              </TouchableOpacity>
+              />
             ))}
           </ScrollView>
         </View>
       )}
 
       {/* Input bar — bottom inset is consumed by the tab bar below (embedded-in-tab),
-          so only the small gap is needed here. */}
+          so only the small gap is needed here.
+          Duolingo besteleyicisi (2026-11-04): yazı kutusu ui/Input diliyle aynı — 2px gri
+          çerçeve, ODAKTA marka rengi; gönder kutunun DIŞINDA gövdeli yuvarlak tuş (menekşe yüz +
+          koyu raf, basınca rafa iner). İşleyiciler, kilitler ve a11y birebir aynı. */}
       <View style={{
-        paddingHorizontal: SPACING.xl, paddingTop: SPACING.sm,
+        paddingHorizontal: SPACING.md, paddingTop: SPACING.sm,
         paddingBottom: SPACING.sm,
-        borderTopWidth: 0.5, borderTopColor: colors.border, backgroundColor: colors.background,
+        borderTopWidth: 1, borderTopColor: colors.divider, backgroundColor: colors.background,
       }}>
         {/* FIX (kullanıcı bulgusu: "klavye düzeni çok kalabalık"): "+" ile açılan kompakt
             çip sırası — kamera/barkod/geçmiş-tarih buraya taşındı. KAV içinde composer'ın
             hemen üstünde render edildiği için klavyeyle kavga etmez, birlikte yükselir.
             Bir çipe dokunmak mevcut işleyiciyi AYNEN çağırır ve sırayı kapatır. */}
         {showAttachTray && (
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.xs, marginBottom: SPACING.sm }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.sm }}>
             {([
               { key: 'photo', icon: 'camera-outline', label: 'Fotoğraf', onPress: takePhoto },
               // FIX (ux-ideas #3): pickImage (galeri seçici) tanımlıydı ama hiçbir yerden
@@ -2481,22 +2461,16 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             ] as const).map((chip) => {
               const backdateActive = chip.key === 'backdate' && !!backdateDate;
               return (
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+                <ChatChip
                   key={chip.key}
-                  onPress={() => { haptics.tap(); setShowAttachTray(false); void chip.onPress(); }}
-                  accessibilityRole="button"
+                  size="sm"
+                  tone={backdateActive ? 'warning' : 'neutral'}
+                  icon={chip.icon}
+                  iconColor={colors.textSecondary}
+                  label={chip.label}
                   accessibilityLabel={backdateActive ? `Kayıt tarihi: ${formatISODateTR(backdateDate) ?? backdateDate}` : chip.label}
-                  hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}
-                  style={{
-                    flexDirection: 'row', alignItems: 'center', gap: 6,
-                    backgroundColor: colors.card, borderWidth: 0.5,
-                    borderColor: backdateActive ? colors.warning : colors.border,
-                    borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7,
-                  }}
-                >
-                  <Ionicons name={chip.icon} size={14} color={backdateActive ? colors.warning : colors.textSecondary} />
-                  <Text style={{ color: colors.text, ...TYPE.caption, fontWeight: '600' }}>{chip.label}</Text>
-                </TouchableOpacity>
+                  onPress={() => { setShowAttachTray(false); void chip.onPress(); }}
+                />
               );
             })}
           </View>
@@ -2508,17 +2482,21 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             alignSelf: 'flex-end',
             marginBottom: 4,
             ...TYPE.caption,
-            color: input.length >= 2000 ? colors.error : colors.textMuted,
+            color: input.length >= 2000 ? colors.errorText : colors.textMuted,
           }}>
             {input.length}/2000
           </Text>
         )}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.sm }}>
         <View style={{
+          flex: 1,
           flexDirection: 'row', alignItems: 'flex-end',
           backgroundColor: colors.card, borderRadius: 24,
-          borderWidth: 0.5, borderColor: input.length > 0 ? colors.primary + '66' : colors.border,
-          paddingHorizontal: SPACING.md, paddingVertical: 6,
+          borderWidth: 2,
+          borderColor: composerFocused ? colors.primary : bodyEdge(colors, isDark),
+          paddingLeft: SPACING.md, paddingRight: 6, paddingVertical: 3,
           gap: 4,
+          minHeight: 48,
           opacity: rateLimitCountdown > 0 ? 0.6 : 1,
         }}>
           {/* Text input */}
@@ -2526,13 +2504,17 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
             style={{
               // Diger yazma alani zaten 15/22; ayni rol, ayni basamak.
               flex: 1, color: colors.text, ...TYPE.body,
-              paddingVertical: 8, maxHeight: 120,
+              paddingVertical: 9, maxHeight: 120,
+              // Web: tarayıcının odak halkası menekşe odak çerçevesinin üstüne biniyordu (ui/Input ile aynı çözüm).
+              ...(Platform.OS === 'web' ? ({ outlineStyle: 'none' } as object) : null),
             }}
             // FIX (kullanıcı bulgusu: "chat tıkandı"): 'Bu konu tamamlandı — yukarıdaki
             // karta dokun' kilit placeholder'ı kaldırıldı — tamamlanma yazmayı kapatmaz.
             placeholder={rateLimitCountdown > 0 ? `Limit doldu — ${rateLimitCountdown}s sonra` : 'Mesajını yaz...'}
             placeholderTextColor={colors.textMuted}
             value={input} onChangeText={setInput}
+            onFocus={() => setComposerFocused(true)}
+            onBlur={() => setComposerFocused(false)}
             multiline maxLength={2000}
             // FIX (ux-pass2, W#10): stay editable while the coach generates — the old
             // `!sending` gate froze typing for the whole 10-60s LLM round-trip AND
@@ -2546,7 +2528,7 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               kamera + barkod + geçmiş-tarih tek "+" düğmesinin arkasına toplandı
               (çip sırası yukarıda); satırda birincil eylemler (mikrofon + gönder) kaldı.
               İşleyiciler/izin akışları birebir aynı — yalnızca yerleşim değişti. */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 2 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, paddingBottom: 5 }}>
             {/* FIX (ux-round4 #24): expand-to-full-screen appears once the draft outgrows the box. */}
             {input.length > 200 && (
               <TouchableOpacity activeOpacity={MOTION.pressOpacity}
@@ -2554,8 +2536,8 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
                 accessibilityRole="button"
                 accessibilityLabel="Tam ekran yaz"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.cardElevated, justifyContent: 'center', alignItems: 'center' }}>
-                <Ionicons name="expand-outline" size={16} color={colors.textSecondary} />
+                style={{ width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' }}>
+                <Ionicons name="expand-outline" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
             <TouchableOpacity activeOpacity={MOTION.pressOpacity}
@@ -2565,11 +2547,11 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               accessibilityState={{ expanded: showAttachTray }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
-                width: 32, height: 32, borderRadius: 16,
-                backgroundColor: showAttachTray ? colors.primary + '22' : colors.cardElevated,
+                width: 34, height: 34, borderRadius: 17,
+                backgroundColor: showAttachTray ? alpha(colors.primary, 0.14) : 'transparent',
                 justifyContent: 'center', alignItems: 'center',
               }}>
-              <Ionicons name="add-circle-outline" size={18}
+              <Ionicons name={showAttachTray ? 'close' : 'add-circle-outline'} size={22}
                 color={showAttachTray ? colors.primary : colors.textSecondary} />
             </TouchableOpacity>
             <TouchableOpacity activeOpacity={MOTION.pressOpacity}
@@ -2578,31 +2560,33 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               accessibilityLabel={isRecordingVoice ? 'Ses kaydını durdur' : 'Sesli giriş başlat'}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               style={{
-                width: 32, height: 32, borderRadius: 16,
-                backgroundColor: isRecordingVoice ? colors.error : colors.cardElevated,
+                width: 34, height: 34, borderRadius: 17,
+                backgroundColor: isRecordingVoice ? colors.error : 'transparent',
                 justifyContent: 'center', alignItems: 'center',
               }}>
-              <Ionicons name={isRecordingVoice ? 'stop' : 'mic-outline'} size={16}
+              <Ionicons name={isRecordingVoice ? 'stop' : 'mic-outline'} size={20}
                 color={isRecordingVoice ? (getContrastColor(colors.error) === 'black' ? '#0D0D12' : '#fff') : colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-              style={{
-                width: 32, height: 32, borderRadius: 16,
-                backgroundColor: colors.primary,
-                justifyContent: 'center', alignItems: 'center',
-                opacity: sendDisabled ? 0.4 : 1,
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel="Mesaj gönder"
-              accessibilityState={{ disabled: sendDisabled }}
-              onPress={() => { haptics.tap(); void handleSend(); }} disabled={sendDisabled}
-            >
-              {sending
-                ? <ActivityIndicator size="small" color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
-                : <Ionicons name="arrow-up" size={16} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />}
-            </TouchableOpacity>
           </View>
+        </View>
+          {/* Gönder — gövdeli yuvarlak tuş. Kapalıyken (boş kutu / gönderiliyor) tüm gövde
+              Button'daki gibi 0.45'e iner; yüz opak kalır, raf içinden görünmez. */}
+          <ShelfPressable
+            radius={24}
+            shelfColor={colors.primaryDark}
+            disabled={sendDisabled}
+            style={{ opacity: sendDisabled ? 0.45 : 1 }}
+            faceStyle={{ width: 48, height: 44, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            accessibilityRole="button"
+            accessibilityLabel="Mesaj gönder"
+            accessibilityState={{ disabled: sendDisabled }}
+            onPress={() => { haptics.tap(); void handleSend(); }}
+          >
+            {sending
+              ? <ActivityIndicator size="small" color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
+              : <Ionicons name="arrow-up" size={22} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />}
+          </ShelfPressable>
         </View>
       </View>
 
@@ -2629,17 +2613,16 @@ export default function ChatThreadScreen({ sessionId }: { sessionId: string }) {
               placeholderTextColor={colors.textMuted}
               accessibilityLabel="Mesajını yaz, tam ekran"
             />
-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-              onPress={() => { haptics.tap(); setComposeExpanded(false); void handleSend(); }}
-              disabled={sendDisabled}
-              accessibilityRole="button"
+            {/* Ortak gövdeli Button (lg) — elle yazılmış soluklaşan buton yerine. */}
+            <Button
+              title="Gönder"
+              size="lg"
               accessibilityLabel="Mesaj gönder"
-              accessibilityState={{ disabled: sendDisabled }}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: SPACING.md, marginTop: SPACING.sm, opacity: sendDisabled ? 0.4 : 1 }}
-            >
-              <Ionicons name="arrow-up" size={16} color={getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff'} />
-              <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', ...TYPE.bodyStrong, fontWeight: '700' }}>Gönder</Text>
-            </TouchableOpacity>
+              disabled={sendDisabled}
+              icon={<Ionicons name="arrow-up" size={18} color={getContrastColor(colors.primary)} />}
+              onPress={() => { haptics.tap(); setComposeExpanded(false); void handleSend(); }}
+              style={{ marginTop: SPACING.sm }}
+            />
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -2792,7 +2775,8 @@ function StarterSuggestions({ isOnboarding, onSuggestion, onSend }: {
   /** Send immediately (complete intents). */
   onSend: (text: string) => void;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const edge = bodyEdge(colors, isDark);
   const onboardingSuggestions = [
     { text: '30 yaşında, 80 kilo, 175 boy erkeğim', icon: 'person-outline' as const, color: colors.success, mode: 'template' as StarterMode },
     { text: 'Kilo vermek istiyorum', icon: 'trending-down-outline' as const, color: colors.error, mode: 'intent' as StarterMode },
@@ -2811,46 +2795,49 @@ function StarterSuggestions({ isOnboarding, onSuggestion, onSend }: {
         ÖRNEK BAŞLANGIÇLAR
       </Text>
       <View style={{ gap: SPACING.sm }}>
+        {/* Gövdeli öneri kartları (Duolingo cevap kutucuğu, §0-B): kart yüz + 2px gri çerçeve +
+            aynı gri raf; basınca rafa iner, solmaz. İkon karosu rengin opak pasteli (mix). */}
         {suggestions.map((s, i) => (
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+          <ShelfPressable
             key={i}
             accessibilityRole="button"
             accessibilityLabel={s.mode === 'intent' ? `${s.text} — gönder` : `${s.text} — düzenlemek için yazı kutusunu doldurur`}
-            style={{
+            radius={RADIUS.md}
+            shelfColor={edge}
+            faceStyle={{
               flexDirection: 'row',
               alignItems: 'center',
               gap: SPACING.md,
               backgroundColor: colors.card,
-              borderRadius: RADIUS.lg,
+              borderWidth: 2,
+              borderColor: edge,
               paddingVertical: SPACING.md,
-              paddingHorizontal: SPACING.lg,
-              borderWidth: 0.5,
-              borderColor: colors.border,
+              paddingHorizontal: SPACING.md,
             }}
             onPress={() => { haptics.tap(); if (s.mode === 'intent') onSend(s.text); else onSuggestion(s.text); }}
           >
             <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: RADIUS.md,
-                backgroundColor: s.color + '18',
+                width: 36,
+                height: 36,
+                borderRadius: RADIUS.sm,
+                backgroundColor: mix(s.color, colors.card, isDark ? 0.2 : 0.12),
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name={s.icon} size={16} color={s.color} />
+              <Ionicons name={s.icon} size={18} color={s.color} />
             </View>
-            <Text style={{ ...TYPE.body, color: colors.text, flex: 1 }}>{s.text}</Text>
+            <Text style={{ ...TYPE.bodyStrong, color: colors.text, flex: 1 }}>{s.text}</Text>
             {/* The icon states the behaviour: a pencil promises "you get to edit this first",
                 an arrow promises "this sends". Showing a pencil on a chip that sends — or an
                 arrow on one that only fills the box — is the affordance lying about itself. */}
             <Ionicons
-              name={s.mode === 'intent' ? 'arrow-up-circle-outline' : 'create-outline'}
-              size={14}
+              name={s.mode === 'intent' ? 'arrow-up-circle' : 'create-outline'}
+              size={20}
               color={s.mode === 'intent' ? s.color : colors.textMuted}
             />
-          </TouchableOpacity>
+          </ShelfPressable>
         ))}
       </View>
     </>
@@ -2869,25 +2856,42 @@ function EmptyState({ isOnboarding, onSuggestion, onSend, showSuggestions = true
   // example-starters ("2 yumurta yedim") are irrelevant noise — hide them there.
   showSuggestions?: boolean;
 }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const edge = bodyEdge(colors, isDark);
+  // Sekme monte kalıyor: maskotun nefes/göz kırpma döngüsü yalnız sekme odaktayken (§0-A).
+  const isFocused = useIsFocused();
   return (
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{ padding: SPACING.xl, paddingTop: SPACING.xxl, flexGrow: 1 }}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Fresh chat header — koçun kendi sekmesinde karşılayan, soyut ikon değil
-          KARAKTERİN kendisi (§0-A). */}
-      <View style={{ marginBottom: SPACING.lg }}>
-        <View style={{ marginBottom: SPACING.md, alignSelf: 'flex-start' }}>
-          <KochkoMascot size={76} animated />
+      {/* Fresh chat header — koçun kendi sekmesinde karşılayan, soyut ikon değil KARAKTERİN
+          kendisi (§0-A). Duolingo karşılama kalıbı: tam boy Koçko + ağzından çıkan balon
+          (mesaj balonlarıyla aynı çerçeve ve kuyruk), başlık/alt metin balonun içinde. */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.md, marginBottom: SPACING.xl }}>
+        <KochkoMascot size={96} mood="cheer" animated={isFocused} />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: colors.card,
+            borderRadius: BUBBLE_RADIUS,
+            borderBottomLeftRadius: BUBBLE_TAIL_RADIUS,
+            borderWidth: BUBBLE_BORDER,
+            borderColor: edge,
+            paddingHorizontal: SPACING.lg,
+            paddingVertical: SPACING.md,
+            marginBottom: SPACING.sm,
+          }}
+        >
+          <Text style={{ ...TYPE.headline, fontWeight: '800', color: colors.text, marginBottom: 2 }}>
+            Selam, ben Koçko!
+          </Text>
+          <Text style={{ ...TYPE.callout, color: colors.textSecondary }}>
+            Beslenme, antrenman, uyku — ne yedin, nasıl gidiyor, bir sonraki hamle ne olsun. Yaz, birlikte bakalım.
+          </Text>
+          <SpeechTail side="left" face={colors.card} edge={edge} bottom={14} />
         </View>
-        <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: 4 }}>
-          Kochko ile konuş
-        </Text>
-        <Text style={{ ...TYPE.body, color: colors.textSecondary }}>
-          Beslenme, antrenman, uyku — ne yedin, nasıl gidiyor, bir sonraki hamle ne olsun.
-        </Text>
       </View>
 
       {showSuggestions && <StarterSuggestions isOnboarding={isOnboarding} onSuggestion={onSuggestion} onSend={onSend} />}
@@ -2899,27 +2903,39 @@ function EmptyState({ isOnboarding, onSuggestion, onSend, showSuggestions = true
  * Thin wrapper around each message that fades + slides in on mount.
  * Pulled out of MessageBubble so hooks can live in a child component without
  * adding an effect per render to the main body.
+ *
+ * 2026-11-04: yay yerine kısa fade + yükselme (MOTION.base, ease-out) — sohbet akışında her
+ * yeni balonun zıplaması yorucuydu; mesajlaşma uygulamaları yumuşak yerleşir. Reduce-motion'da
+ * anında yerinde. Ardışık aynı konuşmacı mesajları sıkı (xs), grup sonu ferah (md) aralık alır.
  */
-function MessageBubbleFrame({ isUser, animate = true, children }: { isUser: boolean; animate?: boolean; children: React.ReactNode }) {
+function MessageBubbleFrame({ isUser, groupEnd = true, animate = true, children }: { isUser: boolean; groupEnd?: boolean; animate?: boolean; children: React.ReactNode }) {
+  const reduceMotion = useReduceMotion();
   // FIX (ux-pass2, W#71): entrance animation only for genuinely NEW messages — the old
   // unconditional spring replayed a slide-in wave over all ~50 history bubbles on every
   // thread open.
   const anim = useRef(new Animated.Value(animate ? 0 : 1)).current;
+  const started = useRef(false);
   useEffect(() => {
     if (!animate) return;
-    Animated.spring(anim, {
+    // Bayrak asenkron çözülür: animasyon ortasında true gelirse son duruma otur.
+    if (reduceMotion) { anim.setValue(1); return; }
+    if (started.current) return;
+    started.current = true;
+    const t = Animated.timing(anim, {
       toValue: 1,
-      friction: 8,
-      tension: 90,
+      duration: MOTION.base,
+      easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
-    }).start();
-  }, [anim, animate]);
-  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [6, 0] });
+    });
+    t.start();
+    return () => t.stop();
+  }, [anim, animate, reduceMotion]);
+  const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
   const opacity = anim;
   return (
     <Animated.View
       style={{
-        marginBottom: SPACING.sm,
+        marginBottom: groupEnd ? SPACING.md : SPACING.xs,
         opacity,
         transform: [{ translateY }],
         alignItems: isUser ? 'flex-end' : 'stretch',
@@ -2934,7 +2950,7 @@ function MessageBubbleFrame({ isUser, animate = true, children }: { isUser: bool
 // props change. With the now-stable (useMemo/useCallback) props from the parent,
 // unrelated re-renders (keyboard, per-second rate-limit countdown, dashboard totals)
 // no longer re-render every visible bubble.
-const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, onEditUser, onOpenPhoto, onOpenPlan, sending, isLastPending }: {
+const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, dashboardMacros, macroTargets, onQuickSelect, onConfirm, onPlanRejectReason, onLowConfConfirm, onLowConfReject, onPersonaConfirm, onPersonaReject, onSaveRecipe, totalCalories, weeklyBudgetRemaining, onTTSToggle, speakingMsgId, onRetry, onEditUser, onOpenPhoto, onOpenPlan, sending, isLastPending, groupEnd }: {
   message: UIMessage;
   // FIX (kullanıcı bulgusu): tamamlanma kartının öneri filtresi — henüz EKSİK konu
   // anahtarları (parent'ın railTasks'i). Tamamlanmış bir konu asla önerilmez.
@@ -2967,9 +2983,21 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
   // FIX (ux-round4 #8): this bubble is the newest user message and its send is in flight — shows a
   // "Gönderiliyor" glyph. Computed in the parent so only the last pending bubble is clocked.
   isLastPending?: boolean;
+  // Yalnız sunum: bu balon aynı konuşmacının ardışık mesajlarının SONUNCUSU mu (görsel olarak
+  // altındaki satır başka konuşmacı / tarih / konu işareti / liste sonu). Koç balonunda avatar +
+  // kuyruk yalnız grup sonunda çizilir; aralık da buna göre sıkılaşır (mesajlaşma gruplaması).
+  groupEnd?: boolean;
 }) {
   const { colors, isDark } = useTheme();
   const isUser = message.role === 'user';
+  // Kullanıcı balonu marka renginde ve OKUNAKLI: koyu temanın parlak menekşesi (#8B5CF6) beyazla
+  // 4,2:1'de kalıyor ve getContrastColor onu SİYAH metne çeviriyordu (mor üstünde siyah). İki
+  // temada da #6D3FE0 (açıkta primary, koyuda primaryDark) + beyaz = 6,1:1.
+  const userFace = isDark ? colors.primaryDark : colors.primary;
+  const userInk = getContrastColor(userFace) === 'black' ? '#0D0D12' : '#FFFFFF';
+  const userMeta = getContrastColor(userFace) === 'black' ? 'rgba(13,13,18,0.66)' : 'rgba(255,255,255,0.78)';
+  const edge = bodyEdge(colors, isDark);
+  const tailed = groupEnd !== false;
   const [showReasoning, setShowReasoning] = useState(false);
   // FIX (ux-round4 #23): collapse a very long assistant reply behind "Devamını oku".
   const [showFullText, setShowFullText] = useState(false);
@@ -3012,18 +3040,22 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
   }
 
   return (
-    <MessageBubbleFrame isUser={isUser} animate={/^(u-|a-|q-|topic-|greet-|onboard-)/.test(message.id)}>
+    <MessageBubbleFrame isUser={isUser} groupEnd={tailed} animate={/^(u-|a-|q-|topic-|greet-|onboard-)/.test(message.id)}>
+      {/* Koç satırı: [avatar] ◁[balon]. Avatar yalnız grup sonunda; ortadakilerde aynı boy
+          boşluk kalır ki ardışık balonlar tek hizada dursun. */}
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: COACH_SLOT - COACH_AVATAR, alignSelf: 'stretch', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+      {!isUser && <CoachAvatar visible={tailed} />}
       <View style={{
-        maxWidth: '86%',
+        maxWidth: isUser ? '86%' : '84%',
+        flexShrink: 1,
         paddingHorizontal: SPACING.lg,
         paddingVertical: SPACING.md,
-        alignSelf: isUser ? 'flex-end' : 'flex-start',
-        backgroundColor: isUser ? colors.primary : colors.card,
-        borderTopLeftRadius: 18,
-        borderTopRightRadius: 18,
-        borderBottomRightRadius: isUser ? 4 : 18,
-        borderBottomLeftRadius: isUser ? 18 : 4,
-        ...(isUser ? {} : { borderWidth: 0.5, borderColor: colors.border }),
+        backgroundColor: isUser ? userFace : colors.card,
+        borderRadius: BUBBLE_RADIUS,
+        // Kuyruğun oturduğu köşe küçülür (üçgen düz kenara otursun); grup ortasında tam yuvarlak.
+        ...(tailed ? (isUser ? { borderBottomRightRadius: BUBBLE_TAIL_RADIUS } : { borderBottomLeftRadius: BUBBLE_TAIL_RADIUS }) : {}),
+        // Koç balonu Duolingo konuşma balonu: kart yüz + 2px gri çerçeve (gövdeli yüzeylerin grisi).
+        ...(isUser ? {} : { borderWidth: BUBBLE_BORDER, borderColor: edge }),
       }}>
         {/* FIX (audit UI-CHT-05): render the user's just-sent meal photo as a
             thumbnail inside their own bubble. The local URI is carried on the
@@ -3044,7 +3076,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
             the photo thumbnail is already shown — keep any real caption text. */}
         {!(isUser && message.localPhotoUri && message.content === '[Foto gönderildi]') && (() => {
           const clean = sanitizeAssistantText(message.content);
-          const txtColor = isUser ? (getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff') : colors.text;
+          const txtColor = isUser ? userInk : colors.text;
           // No clipboard module in this repo; long-press surfaces the native share sheet.
           const shareText = () => { haptics.tap(); Share.share({ message: clean }).catch(() => {}); };
           // FIX (ux-round2 #16): a SENT user message long-press offers "Düzenle" (→ composer) too.
@@ -3096,38 +3128,20 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
 
         {/* Navigate-to chip — AI hints the user to a plan screen (Phase 5) */}
         {!isUser && message.navigateTo && (
-          <TouchableOpacity
-            onPress={() => { haptics.tap(); router.push(message.navigateTo as never); }}
-            activeOpacity={MOTION.pressOpacity}
-            accessibilityRole="button"
+          // Gövdeli menekşe çip (ChatChip brand) — basınca rafa iner; etiket/a11y aynı.
+          <ChatChip
+            size="sm"
+            tone="brand"
+            style={{ marginTop: SPACING.sm, alignSelf: 'flex-start' }}
+            icon={message.navigateTo.includes('diet') ? 'restaurant-outline' : message.navigateTo.includes('workout') ? 'barbell-outline' : 'open-outline'}
             accessibilityLabel={message.navigateTo === '/plan/diet' ? 'Diyet planına git' : message.navigateTo === '/plan/workout' ? 'Spor planına git' : 'Aç'}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              marginTop: SPACING.sm,
-              alignSelf: 'flex-start',
-              backgroundColor: colors.primary + '18',
-              borderRadius: RADIUS.full,
-              paddingHorizontal: 10,
-              paddingVertical: 5,
-              borderWidth: 0.5,
-              borderColor: colors.primary + '44',
-            }}
-          >
-            <Ionicons
-              name={message.navigateTo.includes('diet') ? 'restaurant-outline' : message.navigateTo.includes('workout') ? 'barbell-outline' : 'open-outline'}
-              size={12}
-              color={colors.primary}
-            />
-            <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.primary }}>
-              {message.navigateTo === '/plan/diet'
-                ? 'Diyet planına git'
-                : message.navigateTo === '/plan/workout'
-                  ? 'Spor planına git'
-                  : 'Aç →'}
-            </Text>
-          </TouchableOpacity>
+            label={message.navigateTo === '/plan/diet'
+              ? 'Diyet planına git'
+              : message.navigateTo === '/plan/workout'
+                ? 'Spor planına git'
+                : 'Aç →'}
+            onPress={() => router.push(message.navigateTo as never)}
+          />
         )}
 
         {/* Silent action badges (profile update, meal log, etc.) — replaces verbal "Kaydettim" */}
@@ -3147,13 +3161,17 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
           // F0/A0: a receipt REACHED the screen (not just 'the server returned one').
           if (receipt) trace('receipts_rendered');
           return receipt ? (
+            // Kayıt makbuzu yastığı: balon içi pastel + kehribar ikon karosu; makbuz metni
+            // okuma basamağında (caption'da kalori dökümü gözden kaçıyordu).
             <View style={{
-              flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: SPACING.sm,
-              backgroundColor: colors.surfaceLight, borderRadius: RADIUS.sm,
-              paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+              flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.sm,
+              backgroundColor: colors.surfaceLight, borderRadius: RADIUS.sm + 2,
+              paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm + 2,
             }}>
-              <Ionicons name="receipt-outline" size={14} color={colors.carbs} style={{ marginTop: 1 }} />
-              <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }}>{receipt}</Text>
+              <View style={{ width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: alpha(colors.carbs, 0.18) }}>
+                <Ionicons name="receipt-outline" size={15} color={colors.carbs} />
+              </View>
+              <Text style={{ ...TYPE.callout, color: colors.text, flex: 1 }}>{receipt}</Text>
             </View>
           ) : null;
         })()}
@@ -3264,23 +3282,29 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
               in-flight sends looked identical to delivered ones on slow/offline networks. */}
           {isUser && !message.failed && (message.id.startsWith('q-') || isLastPending) && (() => {
             const queued = message.id.startsWith('q-');
-            const fg = getContrastColor(colors.primary) === 'black' ? 'rgba(13,13,18,0.6)' : 'rgba(255,255,255,0.6)';
             return (
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
-                <Ionicons name={queued ? 'cloud-offline-outline' : 'time-outline'} size={11} color={fg} />
-                <Text style={{ ...TYPE.footnote, color: fg }}>{queued ? 'Kuyrukta' : 'Gönderiliyor'}</Text>
+                <Ionicons name={queued ? 'cloud-offline-outline' : 'time-outline'} size={11} color={userMeta} />
+                <Text style={{ ...TYPE.footnote, color: userMeta }}>{queued ? 'Kuyrukta' : 'Gönderiliyor'}</Text>
               </View>
             );
           })()}
-          <Text style={{ color: isUser ? (getContrastColor(colors.primary) === 'black' ? 'rgba(13,13,18,0.6)' : 'rgba(255,255,255,0.6)') : colors.textSecondary, ...TYPE.footnote, alignSelf: 'flex-end' }}>
+          <Text style={{ color: isUser ? userMeta : colors.textSecondary, ...TYPE.footnote, alignSelf: 'flex-end' }}>
             {new Date(message.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
           </Text>
         </View>
+        {/* Konuşma kuyruğu yalnız grup sonunda: koçta çerçeveli (avatara bakar), kullanıcıda dolgu. */}
+        {tailed && (isUser
+          ? <SpeechTail side="right" face={userFace} border={0} />
+          : <SpeechTail side="left" face={colors.card} edge={edge} />)}
+      </View>
       </View>
 
+      {/* Balonun altındaki ekler (simülasyon, bütçe, geri bildirim, düşünce süreci) balonla
+          aynı sol hizada: avatar sütunu kadar girinti. */}
       {/* Simulation card */}
       {!isUser && message.simulationData && (
-        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
+        <View style={{ maxWidth: '86%', alignSelf: 'flex-start', paddingLeft: COACH_SLOT, marginTop: SPACING.xs }}>
           <SimulationCard
             foodName={message.simulationData.foodName}
             calories={message.simulationData.calories}
@@ -3297,7 +3321,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
           pass total=0 → a broken "X / 0 kcal" card with a negative "Kalan". Skip it. */}
       {!isUser && weeklyBudgetRemaining != null && totalCalories + weeklyBudgetRemaining > 0
         && message.actions?.some(a => a.type === 'meal_log' && a.feedback) && (
-        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs, marginTop: SPACING.xs }}>
+        <View style={{ maxWidth: '86%', alignSelf: 'flex-start', paddingLeft: COACH_SLOT, marginTop: SPACING.xs }}>
           <WeeklyBudgetBar consumed={totalCalories} total={totalCalories + weeklyBudgetRemaining} />
         </View>
       )}
@@ -3306,7 +3330,7 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
 
       {/* Feedback buttons for coaching/plan/recipe messages */}
       {!isUser && message.showFeedback && (
-        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs }}>
+        <View style={{ maxWidth: '86%', alignSelf: 'flex-start', paddingLeft: COACH_SLOT }}>
           <FeedbackButtons
             contextType={message.task_mode === 'recipe' ? 'recipe' : message.task_mode === 'plan' ? 'meal_suggestion' : 'coaching_message'}
             contextId={message.id}
@@ -3320,27 +3344,28 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
           showFeedback kapısından da çıkarıldı: DB'den yüklenen mesajlar showFeedback
           taşımaz ama reasoning taşır (toUIMessage) — panel reload sonrası da çalışmalı. */}
       {!isUser && message.reasoning && (
-        <View style={{ maxWidth: '82%', alignSelf: 'flex-start', paddingLeft: SPACING.xs }}>
+        <View style={{ maxWidth: '86%', alignSelf: 'flex-start', paddingLeft: COACH_SLOT }}>
           <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { haptics.tap(); setShowReasoning(v => { if (!v) trace('reasoning_opened'); return !v; }); }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             accessibilityRole="button"
             accessibilityState={{ expanded: showReasoning }}
             accessibilityLabel={showReasoning ? 'Düşünce sürecini gizle' : 'Düşünce süreci'}
-            style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: SPACING.sm, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+            style={{ marginTop: SPACING.xs, paddingVertical: 4, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', gap: 4 }}
           >
-            <Ionicons name="bulb-outline" size={12} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary, ...TYPE.caption, textDecorationLine: 'underline' }}>
+            <Ionicons name="bulb-outline" size={13} color={colors.textSecondary} />
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '600' }}>
               {showReasoning ? 'Düşünce sürecini gizle' : 'Düşünce süreci'}
             </Text>
+            <Ionicons name={showReasoning ? 'chevron-up' : 'chevron-down'} size={12} color={colors.textSecondary} />
           </TouchableOpacity>
           {showReasoning && (
             <View style={{
-              marginTop: SPACING.xs, padding: SPACING.sm, borderRadius: RADIUS.md,
-              backgroundColor: isDark ? '#FFFFFF0A' : '#0000000A',
-              borderLeftWidth: 2, borderLeftColor: colors.primary,
+              marginTop: SPACING.xs, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md, borderRadius: RADIUS.sm,
+              backgroundColor: alpha(colors.primary, isDark ? 0.14 : 0.07),
+              borderLeftWidth: 3, borderLeftColor: colors.primary,
             }}>
-              <Text style={{ color: colors.textSecondary, ...TYPE.body, fontStyle: 'italic' }}>
+              <Text style={{ color: colors.textSecondary, ...TYPE.callout, fontStyle: 'italic' }}>
                 {message.reasoning}
               </Text>
             </View>
@@ -3349,23 +3374,18 @@ const MessageBubble = memo(function MessageBubble({ message, incompleteKeys, das
       )}
 
       {isUser && message.failed && message.retryPayload && (
-        <View style={{ alignSelf: 'flex-end', marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Ionicons name="alert-circle" size={14} color={colors.error} />
-          <Text style={{ color: colors.error, ...TYPE.caption, maxWidth: 200 }} numberOfLines={2}>
+        <View style={{ alignSelf: 'flex-end', marginTop: SPACING.xs, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Ionicons name="alert-circle" size={14} color={colors.errorText} />
+          {/* Küçük kırmızı metin errorText (base error küçük boyda AA'yı geçmiyor). */}
+          <Text style={{ color: colors.errorText, ...TYPE.caption, maxWidth: 190 }} numberOfLines={2}>
             {message.errorMessage ?? 'Gönderilemedi.'}
           </Text>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-            onPress={() => { haptics.tap(); onRetry(message); }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            style={{
-              paddingVertical: 4, paddingHorizontal: 10,
-              borderRadius: RADIUS.md, backgroundColor: colors.primary,
-            }}
-            accessibilityRole="button"
+          <Button
+            title="Yeniden dene"
+            size="sm"
             accessibilityLabel="Mesajı yeniden gönder"
-          >
-            <Text style={{ color: getContrastColor(colors.primary) === 'black' ? '#0D0D12' : '#fff', ...TYPE.caption, fontWeight: '600' }}>Yeniden dene</Text>
-          </TouchableOpacity>
+            onPress={() => { haptics.tap(); onRetry(message); }}
+          />
         </View>
       )}
     </MessageBubbleFrame>
@@ -3387,27 +3407,19 @@ function PlanRejectReasons({ onPick, onCancel, disabled = false }: {
 }) {
   const { colors } = useTheme();
   return (
-    <View style={{ marginTop: SPACING.sm, gap: SPACING.xs, opacity: disabled ? 0.5 : 1 }}>
+    <View style={{ marginTop: SPACING.md, gap: SPACING.sm }}>
       <Text style={{ ...TYPE.caption, color: colors.textMuted, fontWeight: '700' }}>
         Neyi değiştirelim?
       </Text>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+      {/* Gövdeli neden çipleri (ChatChip) — kilit (`disabled`) ve a11y aynı; soluklaştırma çipin içinde. */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm }}>
         {PLAN_REJECT_REASONS.map((reason) => (
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+          <ChatChip
             key={reason.label}
+            label={reason.label}
             disabled={disabled}
-            onPress={() => { haptics.tap(); onPick(reason); }}
-            accessibilityRole="button"
-            accessibilityLabel={reason.label}
-            accessibilityState={{ disabled }}
-            style={{
-              paddingVertical: 8, paddingHorizontal: SPACING.md, minHeight: 36,
-              justifyContent: 'center', borderRadius: RADIUS.pill,
-              backgroundColor: colors.card, borderWidth: 0.5, borderColor: colors.border,
-            }}
-          >
-            <Text style={{ color: colors.text, ...TYPE.body }}>{reason.label}</Text>
-          </TouchableOpacity>
+            onPress={() => onPick(reason)}
+          />
         ))}
         <TouchableOpacity activeOpacity={MOTION.pressOpacity}
           onPress={() => { haptics.tap(); onCancel(); }}
@@ -3442,18 +3454,26 @@ function TaskCompletionCard({
   incompleteKeys: string[];
   colors: any;
 }) {
+  const { isDark } = useTheme();
+  const reduceMotion = useReduceMotion();
+  const edge = bodyEdge(colors, isDark);
   // Phase 7: mini celebration on mount — scale-in bounce on the summary chip +
   // a milestone haptic. No confetti library (would need native rebuild);
   // Animated.spring is enough to feel rewarding without being noisy.
+  // Reduce-motion: yay yok, çip anında yerinde (haptik yine çalar).
   const chipScale = useRef(new Animated.Value(0.6)).current;
   const chipOpacity = useRef(new Animated.Value(0)).current;
+  const celebrated = useRef(false);
   useEffect(() => {
-    haptics.heavy(); // task completed — milestone celebration cue
-    Animated.parallel([
+    if (!celebrated.current) { celebrated.current = true; haptics.heavy(); } // task completed — milestone celebration cue
+    if (reduceMotion) { chipScale.setValue(1); chipOpacity.setValue(1); return; }
+    const a = Animated.parallel([
       Animated.spring(chipScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
       Animated.timing(chipOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-    ]).start();
-  }, [chipScale, chipOpacity]);
+    ]);
+    a.start();
+    return () => a.stop();
+  }, [chipScale, chipOpacity, reduceMotion]);
 
   // FIX (kullanıcı bulgusu): sunucunun next_suggestions'ı tamamlanma durumundan habersiz —
   // TAMAMLANMIŞ konular öneri kartı olarak dönebiliyordu. Önce eksik-konu filtresi; filtre
@@ -3483,48 +3503,49 @@ function TaskCompletionCard({
         style={{
           flexDirection: 'row', alignItems: 'center', gap: 6,
           alignSelf: 'flex-start',
-          backgroundColor: colors.success + '18',
+          backgroundColor: alpha(colors.success, 0.14),
           borderRadius: RADIUS.full,
-          paddingHorizontal: 10, paddingVertical: 5,
+          paddingHorizontal: SPACING.md, paddingVertical: 6,
           transform: [{ scale: chipScale }],
           opacity: chipOpacity,
         }}
       >
-        <Ionicons name="checkmark-circle" size={14} color={colors.success} />
-        <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.success }}>
+        <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+        <Text style={{ ...TYPE.caption, fontWeight: '700', color: colors.success, flexShrink: 1 }}>
           {taskCompletion.summary ? `Kochko seni tanıdı — ${taskCompletion.summary}` : 'Bu konu tamamlandı'}
         </Text>
       </Animated.View>
 
-      {/* Next-task suggestion cards */}
+      {/* Next-task suggestion cards — gövdeli kartlar (ShelfPressable): kart yüz + 2px gri
+          çerçeve + gri raf, ikon karosu görevin opak pasteli. */}
       {suggestionTasks.length > 0 && (
-        <View style={{ gap: 6, marginTop: SPACING.xs }}>
+        <View style={{ gap: SPACING.sm, marginTop: SPACING.xs }}>
           <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             DEVAM EDEBİLECEĞİN KONULAR
           </Text>
           {suggestionTasks.map((task) => (
-            <TouchableOpacity
+            <ShelfPressable
               key={task.key}
               onPress={() => { haptics.tap(); handleTap(task); }}
-              activeOpacity={MOTION.pressOpacity}
               accessibilityRole="button"
               accessibilityLabel={`${task.title}: ${task.description}`}
-              style={{
+              radius={RADIUS.sm + 2}
+              shelfColor={edge}
+              faceStyle={{
                 flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-                backgroundColor: colors.background,
-                borderWidth: 1,
-                borderColor: task.color + '33',
-                borderRadius: RADIUS.md,
+                backgroundColor: colors.card,
+                borderWidth: 2,
+                borderColor: edge,
                 paddingHorizontal: SPACING.md,
                 paddingVertical: SPACING.sm + 2,
               }}
             >
               <View style={{
-                width: 32, height: 32, borderRadius: RADIUS.md,
-                backgroundColor: task.color + '20',
+                width: 34, height: 34, borderRadius: RADIUS.sm,
+                backgroundColor: mix(task.color, colors.card, isDark ? 0.2 : 0.12),
                 alignItems: 'center', justifyContent: 'center',
               }}>
-                <Ionicons name={task.icon as keyof typeof Ionicons.glyphMap} size={15} color={task.color} />
+                <Ionicons name={task.icon as keyof typeof Ionicons.glyphMap} size={16} color={task.color} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ ...TYPE.bodyStrong, fontWeight: '700', color: colors.text }}>{task.title}</Text>
@@ -3532,19 +3553,8 @@ function TaskCompletionCard({
                   {task.description}
                 </Text>
               </View>
-              <View
-                style={{
-                  width: 22,
-                  height: 22,
-                  borderRadius: 11,
-                  backgroundColor: task.color + '15',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="arrow-forward" size={12} color={task.color} />
-              </View>
-            </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={18} color={task.color} />
+            </ShelfPressable>
           ))}
         </View>
       )}
@@ -3559,18 +3569,13 @@ function TaskCompletionCard({
           suggestionTasks.length === 0 gate meant that whenever next-task cards DID render
           (the common case) a user who wanted none of them was locked out of their own
           composer with no in-screen exit. Clearing the task params in place unlocks it. */}
-      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-        onPress={() => { haptics.tap(); router.setParams({ taskModeHint: '', taskNonce: '', prefill: '' }); }}
-        accessibilityRole="button"
+      <ChatChip
+        tone="brand"
+        label="Sohbete devam et →"
         accessibilityLabel="Sohbete devam et"
-        style={{
-          marginTop: SPACING.xs, alignSelf: 'flex-start',
-          backgroundColor: colors.primary + '18', borderRadius: RADIUS.full,
-          paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
-        }}
-      >
-        <Text style={{ ...TYPE.bodyStrong, fontWeight: '700', color: colors.primary }}>Sohbete devam et →</Text>
-      </TouchableOpacity>
+        style={{ marginTop: SPACING.xs, alignSelf: 'flex-start' }}
+        onPress={() => router.setParams({ taskModeHint: '', taskNonce: '', prefill: '' })}
+      />
     </View>
   );
 }
@@ -3578,16 +3583,22 @@ function TaskCompletionCard({
 /**
  * SavedBadge — small pill that bounces in on mount.
  * Makes silent saves (principle 2) noticeable without adding chat text noise.
+ * Reduce-motion: zıplama yok, rozet anında yerinde.
  */
 function SavedBadge({ icon, label, color }: { icon: string; label: string; color: string }) {
+  const { colors } = useTheme();
+  const reduceMotion = useReduceMotion();
   const scale = useRef(new Animated.Value(0.5)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.parallel([
+    if (reduceMotion) { scale.setValue(1); opacity.setValue(1); return; }
+    const a = Animated.parallel([
       Animated.spring(scale, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }),
       Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true }),
-    ]).start();
-  }, [scale, opacity]);
+    ]);
+    a.start();
+    return () => a.stop();
+  }, [scale, opacity, reduceMotion]);
   return (
     <Animated.View
       accessibilityRole="text"
@@ -3595,19 +3606,18 @@ function SavedBadge({ icon, label, color }: { icon: string; label: string; color
       style={{
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        backgroundColor: color + '20',
+        gap: 5,
+        backgroundColor: alpha(color, 0.14),
         borderRadius: RADIUS.full,
-        paddingHorizontal: 9,
-        paddingVertical: 4,
-        borderWidth: 0.5,
-        borderColor: color + '44',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
         transform: [{ scale }],
         opacity,
       }}
     >
-      <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={12} color={color} />
-      <Text style={{ ...TYPE.caption, fontWeight: '700', color }}>{label}</Text>
+      <Ionicons name={icon as keyof typeof Ionicons.glyphMap} size={13} color={color} />
+      {/* Etiket mürekkepte (kehribar/gök mavisi küçük metin açık zeminde AA altı kalıyordu); renk ikonda. */}
+      <Text style={{ ...TYPE.caption, fontWeight: '700', color: color === colors.error ? colors.errorText : colors.text }}>{label}</Text>
     </Animated.View>
   );
 }

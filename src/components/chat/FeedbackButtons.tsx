@@ -1,15 +1,18 @@
 /**
  * Inline feedback buttons - Theme-aware
  * Spec 5.8
+ *
+ * 2026-11-04: iki hap artık sohbetin gövdeli küçük çipi (ChatChip sm) — basınca rafa iner,
+ * solmaz. "İşe yaradı" ikonunu olumlu tonda taşır; etiketler/a11y ve iyimser akış aynı.
  */
 import { useState } from 'react';
-import { View, TouchableOpacity, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, Text } from 'react-native';
 import { submitFeedback, type ContextType, type FeedbackType } from '@/services/feedback.service';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
-import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { SPACING } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
+import { ChatChip } from '@/components/chat/ChatChip';
 
 interface Props {
   contextType: ContextType;
@@ -49,47 +52,25 @@ export function FeedbackButtons({ contextType, contextId }: Props) {
 
   return (
     <View style={{ marginTop: SPACING.sm }}>
-      <View style={{ flexDirection: 'row', gap: SPACING.xs }}>
-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-          onPress={() => handleFeedback('helpful')}
-          accessibilityRole="button"
+      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+        <ChatChip
+          size="sm"
+          haptic={false}
+          icon="thumbs-up"
+          iconColor={colors.success}
+          label="İşe yaradı"
           accessibilityLabel="Bu öneri işe yaradı"
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-            paddingVertical: 5,
-            paddingHorizontal: SPACING.sm + 2,
-            borderRadius: RADIUS.full,
-            backgroundColor: colors.success + '15',
-            borderWidth: 0.5,
-            borderColor: colors.success + '33',
-          }}
-        >
-          <Ionicons name="thumbs-up" size={12} color={colors.success} />
-          <Text style={{ ...TYPE.caption, color: colors.success, fontWeight: '700' }}>İşe yaradı</Text>
-        </TouchableOpacity>
-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-          onPress={() => handleFeedback('not_for_me')}
-          accessibilityRole="button"
+          onPress={() => handleFeedback('helpful')}
+        />
+        <ChatChip
+          size="sm"
+          haptic={false}
+          icon="thumbs-down-outline"
+          iconColor={colors.textMuted}
+          label="Bana göre değil"
           accessibilityLabel="Bu öneri bana göre değil"
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-            paddingVertical: 5,
-            paddingHorizontal: SPACING.sm + 2,
-            borderRadius: RADIUS.full,
-            backgroundColor: colors.surfaceLight,
-            borderWidth: 0.5,
-            borderColor: colors.border,
-          }}
-        >
-          <Ionicons name="thumbs-down-outline" size={12} color={colors.textMuted} />
-          <Text style={{ ...TYPE.caption, color: colors.textMuted, fontWeight: '600' }}>Bana göre değil</Text>
-        </TouchableOpacity>
+          onPress={() => handleFeedback('not_for_me')}
+        />
       </View>
       {failed && (
         <Text accessible accessibilityLiveRegion="polite" style={{ ...TYPE.caption, color: colors.textMuted, marginTop: SPACING.xs }}>

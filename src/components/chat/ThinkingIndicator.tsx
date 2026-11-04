@@ -8,15 +8,22 @@
  * makes a 25-second plan feel like work being done instead of a dead spinner.
  *
  * Reduce-motion: loops and transitions are skipped, the line simply swaps.
+ *
+ * 2026-11-04 (Duolingo dili): sohbet balonlarıyla aynı konuşmacı kalıbı (CoachSpeech) —
+ * Koçko avatarı (+ nefes alan hale) balonun DIŞINDA solda, balon 2px gri çerçeveli ve
+ * avatara bakan kuyruklu. Uzun turların elle yazılmış iz+dolgu çubuğu (+ JS sürücülü
+ * genişlik ve parıltı döngüsü) ortak ProgressBar'a geçti: aynı asimptotik tahmin, dolarak
+ * gelen dolgu + parlak şerit; bir döngü eksik.
  */
 import { useEffect, useRef, useState } from 'react';
 import { View, Animated, Easing, Text, type ViewStyle } from 'react-native';
+import { ProgressBar } from '@/components/ui/ProgressBar';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { SPACING } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
-import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { Dot } from '@/components/chat/TypingIndicator';
+import { CoachAvatar, SpeechTail, bodyEdge, COACH_AVATAR, BUBBLE_RADIUS, BUBBLE_TAIL_RADIUS, BUBBLE_BORDER } from '@/components/chat/CoachSpeech';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 import {
   type ThinkingScript, type TurnKind, stageIndexAt, estimatedProgress, coreStageCount, buildThinkingScript,
@@ -48,8 +55,9 @@ export function ThinkingFor({ kind, style }: { kind: TurnKind; style?: ViewStyle
 }
 
 export function ThinkingIndicator({ script, startedAt, style }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const reduceMotion = useReduceMotion();
+  const edge = bodyEdge(colors, isDark);
 
   const [elapsed, setElapsed] = useState(() => Math.max(0, Date.now() - startedAt));
   useEffect(() => {
@@ -102,22 +110,8 @@ export function ThinkingIndicator({ script, startedAt, style }: Props) {
     return () => { if (!outDone) out.stop(); };
   }, [targetIdx, shownIdx, reduceMotion, line, pop]);
 
-  // ── Long turns: progress bar (asymptotic estimate) + a shimmer sweeping across it ──
-  const progress = useRef(new Animated.Value(0)).current;
-  const shimmer = useRef(new Animated.Value(0)).current;
-  const [barWidth, setBarWidth] = useState(0);
+  // ── Long turns: progress bar (asymptotic estimate) — ortak ProgressBar dolarak gelir ──
   const p = script.long ? estimatedProgress(script, elapsed) : 0;
-  useEffect(() => {
-    if (!script.long) return;
-    if (reduceMotion) { progress.setValue(p); return; }
-    Animated.timing(progress, { toValue: p, duration: TICK_MS * 2, easing: Easing.out(Easing.quad), useNativeDriver: false }).start();
-  }, [p, script.long, reduceMotion, progress]);
-  useEffect(() => {
-    if (!script.long || reduceMotion) return;
-    const loop = Animated.loop(Animated.timing(shimmer, { toValue: 1, duration: 1400, easing: Easing.inOut(Easing.quad), useNativeDriver: true }));
-    loop.start();
-    return () => { loop.stop(); shimmer.setValue(0); };
-  }, [shimmer, script.long, reduceMotion]);
 
   const core = coreStageCount(script);
   const haloScale = halo.interpolate({ inputRange: [0, 1], outputRange: [1, script.calm ? 1.5 : 1.7] });
@@ -136,98 +130,88 @@ export function ThinkingIndicator({ script, startedAt, style }: Props) {
       style={{
         opacity: enter,
         transform: [{ translateY: enterY }],
-        backgroundColor: colors.card,
-        borderRadius: 16,
-        borderBottomLeftRadius: 4,
-        paddingHorizontal: SPACING.md,
-        paddingVertical: 10,
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        gap: 10,
         alignSelf: 'flex-start',
-        maxWidth: '88%',
-        borderWidth: 0.5,
-        borderColor: colors.border,
-        gap: script.long ? 8 : 0,
+        maxWidth: '92%',
         ...style,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-        <View style={{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }}>
-          <Animated.View
-            pointerEvents="none"
-            style={{
-              position: 'absolute', width: 26, height: 26, borderRadius: 13,
-              backgroundColor: colors.primary, opacity: haloOpacity, transform: [{ scale: haloScale }],
-            }}
-          />
-          <KochkoMascot size={24} />
-        </View>
-
+      <CoachAvatar>
+        {/* Nefes alan hale avatarın ARKASINDA (CoachAvatar çocukları plakanın altına çizer). */}
         <Animated.View
+          pointerEvents="none"
           style={{
-            width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center',
-            backgroundColor: colors.primaryLight, transform: [{ scale: pop }, { rotate: iconRotate }],
+            position: 'absolute', width: COACH_AVATAR, height: COACH_AVATAR, borderRadius: COACH_AVATAR / 2,
+            backgroundColor: colors.primary, opacity: haloOpacity, transform: [{ scale: haloScale }],
           }}
-        >
-          <Ionicons name={stage.icon as keyof typeof Ionicons.glyphMap} size={14} color={colors.primary} />
-        </Animated.View>
+        />
+      </CoachAvatar>
 
-        <Animated.Text
-          numberOfLines={2}
-          style={{ ...TYPE.caption, color: colors.textSecondary, flexShrink: 1, opacity: line, transform: [{ translateY: lineY }] }}
-        >
-          {stage.text}
-        </Animated.Text>
-
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 2 }}>
-          <Dot delay={0} color={colors.primary} cycleMs={script.calm ? 1500 : 900} />
-          <Dot delay={script.calm ? 260 : 160} color={colors.primary} cycleMs={script.calm ? 1500 : 900} />
-          <Dot delay={script.calm ? 520 : 320} color={colors.primary} cycleMs={script.calm ? 1500 : 900} />
-        </View>
-      </View>
-
-      {script.long && (
-        <View style={{ gap: 6 }}>
-          <View
-            onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
-            style={{ height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: 'hidden', minWidth: 180 }}
+      <View
+        style={{
+          flexShrink: 1,
+          backgroundColor: colors.card,
+          borderRadius: BUBBLE_RADIUS,
+          borderBottomLeftRadius: BUBBLE_TAIL_RADIUS,
+          borderWidth: BUBBLE_BORDER,
+          borderColor: edge,
+          paddingHorizontal: SPACING.md,
+          paddingVertical: 10,
+          gap: script.long ? 8 : 0,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+          <Animated.View
+            style={{
+              width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: colors.primaryLight, transform: [{ scale: pop }, { rotate: iconRotate }],
+            }}
           >
-            <Animated.View
-              style={{
-                height: 4, borderRadius: 2, backgroundColor: colors.primary, overflow: 'hidden',
-                width: progress.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
-              }}
-            >
-              {!reduceMotion && barWidth > 0 && (
-                <Animated.View
-                  pointerEvents="none"
-                  style={{
-                    position: 'absolute', top: 0, bottom: 0, width: 36, backgroundColor: '#FFFFFF', opacity: 0.35,
-                    transform: [{ translateX: shimmer.interpolate({ inputRange: [0, 1], outputRange: [-36, barWidth] }) }],
-                  }}
-                />
-              )}
-            </Animated.View>
-          </View>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-            {Array.from({ length: core }, (_, i) => {
-              const done = i < Math.min(shownIdx, core);
-              const current = i === Math.min(shownIdx, core - 1);
-              return (
-                <View
-                  key={i}
-                  style={{
-                    width: current ? 14 : 6, height: 6, borderRadius: 3,
-                    backgroundColor: done || current ? colors.primary : colors.border,
-                    opacity: done ? 0.55 : 1,
-                  }}
-                />
-              );
-            })}
-            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginLeft: 4 }}>
-              {Math.min(shownIdx + 1, core)}/{core}
-            </Text>
+            <Ionicons name={stage.icon as keyof typeof Ionicons.glyphMap} size={15} color={colors.primary} />
+          </Animated.View>
+
+          <Animated.Text
+            numberOfLines={2}
+            style={{ ...TYPE.caption, color: colors.textSecondary, flexShrink: 1, opacity: line, transform: [{ translateY: lineY }] }}
+          >
+            {stage.text}
+          </Animated.Text>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3, marginLeft: 2 }}>
+            <Dot delay={0} color={colors.primary} cycleMs={script.calm ? 1500 : 900} />
+            <Dot delay={script.calm ? 260 : 160} color={colors.primary} cycleMs={script.calm ? 1500 : 900} />
+            <Dot delay={script.calm ? 520 : 320} color={colors.primary} cycleMs={script.calm ? 1500 : 900} />
           </View>
         </View>
-      )}
+
+        {script.long && (
+          <View style={{ gap: 6 }}>
+            <ProgressBar progress={p} color={colors.primary} height={8} duration={TICK_MS * 2} trackColor={edge} style={{ minWidth: 180 }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              {Array.from({ length: core }, (_, i) => {
+                const done = i < Math.min(shownIdx, core);
+                const current = i === Math.min(shownIdx, core - 1);
+                return (
+                  <View
+                    key={i}
+                    style={{
+                      width: current ? 14 : 6, height: 6, borderRadius: 3,
+                      backgroundColor: done || current ? colors.primary : edge,
+                      opacity: done ? 0.55 : 1,
+                    }}
+                  />
+                );
+              })}
+              <Text style={{ ...TYPE.caption, color: colors.textMuted, marginLeft: 4 }}>
+                {Math.min(shownIdx + 1, core)}/{core}
+              </Text>
+            </View>
+          </View>
+        )}
+        <SpeechTail side="left" face={colors.card} edge={edge} />
+      </View>
     </Animated.View>
   );
 }
