@@ -720,23 +720,29 @@ export default function QuickLogScreen() {
     if (!cameraPermission?.granted) {
       return (
         <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: SPACING.xl }}>
+          {/* Boş ekranda tek cümle + düz buton yerine: barkod renginde (kehribar) ikon yastığı,
+              NEDEN izin istendiğini söyleyen kısa açıklama ve gövdeli eylem (§0-B). */}
+          <View style={{
+            width: 80, height: 80, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center',
+            backgroundColor: mix(METRIC_COLORS.steps, colors.background, isDark ? 0.2 : 0.16), marginBottom: SPACING.lg,
+          }}>
+            <Ionicons name="barcode-outline" size={40} color={isDark ? METRIC_COLORS.steps : colors.warning} />
+          </View>
           {/* The only sentence on an otherwise empty screen — it is the screen's subject, not a
               caption, and it was one step below the app's reading size. */}
-          <Text style={{ ...TYPE.headline, color: colors.text, textAlign: 'center', marginBottom: SPACING.xl }}>Barkod taramak için kamera izni gerekli</Text>
+          <Text style={{ ...TYPE.title3, color: colors.text, textAlign: 'center', marginBottom: SPACING.xs }}>Barkod taramak için kamera izni gerekli</Text>
+          <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center', marginBottom: SPACING.xl }}>
+            Paket üzerindeki barkodu okuyabilmemiz için kameraya erişim gerekiyor.
+          </Text>
           {/* ux-sweep (LOG-03): kalıcı reddedilmiş izinde 'İzin ver' ölü butondu — OS artık
               diyalog göstermiyor; kullanıcıyı ayarlara götür. */}
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+          <Button
+            title={cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
+            size="lg"
             onPress={() => { if (cameraPermission && !cameraPermission.canAskAgain) { void Linking.openSettings(); } else { void requestCameraPermission(); } }}
-            accessibilityRole="button"
-            accessibilityLabel={cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
-            style={{ backgroundColor: colors.primary, borderRadius: RADIUS.sm, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xxl }}>
-            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary) }}>
-              {cameraPermission && !cameraPermission.canAskAgain ? 'Ayarları aç' : 'İzin ver'}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => setScreen('main')} accessibilityRole="button" accessibilityLabel="Geri" hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }} style={{ marginTop: SPACING.xl }}>
-            <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Geri</Text>
-          </TouchableOpacity>
+            style={{ alignSelf: 'stretch' }}
+          />
+          <Button title="Geri" variant="ghost" onPress={() => setScreen('main')} style={{ marginTop: SPACING.md }} />
         </View>
       );
     }
