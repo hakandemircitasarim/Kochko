@@ -13,7 +13,7 @@
  * İz (progress track) rengi hem KART DOLGUSUNDAN hem TEMADAN bağımsız seçildi
  * (koyuda beyaz-alfa, açıkta siyah-alfa) — DEVIR §0-A'daki iki kez düşülen tuzak.
  */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme, METRIC_COLORS } from '@/lib/theme';
@@ -21,6 +21,7 @@ import { SPACING, RADIUS, WATER_INCREMENT, MAX_FONT_SCALE } from '@/lib/constant
 import { TYPE, MOTION, mix } from '@/lib/design';
 import { getButtonA11yProps } from '@/lib/accessibility';
 import { ProgressBar } from '@/components/ui/ProgressBar';
+import { ConfettiBurst } from '@/components/ui/ConfettiBurst';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
 interface Props {
@@ -52,6 +53,8 @@ interface StatCardProps {
   actionChip?: string;
   valueMuted?: boolean;
   a11yLabel?: string;
+  /** Değiştikçe kartın içinde küçük bir konfeti patlar (ör. su hedefi tamamlandı). */
+  celebrateKey?: number | null;
 }
 
 // Plaka/çip ön planı: dört metrik renginin DÖRDÜNDE de beyazdan yüksek kontrast
@@ -60,7 +63,7 @@ interface StatCardProps {
 // ~8 / gül 5,3 / mor 3,7). Çip METİNDİR (11px): mavide 4,9:1 ile AA'yı da geçer.
 const PLATE_INK = '#2A2140';
 
-function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLongPress, a11yHint, actionChip, valueMuted, a11yLabel }: StatCardProps) {
+function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLongPress, a11yHint, actionChip, valueMuted, a11yLabel, celebrateKey }: StatCardProps) {
   const { colors, isDark } = useTheme();
   const reduceMotion = useReduceMotion();
 
@@ -165,6 +168,7 @@ function StatCard({ icon, value, label, color, sublabel, progress, onPress, onLo
         <>
           <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: shelf, bottom: 0, borderRadius: RADIUS.lg, backgroundColor: shelfBg }} />
           <View style={{ ...cardStyle, transform: [{ translateY: pressed ? shelf : 0 }] }}>{inner}</View>
+          {celebrateKey != null && <ConfettiBurst burstKey={celebrateKey} count={18} spread={90} duration={1200} />}
         </>
       )}
     </Pressable>
@@ -202,6 +206,16 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
   const waterPct = waterTarget > 0 ? waterLiters / waterTarget : 0;
   const noWeighInToday = weightKg == null && lastKnownWeightKg != null;
 
+  // Su hedefi bu oturumda GEÇİLDİĞİ an (<1 → ≥1) kartta küçük bir konfeti. İlk çizimde
+  // hedef zaten tamamsa patlamaz — kutlama bir olaya aittir, bir duruma değil.
+  const prevWaterPct = useRef<number | null>(null);
+  const [waterBurst, setWaterBurst] = useState<number | null>(null);
+  useEffect(() => {
+    const prev = prevWaterPct.current;
+    prevWaterPct.current = waterPct;
+    if (prev != null && waterTarget > 0 && prev < 1 && waterPct >= 1) setWaterBurst(Date.now());
+  }, [waterPct, waterTarget]);
+
   return (
     <View style={{ paddingHorizontal: SPACING.xl, gap: SPACING.md }}>
       <View style={{ flexDirection: 'row', gap: SPACING.md }}>
@@ -218,6 +232,7 @@ export function StatStrip({ waterLiters, waterTarget, steps, sleepHours, weightK
           onLongPress={onWaterLongPress}
           a11yHint={`Dokunuş ${Math.round(WATER_INCREMENT * 1000)} mililitre ekler, farklı miktar için basılı tut`}
           actionChip={`+${Math.round(WATER_INCREMENT * 1000)} ml`}
+          celebrateKey={waterBurst}
         />
         <StatCard
           icon="footsteps"
