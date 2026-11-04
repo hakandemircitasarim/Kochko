@@ -2,13 +2,18 @@
  * Weight/metric trend chart (Spec 8: Raporlama - visual progress display).
  * Line chart so a full month of daily readings reads as a smooth trend
  * instead of an illegible picket-fence of thin bars.
+ *
+ * Duolingo dili (§0-A): özet satırı üç düz metin yerine üç küçük "çip" — en düşük/en yüksek
+ * gri, SON değer grafiğin kendi renginin opak pastelinde (gözün ilk bakacağı yer). Grafik rengi
+ * çağırandan gelir (METRIC_COLORS — kilo gül); varsayılan marka menekşesi. Yeşil yok.
  */
 import React from 'react';
 import { View, Text, Dimensions } from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
-import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE } from '@/lib/design';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { TYPE, alpha } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
+import { tint } from '@/components/reports/ReportBits';
 
 interface DataPoint {
   label: string;
@@ -33,7 +38,7 @@ function formatShortDate(label: string): string {
 // labels clipped mid-glyph at the card's bottom edge. 180 matches app/(tabs)/progress.tsx, where
 // the same library renders the label row fully.
 export function ProgressChart({ data, color: colorProp, unit = '', height = 180 }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   // FIX (theme): varsayılan renk artık varsayılan-parametrede sabitlenmiyor — aktif temadan çözülüyor.
   const color = colorProp ?? colors.primary;
 
@@ -64,24 +69,20 @@ export function ProgressChart({ data, color: colorProp, unit = '', height = 180 
 
   const chartWidth = Dimensions.get('window').width - SPACING.xl * 4;
 
-  // Thin x-axis labels to ~6 evenly-spaced ticks so 30 daily dates don't collide.
-  const step = Math.max(1, Math.floor(data.length / 6));
+  // Thin x-axis labels to ~5 evenly-spaced ticks so 30 daily dates don't collide.
+  // 2026-11: floor(n/6) 10 noktada adımı 1'e düşürüp ON etiketi üst üste basıyordu
+  // ("15 Eki17 Eki19…", aylık raporda görüldü). ceil(n/5) — progress.tsx labelsFor ile aynı kural.
+  const step = Math.max(1, Math.ceil(data.length / 5));
   const labels = data.map((d, i) => (i % step === 0 ? formatShortDate(d.label) : ''));
 
   return (
     <View>
       {/* Summary labels — readable size + AA-contrast textSecondary */}
       {/* FIX (ux-pass5): TR ondalık — virgül ("72,5 kg"), nokta değil. */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
-        <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
-          En düşük {min.toFixed(1).replace('.', ',')}{unit}
-        </Text>
-        <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
-          Son {last.toFixed(1).replace('.', ',')}{unit}
-        </Text>
-        <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>
-          En yüksek {max.toFixed(1).replace('.', ',')}{unit}
-        </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.sm, gap: SPACING.xs }}>
+        <StatChip label="En düşük" value={`${min.toFixed(1).replace('.', ',')}${unit}`} bg={colors.surfaceLight} />
+        <StatChip label="Son" value={`${last.toFixed(1).replace('.', ',')}${unit}`} bg={tint(color, colors, isDark, 1.3)} strong />
+        <StatChip label="En yüksek" value={`${max.toFixed(1).replace('.', ',')}${unit}`} bg={colors.surfaceLight} />
       </View>
 
       {/* FIX (ux-round3 #3): collapse the chart SVG into ONE accessible image node with a spoken
@@ -91,7 +92,7 @@ export function ProgressChart({ data, color: colorProp, unit = '', height = 180 
         data={{
           labels,
           datasets: [
-            { data: values, color: () => color, strokeWidth: 2 },
+            { data: values, color: () => color, strokeWidth: 3 },
             // Transparent anchor series only widens the y-domain (see `pad`).
             { data: yAnchors, color: () => 'transparent', strokeWidth: 0, withDots: false },
           ],
@@ -103,9 +104,11 @@ export function ProgressChart({ data, color: colorProp, unit = '', height = 180 
           backgroundGradientFrom: colors.card,
           backgroundGradientTo: colors.card,
           decimalPlaces: 1,
-          color: () => color,
+          // Çizgi + (varsa) alan dolgusu aynı metrik renginden; nokta kontürü kart rengi —
+          // noktalar çizginin üstünde "boncuk" gibi ayrışır.
+          color: (o = 1) => (color.startsWith('#') ? alpha(color, o) : color),
           labelColor: () => colors.textSecondary,
-          propsForDots: { r: data.length > 20 ? '0' : '2' },
+          propsForDots: { r: data.length > 20 ? '0' : '3.5', strokeWidth: '2', stroke: colors.card },
         }}
         bezier
         style={{ borderRadius: RADIUS.sm, marginLeft: -SPACING.sm }}
@@ -114,6 +117,16 @@ export function ProgressChart({ data, color: colorProp, unit = '', height = 180 
         withShadow={false}
       />
       </View>
+    </View>
+  );
+}
+
+function StatChip({ label, value, bg, strong }: { label: string; value: string; bg: string; strong?: boolean }) {
+  const { colors } = useTheme();
+  return (
+    <View style={{ flex: 1, alignItems: 'center', backgroundColor: bg, borderRadius: RADIUS.sm, paddingVertical: SPACING.xs + 2, paddingHorizontal: SPACING.xs }}>
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.footnote, color: colors.textSecondary }}>{label}</Text>
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} numberOfLines={1} style={{ ...(strong ? TYPE.headline : TYPE.bodyStrong), color: colors.text, fontWeight: strong ? '800' : '600' }}>{value}</Text>
     </View>
   );
 }

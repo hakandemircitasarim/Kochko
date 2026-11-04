@@ -1,3 +1,7 @@
+/**
+ * Rapor yığını. 2026-11 (Duolingo dili): başlık 800 ağırlıkta — rapor gövdesindeki kalın
+ * kahraman/kart başlıklarıyla aynı ses; varsayılan 600'de ekranın en zayıf metniydi.
+ */
 import { Stack } from 'expo-router';
 import { useTheme } from '@/lib/theme';
 
@@ -8,6 +12,7 @@ export default function ReportsLayout() {
       screenOptions={{
         headerStyle: { backgroundColor: colors.background },
         headerTintColor: colors.text,
+        headerTitleStyle: { fontWeight: '800' },
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.background },
       }}

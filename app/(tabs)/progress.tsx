@@ -1,5 +1,21 @@
+/**
+ * Raporlar sekmesi — son 28 günün özeti, kilo/uyum trendleri, plato/bakım kartları ve rapor
+ * ekranlarına kapılar.
+ *
+ * Duolingo dili (DEVIR §0-A/§0-B, 2026-11):
+ *   - Seri satırı kehribar pastel plaka + dolu alev rozeti (StreakBadge tonu, mürekkep ikon).
+ *   - Özet kutucuklarının ikonları METRİK PALETİ (kilo gül, su mavi, uyku menekşe, adım kehribar);
+ *     önceden colors.pink/purple/primary karışıktı ve grafikteki kilo rengiyle tutmuyordu.
+ *   - Rapor ekranlarına giden bağlantılar kart içi liste satırından GÖVDELİ kutucuklara
+ *     (ReportTile) döndü ve özetin hemen altına alındı — sekmenin kapıları en altta kayboluyordu.
+ *   - Strateji kartları ShelfPressable; mini-cut butonları ortak Button (elle buton yok).
+ *   - Boş durum Koçko'lu + "Bugünü kaydet" CTA'sı.
+ *   - Grafik renkleri: kilo çizgisi METRIC_COLORS.weight; hedef/"İyi %70+" çizgisi gök mavisi ve
+ *     lejant örneği artık ÇİZGİYLE aynı renk (hedef lejantı menekşeydi, çizgi maviydi).
+ * Veri akışı, hesaplar ve yazma akışları aynen korunur.
+ */
 import { useState, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, useWindowDimensions, ActivityIndicator, TouchableOpacity, Alert, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, useWindowDimensions, ActivityIndicator, Alert, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LineChart } from 'react-native-chart-kit';
@@ -16,11 +32,14 @@ import { calculateStreak } from '@/services/achievements.service';
 import type { Goal } from '@/types/database';
 import { PhaseTimeline } from '@/components/plan/PhaseTimeline';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
+import { ReportTile, ReportEmpty, PLATE_INK, STREAK_SHELF, tint, idleEdge } from '@/components/reports/ReportBits';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { useTheme, METRIC_COLORS } from '@/lib/theme';
+import { useTheme, METRIC_COLORS, type ThemeColors } from '@/lib/theme';
 import { SPACING, FONT, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION, alpha } from '@/lib/design';
+import { TYPE, alpha } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { formatDecimal } from '@/lib/units';
@@ -127,16 +146,19 @@ export default function ProgressScreen() {
     // uyum grafiği artık marka menekşesini konuşuyor, tema değişince de doğru ton.
     color: (o = 1) => alpha(colors.primary, o),
     labelColor: () => colors.textSecondary,
-    propsForDots: { r: '3', strokeWidth: '1.5', stroke: colors.primary },
+    // Nokta kontürü kart rengi: noktalar çizginin üstünde "boncuk" gibi ayrışır.
+    propsForDots: { r: '3.5', strokeWidth: '2', stroke: colors.card, fill: colors.primary },
     propsForBackgroundLines: { stroke: colors.border },
   };
 
   // FIX (audit weight-chart-color): kilo trendi her yerde METRIC_COLORS.weight (pembe)
   // ile gösterilsin (özet ikonu colors.pink ile tutarlı).
+  // 2026-11: yorum METRIC_COLORS.weight diyordu ama değer eski colors.pink'ti (#D4537E) —
+  // metrik paleti gül #FF5C7A'ya geçince grafik özet ikonundan ve aylık grafikten ayrışmıştı.
   const weightChartConfig = {
     ...chartConfig,
-    color: (o = 1) => `rgba(212, 83, 126, ${o})`, // #D4537E (METRIC_COLORS.weight)
-    propsForDots: { r: '3', strokeWidth: '1.5', stroke: colors.pink },
+    color: (o = 1) => alpha(METRIC_COLORS.weight, o),
+    propsForDots: { r: '3.5', strokeWidth: '2', stroke: colors.card, fill: METRIC_COLORS.weight },
   };
 
   const load = useCallback(async () => {
@@ -429,17 +451,23 @@ export default function ProgressScreen() {
         // Seri bir DURUM bildirimi, dokunulabilir nesne degil — kutusu ekranin en
         // ustunde gereksiz bir cerceve olarak duruyordu. Satira indi: sol aksan
         // cizgisi ve ikon kalir, dolgu ve cerceve gider.
-        <View style={{
-          flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
-          borderLeftWidth: 3, borderLeftColor: colors.warning,
-          paddingLeft: SPACING.md, paddingVertical: SPACING.xs,
-          marginBottom: SPACING.lg,
-        }}>
-          <View style={{ width: 44, height: 44, borderRadius: RADIUS.md, backgroundColor: colors.warning + '18', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="flame" size={24} color={colors.warning} />
+        // 2026-11 (Duolingo dili): seri, sekmenin kutlama anı — kehribar pastel plaka + dolu alev
+        // rozeti (StreakBadge tonu + yarım raf). Dokunulmaz: kartın gövdesi/rafı yok.
+        <View
+          accessible
+          accessibilityLabel={`${streak} günlük seri. Aralıksız kayıt tuttuğun gün — bugün de ekle, seriyi büyüt.`}
+          style={{
+            flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
+            // Koyuda kehribar karışımı çamur kahveye kayıyor — daha hafif karıştır.
+            backgroundColor: tint(METRIC_COLORS.streak, colors, isDark, isDark ? 0.75 : 1.2),
+            borderRadius: RADIUS.md, padding: SPACING.md,
+            marginBottom: SPACING.lg,
+          }}>
+          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: METRIC_COLORS.streak, borderBottomWidth: 3, borderBottomColor: STREAK_SHELF, alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="flame" size={26} color={PLATE_INK} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.text, ...TYPE.title3 }}>{streak} günlük seri</Text>
+            <Text style={{ color: colors.text, ...TYPE.title3, fontWeight: '800' }}>{streak} günlük seri</Text>
             <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 1 }}>Aralıksız kayıt tuttuğun gün — bugün de ekle, seriyi büyüt.</Text>
           </View>
         </View>
@@ -462,7 +490,7 @@ export default function ProgressScreen() {
         {/* FIX (ux-pass5): kilo değeri de virgül ondalık — aynı tile'daki delta rozeti virgüle
             çevrildi, '74.5' + '+1,5' karışımı olmasın. */}
         {latestW != null && (
-          <SummaryBox icon="scale-outline" iconColor={colors.pink} value={`${latestW}`.replace('.', ',')} label="kg" period="son tartı" delta={wChange} />
+          <SummaryBox icon="scale-outline" iconColor={METRIC_COLORS.weight} value={`${latestW}`.replace('.', ',')} label="kg" period="son tartı" delta={wChange} />
         )}
         {avgComp != null && (
           <SummaryBox icon="checkmark-circle-outline" iconColor={colors.success} value={`%${avgComp}`} label="uyum" period={`${loggedCompliance.length} gün ort.`} trend={compTrend} />
@@ -474,23 +502,34 @@ export default function ProgressScreen() {
             4 kutucuk bir satiri paylasinca "toparlanma" kelime ORTASINDAN bolunuyordu
             ("toparlanm/a"). Kelime, sarmasi zararsiz olan alt satira tasindi. */}
         {avgRecovery != null && (
-          <SummaryBox icon="pulse-outline" iconColor={colors.success} value={avgRecovery} label="/5" period={`toparlanma · ${recoveryDays.length} gün`} trend={recoveryTrend} />
+          <SummaryBox icon="pulse-outline" iconColor={METRIC_COLORS.fat} value={avgRecovery} label="/5" period={`toparlanma · ${recoveryDays.length} gün`} trend={recoveryTrend} />
         )}
         {avgSleep != null && (
-          <SummaryBox icon="moon-outline" iconColor={colors.purple} value={avgSleep} label="sa/gün" period={`${sleepDays.length} gün ort.`} trend={sleepTrend} />
+          <SummaryBox icon="moon-outline" iconColor={METRIC_COLORS.sleep} value={avgSleep} label="sa/gün" period={`${sleepDays.length} gün ort.`} trend={sleepTrend} />
         )}
         {/* FIX (ux-round4 #21): surfaced only when the user actually logs steps. */}
         {avgSteps != null && (
-          <SummaryBox icon="footsteps-outline" iconColor={colors.primary} value={avgSteps} label="adım/gün" period={`${stepsDays.length} gün ort.`} trend={stepsTrend} />
+          <SummaryBox icon="footsteps-outline" iconColor={METRIC_COLORS.steps} value={avgSteps} label="adım/gün" period={`${stepsDays.length} gün ort.`} trend={stepsTrend} />
         )}
       </View>
       ) : (
-      <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, marginBottom: SPACING.md }}>
-        <Text style={{ color: colors.textSecondary, ...TYPE.body }}>
-          Henüz veri yok — öğün, tartı ve uyku kaydettikçe ortalamaların burada birikecek.
-        </Text>
-      </View>
+      // Maskotlu boş durum (§0-A): ilk gün kullanıcısı gri bir cümle yerine Koçko + tek eylem görür.
+      <ReportEmpty mood="happy" title="Raporların burada büyüyecek" subtitle="Öğün, tartı ve uyku kaydettikçe ortalamaların ve trendlerin burada birikecek.">
+        <Button title="Bugünü kaydet" onPress={() => router.push('/log')} icon={<Ionicons name="add-circle" size={20} color={getContrastColor(colors.primary)} />} />
+      </ReportEmpty>
       )}
+
+      {/* Raporlar — daily/weekly/monthly/all-time were built but had no nav entry.
+          2026-11: gövdeli kutucuklar (Duolingo ders kutucuğu), özetin hemen altında — sekmenin
+          asıl kapıları sayfanın en dibinde düz liste satırlarıydı. */}
+      <Text style={{ ...TYPE.overline, color: colors.textSecondary, marginBottom: SPACING.sm, marginTop: SPACING.xs }}>RAPORLARIN</Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.lg }}>
+        <ReportTile label="Gün Sonu" sub="Bugünün özeti" icon="today" color={METRIC_COLORS.calories} a11yLabel="Gün Sonu Raporu raporunu aç" onPress={() => router.push('/reports/daily')} />
+        <ReportTile label="Haftalık" sub="7 günün hikâyesi" icon="calendar" color={METRIC_COLORS.water} a11yLabel="Haftalık Rapor raporunu aç" onPress={() => router.push('/reports/weekly')} />
+        <ReportTile label="Aylık" sub="Ayın trendi" icon="stats-chart" color={METRIC_COLORS.carbs} a11yLabel="Aylık Rapor raporunu aç" onPress={() => router.push('/reports/monthly')} />
+        <ReportTile label="Tüm Zamanlar" sub="Başından beri" icon="trophy" color={METRIC_COLORS.weight} a11yLabel="Tüm Zamanlar raporunu aç" onPress={() => router.push('/reports/all-time')} />
+        <ReportTile wide label="Takvim" sub="Gün gün renklerin" icon="grid" color={METRIC_COLORS.calories} a11yLabel="Takvim Görünümü raporunu aç" onPress={() => router.push('/reports/calendar')} />
+      </View>
 
       {/* Weight Chart — FIX (ux-ideas #12): overlay a flat target-weight reference line so the
           chart answers "am I getting closer?" not just "what did I weigh?". */}
@@ -525,7 +564,8 @@ export default function ProgressScreen() {
           </View>
           {targetW != null && (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs }}>
-              <View style={{ width: 14, height: 2, backgroundColor: colors.primary, borderRadius: 1 }} />
+              {/* Örnek, ÇİZGİYLE aynı renk (gök mavisi) — eskiden menekşeydi, çizgiyle eşleşmiyordu. */}
+              <View style={{ width: 16, height: 3, backgroundColor: alpha(colors.success, 0.7), borderRadius: 2 }} />
               <Text style={{ color: colors.textMuted, ...TYPE.caption }}>Hedef: {String(targetW).replace('.', ',')} kg</Text>
             </View>
           )}
@@ -533,8 +573,8 @@ export default function ProgressScreen() {
       ) : (
         <Card title="Kilo Trendi">
           <View style={{ alignItems: 'center', paddingVertical: SPACING.lg }}>
-            <View style={{ width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: colors.pink + '15', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
-              <Ionicons name="analytics-outline" size={28} color={colors.pink} />
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: tint(METRIC_COLORS.weight, colors, isDark, 1.2), alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
+              <Ionicons name="analytics" size={28} color={METRIC_COLORS.weight} />
             </View>
             <Text style={{ ...TYPE.headline, color: colors.text, marginBottom: 4 }}>Henüz yeterli veri yok</Text>
             <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>En az 2 tartı kaydı gerekli</Text>
@@ -566,7 +606,7 @@ export default function ProgressScreen() {
                 datasets: [
                   { data: loggedCompliance.map(c => c.compliance_score) },
                   // FIX (ux-round4 #10): flat "good" benchmark at 70 — the same threshold the app
-                  // already treats as good (green tiles/weekly/monthly/calendar) — so a run of ~%58
+                  // already treats as good (gök mavisi 'İyi' kademesi: weekly/monthly/calendar) — so a run of ~%58
                   // reads as below-par at a glance. Mirrors the weight chart's target overlay;
                   // withShadow={false} below already suppresses the phantom area fill.
                   // "İyi" eşiği yeşildi (rgba 48,209,88 — iOS yeşili) → "yolunda" gök mavisi (§0-A yeşil yasak).
@@ -591,15 +631,15 @@ export default function ProgressScreen() {
           </View>
           {/* FIX (ux-round4 #10): legend for the benchmark line. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.xs, alignSelf: 'flex-start' }}>
-            <View style={{ width: 16, height: 2, backgroundColor: alpha(colors.success, 0.7), borderRadius: 1 }} />
+            <View style={{ width: 16, height: 3, backgroundColor: alpha(colors.success, 0.7), borderRadius: 2 }} />
             <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>İyi: %70+</Text>
           </View>
         </Card>
       ) : (
         <Card title="Uyum">
           <View style={{ alignItems: 'center', paddingVertical: SPACING.lg }}>
-            <View style={{ width: 56, height: 56, borderRadius: RADIUS.lg, backgroundColor: colors.success + '15', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
-              <Ionicons name="checkmark-circle-outline" size={28} color={colors.success} />
+            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: tint(colors.primary, colors, isDark, 1.2), alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm }}>
+              <Ionicons name="checkmark-circle" size={28} color={colors.primary} />
             </View>
             <Text style={{ ...TYPE.headline, color: colors.text, marginBottom: 4 }}>Henüz yeterli uyum verisi yok</Text>
             <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>Kayıt tuttuğun günler burada görünecek</Text>
@@ -619,8 +659,8 @@ export default function ProgressScreen() {
             const best = sorted[0]; const worst = sorted[sorted.length - 1];
             return (
               <>
-                <DayRow label="En iyi" date={best.date} score={best.compliance_score} color={colors.success} />
-                <DayRow label="Zorlu gün" date={worst.date} score={worst.compliance_score} color={colors.warning} />
+                <DayRow label="En iyi" icon="trophy" date={best.date} score={best.compliance_score} color={colors.success} />
+                <DayRow label="Zorlu gün" icon="fitness" date={worst.date} score={worst.compliance_score} color={colors.warning} />
                 <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: SPACING.xs }}>
                   Herkesin zorlandığı günler olur — önemli olan devam etmek.
                 </Text>
@@ -660,62 +700,61 @@ export default function ProgressScreen() {
 
               {/* Primary strategy — FIX (ux-pass5): in-flight'ta disabled + busy + spinner
                   (miniCutLoading butonuyla aynı desen), çift tıklama/çift yazma kapandı. */}
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              {/* 2026-11: strateji kartları GÖVDELİ (ShelfPressable) — basınca rafa iner, solmaz.
+                  Birincil: menekşe çerçeve + koyu menekşe raf; ikincil: gri gövde. In-flight kilidi aynı. */}
+              <ShelfPressable
                 onPress={() => { haptics.tap(); handleApplyStrategy(strategyRec.primary.id); }}
                 disabled={applyingStrategyId != null}
                 accessibilityRole="button"
                 accessibilityLabel={`${strategyRec.primary.name} stratejisini onayla`}
                 accessibilityState={{ disabled: applyingStrategyId != null, busy: applyingStrategyId === strategyRec.primary.id }}
-                style={{
-                  backgroundColor: colors.card,
-                  borderRadius: RADIUS.md,
-                  padding: SPACING.md,
-                  marginBottom: SPACING.sm,
-                  borderWidth: 0.5, borderColor: colors.border,
-                  opacity: applyingStrategyId != null ? 0.6 : 1,
-                }}
+                shelfColor={colors.primaryDark}
+                radius={RADIUS.md}
+                style={{ marginBottom: SPACING.sm, opacity: applyingStrategyId != null ? 0.6 : 1 }}
+                faceStyle={{ backgroundColor: tint(colors.primary, colors, isDark, 0.6), borderWidth: 2, borderColor: colors.primary, padding: SPACING.md }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
-                  <Ionicons name="flash" size={20} color={colors.primary} />
-                  <Text style={{ color: colors.primary, ...TYPE.headline, flex: 1 }}>{strategyRec.primary.name}</Text>
+                  <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="flash" size={18} color={getContrastColor(colors.primary)} />
+                  </View>
+                  <Text style={{ color: colors.primary, ...TYPE.headline, fontWeight: '800', flex: 1 }}>{strategyRec.primary.name}</Text>
                 </View>
                 <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>{strategyRec.primary.description}</Text>
                 <View style={{ backgroundColor: colors.primary, borderRadius: RADIUS.md, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm }}>
                   {applyingStrategyId === strategyRec.primary.id
                     ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
-                    : <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Onayla</Text>
+                    : <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong, fontWeight: '800' }}>Onayla</Text>
                   }
                 </View>
-              </TouchableOpacity>
+              </ShelfPressable>
 
               {/* Secondary strategy */}
               {strategyRec.secondary && (
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+                <ShelfPressable
                   onPress={() => { haptics.tap(); handleApplyStrategy(strategyRec.secondary!.id); }}
                   disabled={applyingStrategyId != null}
                   accessibilityRole="button"
                   accessibilityLabel={`${strategyRec.secondary.name} stratejisini dene`}
                   accessibilityState={{ disabled: applyingStrategyId != null, busy: applyingStrategyId === strategyRec.secondary.id }}
-                  style={{
-                    backgroundColor: colors.card,
-                    borderRadius: RADIUS.md,
-                    padding: SPACING.md,
-                    borderWidth: 0.5, borderColor: colors.border,
-                    opacity: applyingStrategyId != null ? 0.6 : 1,
-                  }}
+                  shelfColor={idleEdge(colors, isDark)}
+                  radius={RADIUS.md}
+                  style={{ opacity: applyingStrategyId != null ? 0.6 : 1 }}
+                  faceStyle={{ backgroundColor: colors.card, borderWidth: 2, borderColor: idleEdge(colors, isDark), padding: SPACING.md }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
-                    <Ionicons name="swap-horizontal" size={20} color={colors.textSecondary} />
+                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surfaceLight, alignItems: 'center', justifyContent: 'center' }}>
+                      <Ionicons name="swap-horizontal" size={18} color={colors.textSecondary} />
+                    </View>
                     <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>{strategyRec.secondary.name}</Text>
                   </View>
                   <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: 4 }}>{strategyRec.secondary.description}</Text>
-                  <View style={{ backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm, borderWidth: 1, borderColor: colors.border }}>
+                  <View style={{ backgroundColor: colors.surfaceLight, borderRadius: RADIUS.md, paddingVertical: SPACING.sm, alignItems: 'center', marginTop: SPACING.sm }}>
                     {applyingStrategyId === strategyRec.secondary.id
                       ? <ActivityIndicator size="small" color={colors.textSecondary} />
-                      : <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Bunu Dene</Text>
+                      : <Text style={{ color: colors.primary, ...TYPE.bodyStrong, fontWeight: '800' }}>Bunu Dene</Text>
                     }
                   </View>
-                </TouchableOpacity>
+                </ShelfPressable>
               )}
             </View>
           )}
@@ -734,7 +773,8 @@ export default function ProgressScreen() {
             <View style={{ width: 36, height: 36, borderRadius: RADIUS.full, backgroundColor: colors.successLight, alignItems: 'center', justifyContent: 'center' }}>
               <Ionicons name="shield-checkmark" size={20} color={colors.success} />
             </View>
-            <Text style={{ color: colors.success, ...TYPE.headline, flex: 1 }}>Bakım Modu</Text>
+            {/* Başlık mürekkep: gök mavisi başlık açık zeminde 2,8:1 kalıyordu; renk ikonda. */}
+            <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>Bakım Modu</Text>
           </View>
           <Text style={{ color: colors.text, ...TYPE.body }}>{maintenanceMsg}</Text>
 
@@ -762,27 +802,18 @@ export default function ProgressScreen() {
           {miniCutOffered && (
             <View style={{ marginTop: SPACING.md, backgroundColor: colors.errorLight, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 1, borderColor: colors.error }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginBottom: SPACING.xs }}>
-                <Ionicons name="cut" size={18} color={colors.error} />
-                <Text style={{ color: colors.error, ...TYPE.bodyStrong, fontWeight: '700' }}>Mini-Cut Önerisi</Text>
+                <Ionicons name="cut" size={18} color={colors.errorText} />
+                {/* Küçük kırmızı metin → errorText (error AA altında). */}
+                <Text style={{ color: colors.errorText, ...TYPE.bodyStrong, fontWeight: '700' }}>Mini-Cut Önerisi</Text>
               </View>
               <Text style={{ color: colors.text, ...TYPE.body, marginBottom: SPACING.sm }}>
                 Tolerans bandının dışına çıktın. 2-3 haftalık hafif kalori açığı ile dengeye dönebilirsin.
               </Text>
               <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={handleMiniCut} disabled={miniCutLoading}
-                  accessibilityRole="button" accessibilityLabel="Mini-cut başlat"
-                  accessibilityState={{ disabled: miniCutLoading, busy: miniCutLoading }}
-                  style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.primary, alignItems: 'center', opacity: miniCutLoading ? 0.6 : 1 }}>
-                  {miniCutLoading
-                    ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
-                    : <Text style={{ color: getContrastColor(colors.primary), ...TYPE.bodyStrong }}>Mini-Cut Başlat</Text>
-                  }
-                </TouchableOpacity>
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity} onPress={() => { haptics.tap(); setMiniCutOffered(false); }}
-                  accessibilityRole="button" accessibilityLabel="Mini-cut önerisini şimdilik kapat"
-                  style={{ flex: 1, paddingVertical: SPACING.sm, borderRadius: RADIUS.md, backgroundColor: colors.surfaceLight, alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>
-                  <Text style={{ color: colors.textSecondary, ...TYPE.bodyStrong }}>Şimdilik Değil</Text>
-                </TouchableOpacity>
+                {/* 2026-11: elle yazılmış iki TouchableOpacity buton → ortak gövdeli Button
+                    (a11y etiketleri korunur; busy/disabled Button'ın kendisinde). */}
+                <Button title="Mini-Cut Başlat" onPress={handleMiniCut} loading={miniCutLoading} disabled={miniCutLoading} size="sm" accessibilityLabel="Mini-cut başlat" style={{ flex: 1 }} />
+                <Button title="Şimdilik Değil" variant="outline" onPress={() => { haptics.tap(); setMiniCutOffered(false); }} size="sm" accessibilityLabel="Mini-cut önerisini şimdilik kapat" style={{ flex: 1 }} />
               </View>
             </View>
           )}
@@ -811,30 +842,7 @@ export default function ProgressScreen() {
         </Card>
       )}
 
-      {/* Raporlar — daily/weekly/monthly/all-time were built but had no nav entry. */}
-      <Card title="Raporlar" style={{ marginTop: SPACING.sm }}>
-        <ReportLink label="Gün Sonu Raporu" icon="today-outline" onPress={() => router.push('/reports/daily')} colors={colors} />
-        <ReportLink label="Haftalık Rapor" icon="calendar-outline" onPress={() => router.push('/reports/weekly')} colors={colors} />
-        <ReportLink label="Aylık Rapor" icon="calendar-number-outline" onPress={() => router.push('/reports/monthly')} colors={colors} />
-        <ReportLink label="Tüm Zamanlar" icon="trophy-outline" onPress={() => router.push('/reports/all-time')} colors={colors} />
-        <ReportLink label="Takvim Görünümü" icon="grid-outline" onPress={() => router.push('/reports/calendar')} colors={colors} last />
-      </Card>
     </ScrollView>
-  );
-}
-
-function ReportLink({ label, icon, onPress, colors, last }: { label: string; icon: keyof typeof Ionicons.glyphMap; onPress: () => void; colors: any; last?: boolean }) {
-  return (
-    <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-      onPress={() => { haptics.tap(); onPress(); }}
-      accessibilityRole="button"
-      accessibilityLabel={`${label} raporunu aç`}
-      style={{ flexDirection: 'row', alignItems: 'center', minHeight: 44, paddingVertical: SPACING.sm + 2, borderBottomWidth: last ? 0 : 0.5, borderBottomColor: colors.border }}
-    >
-      <Ionicons name={icon} size={20} color={colors.primary} style={{ marginRight: SPACING.sm }} />
-      <Text style={{ flex: 1, color: colors.text, ...TYPE.body }}>{label}</Text>
-      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-    </TouchableOpacity>
   );
 }
 
@@ -874,13 +882,14 @@ function SummaryBox({ icon, iconColor, value, label, period, delta, trend }: { i
     }}>
       <View style={{
         width: 36, height: 36, borderRadius: RADIUS.sm,
-        backgroundColor: tint + '20',
+        // Opak pastel plaka (string alfa birleştirme yerine mix — yüzey/tema değişince de doğru ton).
+        backgroundColor: mixTint(tint, colors, isDark),
         alignItems: 'center', justifyContent: 'center',
         marginBottom: SPACING.xs,
       }}>
         <Ionicons name={icon} size={18} color={tint} />
       </View>
-      <Text style={{ ...TYPE.title3, color: colors.text }}>{value}</Text>
+      <Text style={{ ...TYPE.title3, color: colors.text, fontWeight: '800' }}>{value}</Text>
       <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 1 }}>{label}</Text>
       {/* FIX (ux-pass raporlar #2): the period the number covers, spelled out on the tile. */}
       {/* 10px, olcegin tabaninin (11) altindaydi. Kutucuk 5'e kadar sikisabildigi icin
@@ -901,15 +910,29 @@ function SummaryBox({ icon, iconColor, value, label, period, delta, trend }: { i
   );
 }
 
-function DayRow({ label, date, score, color }: { label: string; date: string; score: number; color: string }) {
-  const { colors } = useTheme();
+function DayRow({ label, icon, date, score, color }: { label: string; icon: keyof typeof Ionicons.glyphMap; date: string; score: number; color: string }) {
+  const { colors, isDark } = useTheme();
+  // 2026-11: etiket ve skor renkli metindi (gök mavisi açık zeminde 2,8:1). Renk artık ikon
+  // plakasında ve skor hapının opak pastel zemininde; sözler mürekkep.
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.xs, gap: SPACING.md }}>
-      {/* FIX (ux-round3 #4 adversarial-review): widen + single-line so 'Zorlu gün' doesn't wrap. */}
-      <Text numberOfLines={1} style={{ ...TYPE.bodyStrong, width: 68, color }}>{label}</Text>
-      <Text style={{ color: colors.text, ...TYPE.body, flex: 1 }}>{new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}</Text>
+      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: tint(color, colors, isDark, 1.4), alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={18} color={color} />
+      </View>
+      <View style={{ flex: 1 }}>
+        {/* FIX (ux-round3 #4 adversarial-review): single-line so 'Zorlu gün' doesn't wrap. */}
+        <Text numberOfLines={1} style={{ ...TYPE.bodyStrong, color: colors.text }}>{label}</Text>
+        <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>{new Date(date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short', weekday: 'short' })}</Text>
+      </View>
       {/* FIX (ux-pass raporlar #2): bare '0'/'85' okundu — uyum her yerde yüzde, burada da öyle. */}
-      <Text style={{ ...TYPE.title3, color }}>%{score}</Text>
+      <View style={{ borderRadius: RADIUS.pill, paddingHorizontal: SPACING.md, paddingVertical: SPACING.xs, backgroundColor: tint(color, colors, isDark, 1.4) }}>
+        <Text style={{ ...TYPE.headline, color: colors.text, fontWeight: '800' }}>%{score}</Text>
+      </View>
     </View>
   );
+}
+
+/** SummaryBox'ın `tint` prop'u ReportBits.tint'i gölgelediği için ayrı ad. */
+function mixTint(color: string, colors: ThemeColors, isDark: boolean) {
+  return tint(color, colors, isDark, 1.2);
 }

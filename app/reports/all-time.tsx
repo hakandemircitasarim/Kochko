@@ -1,6 +1,11 @@
 /**
  * All-Time Report Screen
  * Spec 8.4: Başlangıçtan bugüne toplam ilerleme.
+ *
+ * Duolingo dili (DEVIR §0-A, 2026-11): istatistik kutucukları metrik paletinin DOLU
+ * plakaları + mürekkep ikon (altısı da aynı menekşe ikondu — hiçbiri ayırt edilmiyordu),
+ * kilometre taşları kehribar ROZETLER (Duolingo başarım satırı), hiç taş yokken maskotlu
+ * teşvik. Veri akışı / hesaplar aynen korunur.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView } from 'react-native';
@@ -12,9 +17,10 @@ import { supabase } from '@/lib/supabase';
 import { Card } from '@/components/ui/Card';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { SPACING, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
-import { useTheme } from '@/lib/theme';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
+import { ReportEmpty, PLATE_INK, STREAK_SHELF, tint } from '@/components/reports/ReportBits';
 
 export default function AllTimeReportScreen() {
   const { colors } = useTheme();
@@ -164,13 +170,14 @@ export default function AllTimeReportScreen() {
 
       {/* Key Stats Grid */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.md }}>
-        <StatCard label="Aktif Gün" value={`${stats.activeDays}`} icon="calendar-outline" />
+        {/* Her kutucuk kendi metrik renginde (mavi/kehribar/gül/menekşe + "yolunda" gök mavisi). */}
+        <StatCard label="Aktif Gün" value={`${stats.activeDays}`} icon="calendar" color={METRIC_COLORS.calories} />
         {/* FIX (ux-polish): TR thousands separators for large lifetime totals (was bare "1240"). */}
-        <StatCard label="Toplam Öğün" value={stats.totalMeals.toLocaleString('tr-TR')} icon="restaurant-outline" />
-        <StatCard label="Toplam Antrenman" value={stats.totalWorkouts.toLocaleString('tr-TR')} icon="barbell-outline" />
-        <StatCard label="Streak" value={`${stats.longestStreak}`} icon="flame-outline" />
-        <StatCard label="Ort. Uyum" value={stats.avgCompliance != null ? `%${stats.avgCompliance}` : '—'} icon="checkmark-circle-outline" />
-        <StatCard label="Başarımlar" value={`${stats.achievements}`} icon="ribbon-outline" />
+        <StatCard label="Toplam Öğün" value={stats.totalMeals.toLocaleString('tr-TR')} icon="restaurant" color={METRIC_COLORS.carbs} />
+        <StatCard label="Toplam Antrenman" value={stats.totalWorkouts.toLocaleString('tr-TR')} icon="barbell" color={METRIC_COLORS.protein} />
+        <StatCard label="En Uzun Seri" value={`${stats.longestStreak}`} icon="flame" color={METRIC_COLORS.streak} />
+        <StatCard label="Ort. Uyum" value={stats.avgCompliance != null ? `%${stats.avgCompliance}` : '—'} icon="checkmark-circle" color={colors.success} />
+        <StatCard label="Başarımlar" value={`${stats.achievements}`} icon="ribbon" color={METRIC_COLORS.weight} />
       </View>
 
       {/* Milestones */}
@@ -179,48 +186,62 @@ export default function AllTimeReportScreen() {
             goal users (positive totalWeightChange) also see their kg milestones. */}
         {totalWeightChange !== null && totalWeightChange !== 0 && (
           <>
-            {Math.abs(totalWeightChange) >= 1 && <MilestoneRow text="İlk 1 kg" done />}
-            {Math.abs(totalWeightChange) >= 5 && <MilestoneRow text="5 kg" done />}
-            {Math.abs(totalWeightChange) >= 10 && <MilestoneRow text="10 kg" done />}
+            {Math.abs(totalWeightChange) >= 1 && <MilestoneRow text="İlk 1 kg" icon="scale" done />}
+            {Math.abs(totalWeightChange) >= 5 && <MilestoneRow text="5 kg" icon="scale" done />}
+            {Math.abs(totalWeightChange) >= 10 && <MilestoneRow text="10 kg" icon="scale" done />}
           </>
         )}
-        {stats.longestStreak >= 7 && <MilestoneRow text="7 gün streak" done />}
-        {stats.longestStreak >= 30 && <MilestoneRow text="30 gün streak" done />}
-        {stats.longestStreak >= 100 && <MilestoneRow text="100 gün streak" done />}
+        {stats.longestStreak >= 7 && <MilestoneRow text="7 günlük seri" icon="flame" done />}
+        {stats.longestStreak >= 30 && <MilestoneRow text="30 günlük seri" icon="flame" done />}
+        {stats.longestStreak >= 100 && <MilestoneRow text="100 günlük seri" icon="flame" done />}
         {/* FIX (audit UI-PLN-03): only show the empty-state when there is genuinely no kg
             milestone either — otherwise a gaining user with >=1 kg saw an empty card. */}
         {(totalWeightChange === null || Math.abs(totalWeightChange) < 1) && stats.longestStreak < 7 && (
-          <Text style={{ ...TYPE.body, color: colors.textSecondary, textAlign: 'center' }}>Henüz kilometre taşı yok. Devam et!</Text>
+          <ReportEmpty card={false} mood="cheer" size={72} title="İlk rozetin yolda" subtitle="Henüz kilometre taşı yok. Devam et — 7 günlük seri ilk rozetin!" />
         )}
       </Card>
     </ScrollView>
   );
 }
 
-function StatCard({ label, value, icon }: { label: string; value: string; icon?: keyof typeof Ionicons.glyphMap }) {
+function StatCard({ label, value, icon, color }: { label: string; value: string; icon?: keyof typeof Ionicons.glyphMap; color: string }) {
   const { colors } = useTheme();
-  // FIX (ux-polish): align to the progress-tab SummaryBox — hairline (0.5) + RADIUS.md + a tinted
-  // icon badge (was a 1px-border, iconless tile that read ~2× thicker than every other card).
+  // Salt okunur (dokunulmaz) → gövdesiz kart; renk DOLU plakada, ikon mürekkep (kehribar/gül
+  // üstünde beyaz WCAG altı). Değer mürekkep: renkli büyük sayı yerine "az sayı, çok renk".
   return (
-    <View style={{ width: '47%', backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, alignItems: 'center', borderWidth: 0.5, borderColor: colors.border }}>
+    <View
+      accessible
+      accessibilityLabel={`${label}: ${value}`}
+      style={{ width: '47%', flexGrow: 1, backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.md, borderWidth: 0.5, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}
+    >
       {icon && (
-        <View style={{ width: 32, height: 32, borderRadius: RADIUS.sm, backgroundColor: colors.primary + '18', alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xs }}>
-          <Ionicons name={icon} size={16} color={colors.primary} />
+        <View style={{ width: 40, height: 40, borderRadius: RADIUS.sm, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons name={icon} size={20} color={PLATE_INK} />
         </View>
       )}
-      <Text style={{ ...TYPE.title3, color: colors.primary }}>{value}</Text>
-      <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>{label}</Text>
+      <View style={{ flex: 1 }}>
+        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.title3, color: colors.text, fontWeight: '800' }}>{value}</Text>
+        <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, color: colors.textSecondary }}>{label}</Text>
+      </View>
     </View>
   );
 }
 
-function MilestoneRow({ text, done }: { text: string; done: boolean }) {
-  const { colors } = useTheme();
+function MilestoneRow({ text, done, icon }: { text: string; done: boolean; icon: keyof typeof Ionicons.glyphMap }) {
+  const { colors, isDark } = useTheme();
+  // Kazanılmış kilometre taşı = kehribar ROZET (StreakBadge tonu + yarım raf): Duolingo başarım
+  // satırı. Metin mürekkep — gök mavisi başarı metni açık zeminde 2,8:1 kalıyordu.
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm }}>
-      {/* FIX (ux-polish): Ionicons to match the daily report's checklist (was bare ✓/○ text glyphs). */}
-      <Ionicons name={done ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={done ? colors.success : colors.textMuted} style={{ marginRight: SPACING.sm }} />
-      <Text style={{ ...TYPE.body, color: done ? colors.success : colors.textMuted }}>{text}</Text>
+    <View
+      accessibilityRole="text"
+      accessibilityLabel={`${text}${done ? ', kazanıldı' : ''}`}
+      style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.sm, marginBottom: SPACING.xs, borderRadius: RADIUS.sm, backgroundColor: done ? tint(METRIC_COLORS.streak, colors, isDark) : 'transparent' }}
+    >
+      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: done ? METRIC_COLORS.streak : colors.surfaceLight, borderBottomWidth: done ? 3 : 0, borderBottomColor: STREAK_SHELF, alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={18} color={done ? PLATE_INK : colors.textMuted} />
+      </View>
+      <Text style={{ ...TYPE.bodyStrong, color: done ? colors.text : colors.textMuted, flex: 1 }}>{text}</Text>
+      {done && <Ionicons name="checkmark-circle" size={20} color={colors.success} />}
     </View>
   );
 }

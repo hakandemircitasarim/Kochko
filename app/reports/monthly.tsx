@@ -1,9 +1,15 @@
 /**
  * Monthly Report Screen
  * Spec 8.3: Aylik rapor - hedefe yaklasma, trend, risk sinyalleri.
+ *
+ * Duolingo dili (DEVIR §0-A/§0-B, 2026-11): ay seçici gövdeli yuvarlak tuşlar (MonthNav),
+ * açılış ComplianceHero (teşvik hapı + iyi ayda rozet yayı; konfeti YOK — o haftalık özette),
+ * sapma dağılımı ve haftalık özet çubukları ortak ProgressBar (elle iz+dolgu yok), "Ayın
+ * Başarısı" kehribar kupa kartı, boş AI analizi maskotlu. Veri akışı aynen korunur.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/stores/auth.store';
 import { useProfileStore } from '@/stores/profile.store';
@@ -12,12 +18,14 @@ import { edgeHeaders } from '@/lib/edgeHeaders';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { CircularProgress } from '@/components/ui/CircularProgress';
+import { ProgressBar } from '@/components/ui/ProgressBar';
+import { ComplianceHero, getComplianceColor } from '@/components/reports/ComplianceScore';
+import { MonthNav, ReportEmpty, PLATE_INK, STREAK_SHELF, tint } from '@/components/reports/ReportBits';
 import { ProgressChart } from '@/components/reports/ProgressChart';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { SPACING, FONT } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
 import { METRIC_COLORS, useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
 import { ThinkingFor } from '@/components/chat/ThinkingIndicator';
@@ -42,7 +50,7 @@ const DEVIATION_LABELS: Record<string, string> = {
 };
 
 export default function MonthlyReportScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [loading, setLoading] = useState(true);
@@ -203,7 +211,6 @@ export default function MonthlyReportScreen() {
   // bare "1". Values are already 0-100 (ai-report clamps them server-side; the local averages are
   // built from 0-100 compliance_score rows), so format as %N without rescaling.
   const complianceScore = aiReport?.avg_compliance ?? avgCompliance;
-  const complianceColor = complianceScore >= 70 ? colors.success : complianceScore >= 40 ? colors.warning : colors.error;
 
   // weekly_reports has no weight_start/weight_end columns — derive month-boundary weights from
   // the daily_metrics weights already loaded (weightData is ascending by date).
@@ -221,46 +228,33 @@ export default function MonthlyReportScreen() {
           and weekly ("Hafta: …"). review fix: derive it from the SAME day-boundary-aware effective
           month the query uses (raw new Date() could name a different month pre-boundary on the 1st). */}
       {/* ux-sweep: < Ay > navigasyonu (calendar.tsx kalıbı) — geçmiş ay raporları erişilir. */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-          onPress={() => { if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); }}
-          accessibilityRole="button" accessibilityLabel="Önceki ay"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={{ color: colors.primary, ...TYPE.title3 }}>{'<'}</Text>
-        </TouchableOpacity>
-        <Text style={{ ...TYPE.body, color: colors.text, fontWeight: '700' }}>
-          {new Date(viewYear, viewMonth - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
-        </Text>
-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-          onPress={() => { if (!isViewingCurrentMonth) { if (viewMonth === 12) { setViewMonth(1); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); } }}
-          disabled={isViewingCurrentMonth}
-          accessibilityRole="button" accessibilityLabel="Sonraki ay"
-          accessibilityState={{ disabled: isViewingCurrentMonth }}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={{ color: isViewingCurrentMonth ? colors.textMuted : colors.primary, ...TYPE.title3 }}>{'>'}</Text>
-        </TouchableOpacity>
-      </View>
+      <MonthNav
+        title={new Date(viewYear, viewMonth - 1, 1).toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' })}
+        onPrev={() => { if (viewMonth === 1) { setViewMonth(12); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); }}
+        onNext={() => { if (!isViewingCurrentMonth) { if (viewMonth === 12) { setViewMonth(1); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); } }}
+        nextDisabled={isViewingCurrentMonth}
+      />
 
       {/* Overall Compliance */}
       <Card title="Ortalama Uyum">
         {/* FIX (ux-pass5, emulator): ComplianceScore (başka kümenin dosyası) ringde çıplak sayı basıyordu;
             %N için ringi burada doğrudan çiz — görünüm aynı (120/8 ring + alt etiket). */}
-        <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-          <CircularProgress progress={complianceScore / 100} value={`%${complianceScore}`} size={120} strokeWidth={8} color={complianceColor} a11yLabel="Ortalama uyum" />
-          <Text style={{ color: colors.textSecondary, ...TYPE.body, marginTop: SPACING.sm }}>Uyum Puanı</Text>
-          {/* FIX (ux-round3 #5): trend vs last month (weekly parity) so '%62' gains direction. */}
+        <ComplianceHero score={complianceScore} label="Uyum Puanı" a11yLabel="Ortalama uyum">
+          {/* FIX (ux-round3 #5): trend vs last month (weekly parity) so '%62' gains direction.
+              Hap: yön rengi ikonda/zeminde, söz mürekkepte (küçük renkli metin AA altındaydı). */}
           {prevMonthCompliance != null && (() => {
             const d = complianceScore - prevMonthCompliance;
-            if (d === 0) return <Text style={{ color: colors.textMuted, ...TYPE.body, marginTop: SPACING.xs }}>geçen ayla aynı</Text>;
+            const c = d > 0 ? colors.success : d < 0 ? colors.warning : colors.textMuted;
             return (
-              <Text style={{ color: d > 0 ? colors.success : colors.warning, ...TYPE.bodyStrong, fontWeight: '700', marginTop: SPACING.xs }}>
-                geçen aya göre {d > 0 ? '+' : '−'}{Math.abs(d)}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.sm, paddingVertical: SPACING.xs + 1, paddingHorizontal: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: tint(c, colors, isDark, 1.1) }}>
+                <Ionicons name={d > 0 ? 'arrow-up' : d < 0 ? 'arrow-down' : 'remove'} size={15} color={c} />
+                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.callout, color: colors.text, fontWeight: '700' }}>
+                  {d === 0 ? 'geçen ayla aynı' : `geçen aya göre ${d > 0 ? '+' : '−'}${Math.abs(d)}`}
+                </Text>
+              </View>
             );
           })()}
-        </View>
+        </ComplianceHero>
       </Card>
 
       {/* Weight Chart */}
@@ -305,14 +299,12 @@ export default function MonthlyReportScreen() {
       {/* AI Report Section */}
       {!aiReport && !isViewingCurrentMonth && (
         <Card title="AI Aylık Analiz">
-          <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Bu aya ait bir AI analizi yok.</Text>
+          <ReportEmpty card={false} mood="sleepy" size={64} title="Bu ayın analizi yok" subtitle="Bu aya ait bir AI analizi oluşturulmamış." />
         </Card>
       )}
       {!aiReport && isViewingCurrentMonth && (
         <Card title="AI Aylık Analiz">
-          <Text style={{ color: colors.textMuted, ...TYPE.body, marginBottom: SPACING.md }}>
-            Yapay zeka ile aylık performans analizini oluştur.
-          </Text>
+          <ReportEmpty card={false} mood="happy" size={72} title="Ayını birlikte okuyalım" subtitle="Yapay zeka ile aylık performans analizini oluştur." />
           <Button
             title="Rapor Oluştur"
             onPress={handleGenerateReport}
@@ -342,8 +334,15 @@ export default function MonthlyReportScreen() {
 
           {/* Top Achievement */}
           {aiReport.top_achievement && (
-            <Card title="Ayın Başarısı">
-              <Text style={{ color: colors.success, ...TYPE.headline }}>{aiReport.top_achievement}</Text>
+            // Ayın kutlama anı: kehribar kupa plakası + opak kehribar pastel kart (StreakBadge tonu).
+            // Metin mürekkep — gök mavisi başlık açık zeminde 2,8:1 kalıyordu.
+            <Card title="Ayın Başarısı" style={{ backgroundColor: tint(METRIC_COLORS.streak, colors, isDark, isDark ? 0.75 : 1.2) }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+                <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: METRIC_COLORS.streak, borderBottomWidth: 3, borderBottomColor: STREAK_SHELF, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="trophy" size={24} color={PLATE_INK} />
+                </View>
+                <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>{aiReport.top_achievement}</Text>
+              </View>
             </Card>
           )}
 
@@ -352,7 +351,7 @@ export default function MonthlyReportScreen() {
             <Card title="Risk Sinyalleri">
               {aiReport.risk_signals.map((signal, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < aiReport.risk_signals!.length - 1 ? SPACING.xs : 0 }}>
-                  <Text style={{ color: colors.error, ...TYPE.body, marginRight: SPACING.xs }}>!</Text>
+                  <Ionicons name="alert-circle" size={18} color={colors.errorText} style={{ marginRight: SPACING.sm, marginTop: 2 }} />
                   <Text style={{ color: colors.text, ...TYPE.body, flex: 1 }}>{signal}</Text>
                 </View>
               ))}
@@ -376,9 +375,7 @@ export default function MonthlyReportScreen() {
                       <Text style={{ color: colors.text, ...TYPE.body }}>{DEVIATION_LABELS[k] ?? k}</Text>
                       <Text style={{ color: colors.textMuted, ...TYPE.body }}>{v} gün</Text>
                     </View>
-                    <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}>
-                      <View style={{ width: `${max > 0 ? Math.round((v / max) * 100) : 0}%`, height: '100%', borderRadius: 3, backgroundColor: colors.warning }} />
-                    </View>
+                    <ProgressBar progress={max > 0 ? v / max : 0} color={colors.warning} height={10} />
                   </View>
                 ));
               })()}
@@ -390,7 +387,7 @@ export default function MonthlyReportScreen() {
             <Card title="Davranış Kalıpları">
               {aiReport.behavioral_patterns.map((pattern, i) => (
                 <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: i < aiReport.behavioral_patterns!.length - 1 ? SPACING.xs : 0 }}>
-                  <Text style={{ color: colors.primary, ...TYPE.body, marginRight: SPACING.xs }}>-</Text>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colors.primary, marginRight: SPACING.sm, marginTop: 7 }} />
                   <Text style={{ color: colors.text, ...TYPE.body, flex: 1 }}>{pattern}</Text>
                 </View>
               ))}
@@ -411,7 +408,8 @@ export default function MonthlyReportScreen() {
             variant="outline"
             loading={generating}
             disabled={generating}
-            style={{ marginTop: SPACING.sm }}
+            // Alt boşluk: buton altındaki "Hedefe Kalan" kartına yapışıyordu.
+            style={{ marginTop: SPACING.sm, marginBottom: SPACING.md }}
           />
           {generating && <ThinkingFor kind="report_monthly" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
         </>
@@ -437,19 +435,18 @@ export default function MonthlyReportScreen() {
           const weekLabel = new Date(wr.week_start as string)
             .toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
           return (
-            <View key={i} style={{ paddingVertical: SPACING.sm, borderBottomWidth: i < weeklyReports.length - 1 ? 1 : 0, borderBottomColor: colors.border }}>
+            <View key={i} style={{ paddingVertical: SPACING.sm, borderBottomWidth: i < weeklyReports.length - 1 ? 1 : 0, borderBottomColor: colors.divider }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: SPACING.xs }}>
                 <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{weekLabel} haftası</Text>
-                <Text style={{ color: colors.text, ...TYPE.bodyStrong }}>%{compliance}</Text>
+                <Text style={{ color: colors.text, ...TYPE.bodyStrong, fontWeight: '800' }}>%{compliance}</Text>
               </View>
-              <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.border, overflow: 'hidden' }}>
-                <View style={{ width: `${Math.min(100, Math.max(0, compliance))}%`, height: '100%', borderRadius: 3, backgroundColor: colors.primary }} />
-              </View>
+              {/* Çubuk rengi uyum kademesinden (70/40) — halka ve takvimle aynı yargı. */}
+              <ProgressBar progress={compliance / 100} color={getComplianceColor(compliance, colors)} height={12} />
             </View>
           );
         })}
         {weeklyReports.length === 0 && (
-          <Text style={{ color: colors.textMuted, ...TYPE.body, textAlign: 'center' }}>Henüz haftalık rapor yok.</Text>
+          <ReportEmpty card={false} mood="sleepy" size={64} title="Henüz haftalık rapor yok" subtitle="Haftalık raporların burada sıralanacak." />
         )}
       </Card>
     </ScrollView>

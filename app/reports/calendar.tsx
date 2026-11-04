@@ -1,13 +1,26 @@
+/**
+ * Takvim — ayın günleri uyum kademesine göre renkli; güne dokununca o günün özeti.
+ *
+ * Duolingo seri takvimi dili (DEVIR §0-A, 2026-11): kayıtlı gün = opak pastel DOLU daire +
+ * kademe renginde 2px çerçeve + kalın mürekkep rakam (eskiden %19 alfa leke + 4px nokta —
+ * hangi günün dolu olduğu uzaktan okunmuyordu). Aynı haftadaki ARDIŞIK kayıtlı günler arkadan
+ * yumuşak bir bantla birleşir: seri gözle görülür. Bugün kalın menekşe halka, seçili gün dolu
+ * menekşe. Ay seçici gövdeli tuşlar (MonthNav). Veri/gezinme mantığı aynen korunur.
+ */
 import { useState, useEffect } from 'react';
 import { router } from 'expo-router';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { METRIC_COLORS } from '@/lib/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useProfileStore } from '@/stores/profile.store';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { getMonthSummaries, type DaySummary } from '@/services/calendar.service';
+import { Ionicons } from '@expo/vector-icons';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { MonthNav, PLATE_INK, tint } from '@/components/reports/ReportBits';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { SPACING, FONT, RADIUS } from '@/lib/constants';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
 import { TYPE, MOTION } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
@@ -17,7 +30,7 @@ const MONTH_NAMES = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Te
 const DAY_NAMES = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
 export default function CalendarScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   // Review fix (efficiency): tüm profile objesine değil tek skalere abone ol —
   // her profil yazımı 42 hücrelik grid'i yeniden render ediyordu.
@@ -78,32 +91,14 @@ export default function CalendarScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
 
-      {/* Month navigation */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.lg }}>
-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-          onPress={prevMonth}
-          accessibilityRole="button"
-          accessibilityLabel="Önceki ay"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={{ color: colors.primary, ...TYPE.title3 }}>{'<'}</Text>
-        </TouchableOpacity>
-        <Text style={{ color: colors.text, ...TYPE.title3 }}>{MONTH_NAMES[month - 1]} {year}</Text>
-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-          onPress={nextMonth}
-          accessibilityRole="button"
-          accessibilityLabel="Sonraki ay"
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Text style={{ color: colors.primary, ...TYPE.title3 }}>{'>'}</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Month navigation — gövdeli yuvarlak tuşlar (aylık raporla ortak MonthNav). */}
+      <MonthNav title={`${MONTH_NAMES[month - 1]} ${year}`} onPrev={prevMonth} onNext={nextMonth} />
 
       {/* Day headers */}
       <View style={{ flexDirection: 'row', marginBottom: SPACING.xs }}>
         {DAY_NAMES.map(d => (
           <View key={d} style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{d}</Text>
+            <Text style={{ color: colors.textSecondary, ...TYPE.caption, fontWeight: '700' }}>{d}</Text>
           </View>
         ))}
       </View>
@@ -128,10 +123,17 @@ export default function CalendarScreen() {
           <View key={`empty-${i}`} style={{ width: '14.28%', aspectRatio: 1 }} />
         ))}
 
-        {days.map(day => {
+        {days.map((day, idx) => {
           const dayNum = new Date(day.date).getDate();
           const isToday = day.date === todayStr; // FIX (audit UI-PLN-04): compare against local-built todayStr
           const isSelected = selected?.date === day.date;
+          // Seri bandı: aynı hafta satırında (Pzt=0 … Paz=6) komşu gün de kayıtlıysa o yöne
+          // yarım bant uzar — ardışık kayıtlı günler tek parça "seri" gibi birleşir.
+          const col = (offset + idx) % 7;
+          const linkPrev = day.hasData && col > 0 && !!days[idx - 1]?.hasData;
+          const linkNext = day.hasData && col < 6 && !!days[idx + 1]?.hasData;
+          const scoreColor = day.compliance_score !== null ? getScoreColor(day.compliance_score) : colors.primary;
+          const band = tint(colors.primary, colors, isDark, isDark ? 1.1 : 1.5);
 
           return (
             <TouchableOpacity activeOpacity={MOTION.pressOpacity} key={day.date} onPress={() => setSelected(day)}
@@ -139,19 +141,19 @@ export default function CalendarScreen() {
               accessibilityState={{ selected: isSelected }}
               accessibilityLabel={`${dayNum} ${MONTH_NAMES[month - 1]}${isToday ? ', bugün' : ''}${day.hasData && day.compliance_score !== null ? `, uyum yüzde ${day.compliance_score}` : day.hasData ? '' : ', veri yok'}`}
               style={{ width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' }}>
+              {linkPrev && <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: '50%', height: 30, backgroundColor: band }} />}
+              {linkNext && <View pointerEvents="none" style={{ position: 'absolute', left: '50%', right: 0, height: 30, backgroundColor: band }} />}
               <View style={{
-                width: 36, height: 36, borderRadius: 18,
-                backgroundColor: isSelected ? colors.primary : day.hasData ? getScoreColor(day.compliance_score) + '30' : 'transparent',
-                borderWidth: isToday ? 2 : 0, borderColor: colors.primary,
+                width: 40, height: 40, borderRadius: 20,
+                // Dolu daire OPAK pastel (bant üstünde de temiz durur); kademe rengi çerçevede.
+                backgroundColor: isSelected ? colors.primary : day.hasData ? tint(scoreColor, colors, isDark, 1.8) : 'transparent',
+                borderWidth: isToday ? 3 : day.hasData && !isSelected ? 2 : 0,
+                borderColor: isToday ? colors.primary : scoreColor,
                 justifyContent: 'center', alignItems: 'center',
               }}>
-                {/* FIX (audit UI-DS-01): seçili gün metni '#fff' yerine getContrastColor(colors.primary) (siyah; teal üzerinde WCAG AA geçer, beyaz 3.39:1 idi). */}
-                <Text style={{ color: isSelected ? getContrastColor(colors.primary) : day.hasData ? colors.text : colors.textMuted, ...TYPE.body, fontWeight: isToday ? '700' : '400' }}>{dayNum}</Text>
+                {/* FIX (audit UI-DS-01): seçili gün metni getContrastColor(colors.primary). */}
+                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ color: isSelected ? getContrastColor(colors.primary) : day.hasData ? colors.text : colors.textMuted, ...TYPE.bodyStrong, fontWeight: day.hasData || isToday ? '800' : '500' }}>{dayNum}</Text>
               </View>
-              {/* Dot indicator */}
-              {day.hasData && !isSelected && (
-                <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: getScoreColor(day.compliance_score), marginTop: 2 }} />
-              )}
             </TouchableOpacity>
           );
         })}
@@ -166,15 +168,19 @@ export default function CalendarScreen() {
         const avg = scored.length ? Math.round(scored.reduce((s, d) => s + (d.compliance_score ?? 0), 0) / scored.length) : null;
         const workouts = days.filter(d => d.workout_done).length;
         return (
-          <View style={{ flexDirection: 'row', marginTop: SPACING.md, backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, paddingVertical: SPACING.md }}>
+          <View style={{ flexDirection: 'row', marginTop: SPACING.md, gap: SPACING.sm }}>
             {[
-              { value: `${logged.length}`, label: 'loglanan gün', color: colors.text },
-              { value: avg != null ? `%${avg}` : '-', label: 'ort. uyum', color: avg != null ? getScoreColor(avg) : colors.text },
-              { value: `${workouts}`, label: 'antrenman', color: colors.text },
+              { value: `${logged.length}`, label: 'kayıtlı gün', icon: 'calendar' as const, color: METRIC_COLORS.calories },
+              { value: avg != null ? `%${avg}` : '-', label: 'ort. uyum', icon: 'checkmark-circle' as const, color: avg != null ? getScoreColor(avg) : colors.textMuted },
+              { value: `${workouts}`, label: 'antrenman', icon: 'barbell' as const, color: METRIC_COLORS.protein },
             ].map((s) => (
-              <View key={s.label} style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={{ color: s.color, ...TYPE.title3 }}>{s.value}</Text>
-                <Text style={{ color: colors.textMuted, ...TYPE.caption, marginTop: 2 }}>{s.label}</Text>
+              // Salt okunur özet kutucuğu: dolu renkli plaka + mürekkep ikon, sayı mürekkep.
+              <View key={s.label} accessible accessibilityLabel={`${s.label}: ${s.value}`} style={{ flex: 1, alignItems: 'center', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, paddingVertical: SPACING.md }}>
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: s.color, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.xs }}>
+                  <Ionicons name={s.icon} size={17} color={PLATE_INK} />
+                </View>
+                <Text style={{ color: colors.text, ...TYPE.title3, fontWeight: '800' }}>{s.value}</Text>
+                <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 1 }}>{s.label}</Text>
               </View>
             ))}
           </View>
@@ -185,7 +191,7 @@ export default function CalendarScreen() {
       {!loading && !loadError && (
       <View
         style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: SPACING.md, marginTop: SPACING.md }}
-        accessibilityLabel="Renk açıklaması: yeşil iyi, turuncu orta, kırmızı düşük uyum, boş hücre veri yok"
+        accessibilityLabel="Renk açıklaması: mavi iyi, turuncu orta, kırmızı düşük uyum, boş hücre veri yok"
       >
         {[
           { color: colors.success, label: 'İyi' },
@@ -193,12 +199,12 @@ export default function CalendarScreen() {
           { color: colors.error, label: 'Düşük' },
         ].map(item => (
           <View key={item.label} style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
-            <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: item.color }} />
+            <View style={{ width: 14, height: 14, borderRadius: 7, backgroundColor: tint(item.color, colors, isDark, 1.8), borderWidth: 2, borderColor: item.color }} />
             <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>{item.label}</Text>
           </View>
         ))}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs }}>
-          <View style={{ width: 10, height: 10, borderRadius: 5, borderWidth: 1, borderColor: colors.textMuted }} />
+          <View style={{ width: 14, height: 14, borderRadius: 7, borderWidth: 1, borderColor: colors.textMuted }} />
           <Text style={{ color: colors.textSecondary, ...TYPE.caption }}>Veri yok</Text>
         </View>
       </View>
@@ -242,14 +248,15 @@ export default function CalendarScreen() {
                   ux-readiness: only when a report actually exists (compliance_score!=null) — a
                   meal/weight-only day has no daily_reports row and the link would soft-dead-end. */}
               {selected.compliance_score !== null && (
-                <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+                <Button
+                  title="Gün sonu raporunu gör"
+                  variant="outline"
+                  size="sm"
                   onPress={() => router.push(`/reports/daily?date=${selected.date}`)}
-                  accessibilityRole="button"
                   accessibilityLabel="Bu günün gün sonu raporunu gör"
-                  style={{ marginTop: SPACING.sm, paddingVertical: SPACING.sm, alignSelf: 'flex-start' }}
-                >
-                  <Text style={{ color: colors.primary, ...TYPE.bodyStrong }}>Gün sonu raporunu gör →</Text>
-                </TouchableOpacity>
+                  icon={<Ionicons name="document-text-outline" size={16} color={colors.primary} />}
+                  style={{ marginTop: SPACING.sm, alignSelf: 'flex-start' }}
+                />
               )}
             </View>
           )}

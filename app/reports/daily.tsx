@@ -1,3 +1,11 @@
+/**
+ * Gün Sonu Raporu — bir günün uyum skoru, hedef kontrolü, makrolar ve koçun notu.
+ *
+ * Duolingo dili (DEVIR §0-A/§0-B, 2026-11): skor kahramanı teşvik hapı + iyi günde rozet yayı
+ * (ComplianceHero), hedef kontrolü "x/4 tamam" başlıklı tik plakaları, makrolar metrik
+ * paletinin (mavi/kehribar/gül) opak pastel diskleri, yarının aksiyonu Koçko'nun ağzından.
+ * Rapor yoksa maskotlu boş durum. Veri akışı / üretim mantığı aynen korunur.
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { View, Text, ScrollView, Alert } from 'react-native';
@@ -15,9 +23,11 @@ import { ComplianceScore } from '@/components/reports/ComplianceScore';
 import { DeviationTag } from '@/components/reports/DeviationTag';
 import { SkeletonScreen } from '@/components/ui/Skeleton';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
-import { useTheme } from '@/lib/theme';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
+import { ReportEmpty, PLATE_INK, tint } from '@/components/reports/ReportBits';
 import { haptics } from '@/lib/haptics';
 import { ThinkingFor } from '@/components/chat/ThinkingIndicator';
 
@@ -47,7 +57,7 @@ const DEVIATION_LABELS: Record<string, string> = {
 };
 
 export default function DailyReportScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [report, setReport] = useState<DailyReport | null>(null);
@@ -147,19 +157,16 @@ export default function DailyReportScreen() {
       </Text>
 
       {!report ? (
-        <Card>
-          {/* FIX (ux-audit major): a past day with no report is not something you retro-generate —
-              show it plainly. Only today offers "Rapor Oluştur". */}
-          {isToday ? (
-            <>
-              <Text style={{ color: colors.textSecondary, ...TYPE.body, marginBottom: SPACING.lg }}>Rapor henüz oluşturulmamış.</Text>
-              <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
-              {generating && <ThinkingFor kind="report_daily" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
-            </>
-          ) : (
-            <Text style={{ color: colors.textSecondary, ...TYPE.body }}>Bu güne ait bir gün sonu raporu yok.</Text>
-          )}
-        </Card>
+        // FIX (ux-audit major): a past day with no report is not something you retro-generate —
+        // show it plainly. Only today offers "Rapor Oluştur". (Maskotlu boş durum, §0-A.)
+        isToday ? (
+          <ReportEmpty mood="happy" title="Günün raporu hazır değil" subtitle="Koçun bugünü senin için özetlesin — birkaç saniye sürer.">
+            <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
+            {generating && <ThinkingFor kind="report_daily" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
+          </ReportEmpty>
+        ) : (
+          <ReportEmpty mood="sleepy" title="Bu güne ait rapor yok" subtitle="O gün bir gün sonu raporu oluşturulmamış." />
+        )
       ) : (
         <>
           {/* Score */}
@@ -168,7 +175,7 @@ export default function DailyReportScreen() {
           </Card>
 
           {/* Checklist */}
-          <Card title="Hedef Kontrolü">
+          <Card title="Hedef Kontrolü" subtitle={`${[report.calorie_target_met, report.protein_target_met, report.workout_completed, report.water_target_met ?? false].filter(Boolean).length}/4 hedef tamam`}>
             <CheckItem label="Kalori" met={report.calorie_target_met} detail={targets.calorieTargetMax > 0 ? `${report.calorie_actual} / ${targets.calorieTargetMin}-${targets.calorieTargetMax} kcal` : `${report.calorie_actual} kcal`} />
             {/* FIX (adversarial-review): proteinG ALWAYS falls back to 120 (deriveNutritionTargets),
                 so `proteinG > 0` never hides it — a fabricated '/ 120 g' could contradict the
@@ -181,9 +188,10 @@ export default function DailyReportScreen() {
           {/* Macros */}
           <Card title="Makro Dağılımı">
             <View style={{ flexDirection: 'row', justifyContent: 'space-around' }}>
-              <MacroCircle label="Protein" value={report.protein_actual} unit="g" color={colors.protein} />
-              <MacroCircle label="Karb" value={report.carbs_actual} unit="g" color={colors.carbs} />
-              <MacroCircle label="Yağ" value={report.fat_actual} unit="g" color={colors.fat} />
+              {/* Metrik paleti (mavi/kehribar/gül) — dashboard makro çubuklarıyla aynı tonlar. */}
+              <MacroCircle label="Protein" value={report.protein_actual} unit="g" color={METRIC_COLORS.protein} />
+              <MacroCircle label="Karb" value={report.carbs_actual} unit="g" color={METRIC_COLORS.carbs} />
+              <MacroCircle label="Yağ" value={report.fat_actual} unit="g" color={METRIC_COLORS.fat} />
               {/* FIX (audit UI-STA-06): use the lighter `errorText` tone (>=4.5:1 on card) for the
                   accent value text instead of base `error` (4.39:1, below AA-small). */}
               {report.alcohol_calories > 0 && <MacroCircle label="Alkol" value={report.alcohol_calories} unit="kcal" color={colors.errorText} />}
@@ -218,8 +226,12 @@ export default function DailyReportScreen() {
           </Card>
 
           {/* Tomorrow */}
-          <Card title="Yarın İçin Tek Aksiyon">
-            <Text style={{ color: colors.primary, ...TYPE.title3 }}>{report.tomorrow_action}</Text>
+          {/* Yarının tek aksiyonu koçun ağzından: Koçko + konuşma kutusu (CoachBubble dili). */}
+          <Card title="Yarın İçin Tek Aksiyon" style={{ backgroundColor: tint(colors.primary, colors, isDark, 0.8) }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+              <KochkoMascot size={56} mood="cheer" />
+              <Text style={{ color: colors.primary, ...TYPE.title3, flex: 1 }}>{report.tomorrow_action}</Text>
+            </View>
           </Card>
 
           {/* ux-sweep (daily-no-regenerate): otomatik gece job'ı satırı yazınca kullanıcı butona
@@ -235,28 +247,36 @@ export default function DailyReportScreen() {
 }
 
 function CheckItem({ label, met, detail }: { label: string; met: boolean; detail?: string }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  // Tutturulan hedef: dolu gök mavisi plaka + MÜREKKEP tik (beyaz tik gök mavisinde 3:1 altı).
+  // Tutturulmayan: kırmızı X yerine kehribar pastel — suçlamayan dil (bkz. "Zorlu gün").
   return (
     <View
-      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, gap: SPACING.sm }}
+      style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, gap: SPACING.md }}
       accessibilityRole="text"
       accessibilityLabel={`${label}: ${met ? 'hedef tutturuldu' : 'hedef tutturulmadı'}${detail ? `, ${detail}` : ''}`}
     >
-      <Ionicons name={met ? 'checkmark-circle' : 'close-circle'} size={24} color={met ? colors.success : colors.error} />
-      <Text style={{ color: colors.text, ...TYPE.body, flex: 1 }}>{label}</Text>
-      {detail && <Text style={{ color: colors.textSecondary, ...TYPE.body }}>{detail}</Text>}
+      <View style={{
+        width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: met ? colors.success : tint(colors.warning, colors, isDark, 1.4),
+      }}>
+        <Ionicons name={met ? 'checkmark' : 'close'} size={18} color={met ? PLATE_INK : colors.warning} />
+      </View>
+      <Text style={{ color: colors.text, ...TYPE.bodyStrong, flex: 1 }}>{label}</Text>
+      {detail && <Text style={{ color: colors.textSecondary, ...TYPE.callout }}>{detail}</Text>}
     </View>
   );
 }
 
 function MacroCircle({ label, value, unit, color }: { label: string; value: number; unit: string; color: string }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  // Opak pastel disk + kalın renk halkası; sayı mürekkepte (kehribar metin açık zeminde okunmuyor).
   return (
     <View style={{ alignItems: 'center' }} accessibilityRole="text" accessibilityLabel={`${label}: ${value} ${unit}`}>
-      <View style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 3, borderColor: color, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color, ...TYPE.headline }}>{value}</Text>
+      <View style={{ width: 64, height: 64, borderRadius: 32, borderWidth: 4, borderColor: color, backgroundColor: tint(color, colors, isDark), justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: colors.text, ...TYPE.headline, fontWeight: '800' }}>{value}</Text>
       </View>
-      <Text style={{ color: colors.textSecondary, ...TYPE.caption, marginTop: 4 }}>{label}</Text>
+      <Text style={{ color: colors.text, ...TYPE.caption, fontWeight: '700', marginTop: SPACING.xs }}>{label}</Text>
       <Text style={{ color: colors.textMuted, ...TYPE.caption }}>{unit}</Text>
     </View>
   );

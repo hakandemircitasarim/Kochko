@@ -1,3 +1,11 @@
+/**
+ * Haftalık Rapor — haftanın ortalama uyumu, kilo seyri, en iyi/zorlu gün ve koçun stratejisi.
+ *
+ * Duolingo dili (DEVIR §0-A/§0-B, 2026-11): açılış ComplianceHero (teşvik hapı; ≥%70'te rozet
+ * yayı + BİR KEZ konfeti — haftalık özet uygulamanın "hafta bitti" kutlama anı, kutlamanın tek
+ * konfetili rapor yüzeyi burası). Trend ve bütçe opak pastel haplar; gün satırları ikon plakalı;
+ * öğrenme notu Koçko'nun ağzından; boş durum maskotlu. Veri akışı aynen korunur.
+ */
 import { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,9 +14,11 @@ import { useAuthStore } from '@/stores/auth.store';
 import { supabase } from '@/lib/supabase';
 import { edgeHeaders } from '@/lib/edgeHeaders';
 import { Button } from '@/components/ui/Button';
-import { CircularProgress } from '@/components/ui/CircularProgress';
+import { ComplianceHero } from '@/components/reports/ComplianceScore';
+import { ReportEmpty, tint } from '@/components/reports/ReportBits';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { Card } from '@/components/ui/Card';
-import { SPACING, FONT } from '@/lib/constants';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
@@ -48,7 +58,7 @@ const PLAN_REVISION_LABELS: Record<string, string> = {
 };
 
 export default function WeeklyReportScreen() {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const user = useAuthStore(s => s.user);
   const [report, setReport] = useState<WeeklyReport | null>(null);
@@ -164,55 +174,55 @@ export default function WeeklyReportScreen() {
     );
   }
 
-  const compColor = (report?.avg_compliance ?? 0) >= 70 ? colors.success : (report?.avg_compliance ?? 0) >= 40 ? colors.warning : colors.error;
+  // Hap: opak pastel zemin + renkli ikon + MÜREKKEP metin (gök mavisi/kehribar küçük metin
+  // açık zeminde AA altında kalıyordu; renk anlamı ikonda ve zeminde, sözü metinde).
+  const Pill = ({ icon, color, text }: { icon: keyof typeof Ionicons.glyphMap; color: string; text: string }) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.xs, marginTop: SPACING.sm, paddingVertical: SPACING.xs + 1, paddingHorizontal: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: tint(color, colors, isDark, 1.1) }}>
+      <Ionicons name={icon} size={15} color={color} />
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.callout, color: colors.text, fontWeight: '700' }}>{text}</Text>
+    </View>
+  );
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.background }} contentContainerStyle={{ padding: SPACING.md, paddingBottom: SPACING.xxl + insets.bottom }}>
       {report && <Text style={{ ...TYPE.body, color: colors.textSecondary, marginBottom: SPACING.lg }}>Hafta: {new Date(report.week_start).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' })}</Text>}
 
       {!report ? (
-        <Card>
-          {/* FIX (ux-polish): iconed empty state with a visual anchor (was a flat left-aligned sentence). */}
-          <View style={{ alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.md }}>
-            <View style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: colors.surfaceLight, justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name="document-text-outline" size={26} color={colors.primary} />
-            </View>
-            <Text style={{ color: colors.text, ...TYPE.headline, textAlign: 'center' }}>Henüz haftalık rapor yok</Text>
-            <Text style={{ color: colors.textSecondary, ...TYPE.body, textAlign: 'center', marginBottom: SPACING.sm }}>Haftanı özetleyeyim — birkaç saniye sürer.</Text>
-            <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
-            {generating && <ThinkingFor kind="report_weekly" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
-          </View>
-        </Card>
+        // FIX (ux-polish): boş durumun görsel çapası artık Koçko (maskotlu boş durum, §0-A).
+        <ReportEmpty mood="happy" title="Henüz haftalık rapor yok" subtitle="Haftanı özetleyeyim — birkaç saniye sürer.">
+          <Button title="Rapor Oluştur" onPress={handleGenerate} loading={generating} size="lg" />
+          {generating && <ThinkingFor kind="report_weekly" style={{ alignSelf: 'center', marginTop: SPACING.md }} />}
+        </ReportEmpty>
       ) : (
         <>
           {/* Compliance */}
           <Card>
-            <View style={{ alignItems: 'center', paddingVertical: SPACING.md }}>
-              {/* FIX (ux-round2 #14): '%' unit (was a bare '68') + trend vs last week.
-                  ux-polish: the compliance ring (same as daily/monthly) instead of a flat number,
-                  so all three reports open with the shared hero treatment. */}
-              {/* A week with no logged days has NO average (server stores null) — say so instead of
-                  painting a red "%0" ring at someone who simply didn't log. */}
-              <CircularProgress progress={(report.avg_compliance ?? 0) / 100} value={report.avg_compliance == null ? '—' : `%${report.avg_compliance}`} size={120} strokeWidth={8} color={report.avg_compliance == null ? colors.textMuted : compColor} a11yLabel="Ortalama uyum" />
-              <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.sm }}>{report.avg_compliance == null ? 'Bu hafta kayıt yok' : 'Ortalama Uyum'}</Text>
+            {/* FIX (ux-round2 #14): '%' unit (was a bare '68') + trend vs last week.
+                A week with no logged days has NO average (server stores null) — say so instead of
+                painting a red "%0" ring at someone who simply didn't log. */}
+            <ComplianceHero
+              score={report.avg_compliance}
+              label="Ortalama Uyum"
+              emptyLabel="Bu hafta kayıt yok"
+              a11yLabel="Ortalama uyum"
+              confetti
+            >
+              {/* Trend + bütçe hapları yan yana sarılır — üç hap alt alta kahramanı uzatıyordu. */}
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', columnGap: SPACING.sm }}>
               {prevCompliance != null && report.avg_compliance != null && (() => {
                 const d = report.avg_compliance - prevCompliance;
-                if (d === 0) return <Text style={{ color: colors.textMuted, ...TYPE.body, marginTop: SPACING.xs }}>geçen haftayla aynı</Text>;
-                return (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.xs }}>
-                    <Ionicons name={d > 0 ? 'arrow-up' : 'arrow-down'} size={13} color={d > 0 ? colors.success : colors.warning} />
-                    <Text style={{ color: d > 0 ? colors.success : colors.warning, ...TYPE.bodyStrong, fontWeight: '700' }}>
-                      geçen haftaya göre {d > 0 ? '+' : '−'}{Math.abs(d)}
-                    </Text>
-                  </View>
-                );
+                if (d === 0) return <Pill icon="remove" color={colors.textMuted} text="geçen haftayla aynı" />;
+                return <Pill icon={d > 0 ? 'arrow-up' : 'arrow-down'} color={d > 0 ? colors.success : colors.warning} text={`geçen haftaya göre ${d > 0 ? '+' : '−'}${Math.abs(d)}`} />;
               })()}
               {report.weekly_budget_compliance != null && (
-                <Text style={{ color: report.weekly_budget_compliance ? colors.success : colors.warning, ...TYPE.body, marginTop: SPACING.xs }}>
-                  Haftalık bütçe: {report.weekly_budget_compliance ? 'Tutturuldu' : 'Aşıldı'}
-                </Text>
+                <Pill
+                  icon={report.weekly_budget_compliance ? 'wallet' : 'wallet-outline'}
+                  color={report.weekly_budget_compliance ? colors.success : colors.warning}
+                  text={`Haftalık bütçe: ${report.weekly_budget_compliance ? 'Tutturuldu' : 'Aşıldı'}`}
+                />
               )}
-            </View>
+              </View>
+            </ComplianceHero>
           </Card>
 
           {/* Weight Trend */}
@@ -239,10 +249,14 @@ export default function WeeklyReportScreen() {
                   </Text>
                   <Text style={{ color: colors.text, ...TYPE.headline, flex: 1 }}>{formatDecimal(w.kg)} kg</Text>
                   {i > 0 && (
-                    <Text style={{ ...TYPE.bodyStrong, color: w.kg < report.weight_trend[i - 1].kg ? colors.success : w.kg > report.weight_trend[i - 1].kg ? colors.error : colors.textMuted }}>
-                      {/* FIX (ux-pass5): TR ondalık virgül. */}
-                      {w.kg < report.weight_trend[i - 1].kg ? '' : '+'}{(w.kg - report.weight_trend[i - 1].kg).toFixed(1).replace('.', ',')}
-                    </Text>
+                    // Gün farkı küçük pastel hap: yön rengi zeminde, sayı mürekkepte (kırmızı/gök mavisi
+                    // küçük metin açık zeminde AA altındaydı).
+                    <View style={{ borderRadius: RADIUS.pill, paddingHorizontal: SPACING.sm, paddingVertical: 2, backgroundColor: w.kg === report.weight_trend[i - 1].kg ? colors.surfaceLight : tint(w.kg < report.weight_trend[i - 1].kg ? colors.success : colors.error, colors, isDark, 1.3) }}>
+                      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '700', color: colors.text }}>
+                        {/* FIX (ux-pass5): TR ondalık virgül. */}
+                        {w.kg < report.weight_trend[i - 1].kg ? '' : '+'}{(w.kg - report.weight_trend[i - 1].kg).toFixed(1).replace('.', ',')}
+                      </Text>
+                    </View>
                   )}
                 </View>
               ))}
@@ -258,17 +272,11 @@ export default function WeeklyReportScreen() {
           {(report.best_day || report.worst_day) && report.best_day !== report.worst_day && (
             <Card title="Haftanın Günleri">
               {report.best_day && (
-                <View style={{ flexDirection: 'row', gap: SPACING.md, paddingVertical: SPACING.xs }}>
-                  <Text style={{ color: colors.success, ...TYPE.bodyStrong, width: 68 }}>En İyi</Text>
-                  <Text style={{ color: colors.text, ...TYPE.body }}>{new Date(report.best_day).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric' })}</Text>
-                </View>
+                <DayLine icon="trophy" color={colors.success} label="En İyi" date={report.best_day} />
               )}
               {report.worst_day && (
-                <View style={{ flexDirection: 'row', gap: SPACING.md, paddingVertical: SPACING.xs }}>
-                  {/* ux-sweep: kardeş progress.tsx bilinçli 'Zorlu gün' der — utandırma dili yok. */}
-                  <Text style={{ color: colors.warning, ...TYPE.bodyStrong, width: 68 }}>Zorlu gün</Text>
-                  <Text style={{ color: colors.text, ...TYPE.body }}>{new Date(report.worst_day).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric' })}</Text>
-                </View>
+                // ux-sweep: kardeş progress.tsx bilinçli 'Zorlu gün' der — utandırma dili yok.
+                <DayLine icon="fitness" color={colors.warning} label="Zorlu gün" date={report.worst_day} />
               )}
             </Card>
           )}
@@ -276,7 +284,9 @@ export default function WeeklyReportScreen() {
           {/* Top Deviation */}
           {report.top_deviation && (
             <Card title="En Çok Sapılan Konu">
-              <Text style={{ color: colors.warning, ...TYPE.headline }}>{report.top_deviation}</Text>
+              <View style={{ alignItems: 'flex-start', marginTop: -SPACING.sm }}>
+                <Pill icon="alert-circle" color={colors.warning} text={report.top_deviation} />
+              </View>
             </Card>
           )}
 
@@ -316,7 +326,11 @@ export default function WeeklyReportScreen() {
           {/* AI Learning Note */}
           {report.ai_learning_note && (
             <Card title="Bu Hafta Seni Daha İyi Tanıdım">
-              <Text style={{ color: colors.primary, ...TYPE.body, fontStyle: 'italic' }}>{report.ai_learning_note}</Text>
+              {/* Koçun gözlemi koçun ağzından: avatar Koçko + not. */}
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md }}>
+                <KochkoMascot size={40} mood="happy" />
+                <Text style={{ color: colors.primary, ...TYPE.body, fontStyle: 'italic', flex: 1 }}>{report.ai_learning_note}</Text>
+              </View>
             </Card>
           )}
 
@@ -344,5 +358,19 @@ export default function WeeklyReportScreen() {
         </>
       )}
     </ScrollView>
+  );
+}
+
+/** En iyi / zorlu gün satırı: renkli ikon plakası + mürekkep etiket + tarih. */
+function DayLine({ icon, color, label, date }: { icon: keyof typeof Ionicons.glyphMap; color: string; label: string; date: string }) {
+  const { colors, isDark } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md, paddingVertical: SPACING.xs }}>
+      <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: tint(color, colors, isDark, 1.4), alignItems: 'center', justifyContent: 'center' }}>
+        <Ionicons name={icon} size={17} color={color} />
+      </View>
+      <Text style={{ color: colors.text, ...TYPE.bodyStrong, width: 76 }}>{label}</Text>
+      <Text style={{ color: colors.textSecondary, ...TYPE.body, flex: 1 }}>{new Date(date).toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric' })}</Text>
+    </View>
   );
 }
