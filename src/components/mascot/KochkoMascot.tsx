@@ -12,6 +12,15 @@
  * Mor yüzde BEYAZ gözler + krem burunlukta koyu burun/ağız → az ama yüksek kontrastlı özellik.
  * size < 48 → AVATAR (yalnız kafa, kalın kontur); size >= 48 → TAM karakter: happy = başparmak +
  * pano, cheer = yumruklar havada + konfeti, sleepy = havlu + kapalı göz + Zz.
+ * 2026-11-04 iki mood daha (mevcut üçünün çizimi DEĞİŞMEDİ):
+ *   thinking = yükleme / AI çalışırken: gözler yukarı-yana, yamuk "hmm" ağız, el çenede,
+ *              sağ üstte düşünce balonu (üç nokta). Kafa balona doğru hafif eğik.
+ *   cheerup  = hata / boş durum / bağlantı yok: teselli eden koç. Gülen kapalı gözler (^ ^,
+ *              sleepy'nin U'sunun tersi), kapalı yumuşak gülümseme, yanaklar, iki eliyle kalp
+ *              uzatır. "Sorun değil, birlikte hallederiz" — üzgün değil, yanında duran koç.
+ *   Avatar (<48) yalnız kafa olduğu için ayrım yüzde: thinking'de yukarı bakan göz + yamuk
+ *   ağız, cheerup'ta ^ ^ göz + yanak (yanak avatarda yalnız cheerup'ta çizilir — 24px'te
+ *   sıcaklığı taşıyan tek leke o).
  * Kimlik sabittir (tema token'ı değil): koyu kontur açık zeminde, açık dolgular koyu zeminde taşır.
  */
 import React, { useEffect, useRef, useState } from 'react';
@@ -19,7 +28,8 @@ import { Animated, Easing } from 'react-native';
 import Svg, { G, Path, Circle, Ellipse, Rect } from 'react-native-svg';
 import { useReduceMotion } from '@/hooks/useReduceMotion';
 
-export type MascotMood = 'happy' | 'cheer' | 'sleepy';
+// Geriye uyumlu genişletme: eski üç değer aynı anlamda; yeni ikisi yalnız yeni çağıranlarda.
+export type MascotMood = 'happy' | 'cheer' | 'sleepy' | 'thinking' | 'cheerup';
 type Mood = MascotMood;
 
 // Sabit kimlik paleti — bilerek tema token'ı DEĞİL.
@@ -39,6 +49,7 @@ const C = {
   gold: '#FFC83D',
   mint: '#5EE0C2',
   board: '#C98E55',
+  heart: '#FF6F9C', // cheerup kalbi — cheek'ten bir ton doygun: yanakla aynı leke olmasın
 } as const;
 
 /** Sol yarıda çizilmiş path'i dikey eksende aynalar (yalnız mutlak M/L/C/Z — her sayı x,y çiftinin parçası). */
@@ -67,12 +78,17 @@ const BLINK_L = 'M 34 57 C 37 59, 43 59, 46 57';
 const DOME_R = mirrorX(DOME_L, 100);
 const CLOSED_R = mirrorX(CLOSED_L, 100);
 const BLINK_R = mirrorX(BLINK_L, 100);
+// cheerup: gülen kapalı göz — CLOSED_L'nin (uyuyan U) dikey tersi, ^ biçimi.
+const SMILE_EYE_L = 'M 33.8 58.5 C 36.5 52.5, 43.5 52.5, 46.2 58.5';
+const SMILE_EYE_R = mirrorX(SMILE_EYE_L, 100);
 
 const HW = 6; // avatar ana kontur (24px'te ~1.45px)
 
 function Head({ mood, blink, full }: { mood: Mood; blink: boolean; full: boolean }) {
   const sleepy = mood === 'sleepy';
   const cheer = mood === 'cheer';
+  const thinking = mood === 'thinking';
+  const cheerup = mood === 'cheerup';
   return (
     <G>
       {/* Boynuzlar — kimliğin silüeti */}
@@ -89,10 +105,10 @@ function Head({ mood, blink, full }: { mood: Mood; blink: boolean; full: boolean
       <Path d={FACE} fill="none" stroke={C.ink} strokeWidth={HW} strokeLinejoin="round" />
       {/* Ter bandı (antrenör) */}
       <Path d={BAND} fill={C.band} stroke={C.ink} strokeWidth={3.5} strokeLinejoin="round" />
-      {full && (
+      {(full || cheerup) && (
         <>
-          <Ellipse cx={34.5} cy={65} rx={4} ry={2.6} fill={C.cheek} opacity={0.75} />
-          <Ellipse cx={65.5} cy={65} rx={4} ry={2.6} fill={C.cheek} opacity={0.75} />
+          <Ellipse cx={34.5} cy={65} rx={4} ry={2.6} fill={C.cheek} opacity={cheerup ? 0.9 : 0.75} />
+          <Ellipse cx={65.5} cy={65} rx={4} ry={2.6} fill={C.cheek} opacity={cheerup ? 0.9 : 0.75} />
         </>
       )}
       {/* Gözler */}
@@ -100,6 +116,12 @@ function Head({ mood, blink, full }: { mood: Mood; blink: boolean; full: boolean
         <>
           <Path d={CLOSED_L} stroke={C.ink} strokeWidth={5.5} strokeLinecap="round" fill="none" />
           <Path d={CLOSED_R} stroke={C.ink} strokeWidth={5.5} strokeLinecap="round" fill="none" />
+        </>
+      ) : cheerup ? (
+        // Kapalı göz kırpmaz; blink dalından ÖNCE.
+        <>
+          <Path d={SMILE_EYE_L} stroke={C.ink} strokeWidth={5.5} strokeLinecap="round" fill="none" />
+          <Path d={SMILE_EYE_R} stroke={C.ink} strokeWidth={5.5} strokeLinecap="round" fill="none" />
         </>
       ) : blink ? (
         <>
@@ -110,6 +132,16 @@ function Head({ mood, blink, full }: { mood: Mood; blink: boolean; full: boolean
         <>
           <Path d={DOME_L} fill={C.white} stroke={C.ink} strokeWidth={2.5} strokeLinejoin="round" />
           <Path d={DOME_R} fill={C.white} stroke={C.ink} strokeWidth={2.5} strokeLinejoin="round" />
+        </>
+      ) : thinking ? (
+        // Bebekler yukarı-sağa (balona) kaçık: "bir düşüneyim" bakışı. Ak aynı, yalnız bebek kayar.
+        <>
+          <Ellipse cx={40} cy={55.5} rx={6.8} ry={7.8} fill={C.white} stroke={C.ink} strokeWidth={2.5} />
+          <Ellipse cx={60} cy={55.5} rx={6.8} ry={7.8} fill={C.white} stroke={C.ink} strokeWidth={2.5} />
+          <Circle cx={42.4} cy={52.4} r={4.3} fill={C.ink} />
+          <Circle cx={62.4} cy={52.4} r={4.3} fill={C.ink} />
+          <Circle cx={44} cy={50.8} r={1.5} fill={C.white} />
+          <Circle cx={64} cy={50.8} r={1.5} fill={C.white} />
         </>
       ) : (
         <>
@@ -131,6 +163,12 @@ function Head({ mood, blink, full }: { mood: Mood; blink: boolean; full: boolean
         </>
       ) : sleepy ? (
         <Path d="M 46 78 C 48.5 79.6, 51.5 79.6, 54 78" stroke={C.ink} strokeWidth={4} strokeLinecap="round" fill="none" />
+      ) : thinking ? (
+        // Yamuk "hmm": sağa doğru hafif yükselen kısa çizgi — gülümseme de değil, somurtma da.
+        <Path d="M 44.5 78.6 C 48 78.4, 52 77.4, 56.5 75.6" stroke={C.ink} strokeWidth={4.5} strokeLinecap="round" fill="none" />
+      ) : cheerup ? (
+        // Kapalı, yumuşak, simetrik gülümseme — happy'ninkinden geniş ve ortalı (teselli eden yüz).
+        <Path d="M 42.5 76 C 45.5 81.6, 54.5 81.6, 57.5 76" stroke={C.ink} strokeWidth={4.5} strokeLinecap="round" fill="none" />
       ) : (
         <Path d="M 43.5 77 C 46.5 80.8, 53 81.2, 57.5 76.2" stroke={C.ink} strokeWidth={4.5} strokeLinecap="round" fill="none" />
       )}
@@ -193,6 +231,16 @@ const TOWEL_R = 'M 63.5 61.5 C 67 60.5, 71.5 60.5, 75 61.5 C 75 68, 74.5 75, 75.
 const TOWEL_STRIPES = 'M 44.6 82 L 56.4 82 M 44.6 85.5 L 56.5 85.5 M 63.8 74 L 74.8 74 M 63.7 77.5 L 75.1 77.5';
 const TOWEL_FRINGE = 'M 47 91 L 47 93.5 M 50.5 91.5 L 50.5 94 M 54 91 L 54 93.5 M 66 83 L 66 85.5 M 69.5 83.5 L 69.5 86 M 73 83 L 73 85.5';
 
+// cheerup kalbi — göğüs ortasında (60, ~83), düdüğü örter.
+const HEART =
+  'M 60 93 C 49.5 86.5, 48 79, 51.5 75.8 C 54.6 73, 58.6 74.2, 60 77.4 ' +
+  'C 61.4 74.2, 65.4 73, 68.5 75.8 C 72 79, 70.5 86.5, 60 93 Z';
+// thinking düşünce bulutu (sağ üst köşe; boynuzun dışında kalır).
+const THOUGHT =
+  'M 92.5 22 C 89 22, 88.5 15.5, 92.5 14 C 92.5 9, 98.5 7, 101.5 9.5 C 104 5.5, 111 6, 112.5 10 ' +
+  'C 117.5 10, 118.5 16.5, 115.5 18.5 C 117.5 22.5, 113.5 26, 110 24.5 C 107 27.5, 100 27.5, 98 24.5 ' +
+  'C 96 25.5, 93 24.5, 92.5 22 Z';
+
 const BODY =
   'M 52 54 L 68 54 L 69 58 C 76 56, 83 61, 80.5 68.5 C 87 71.5, 88 82, 82 85.5 C 86 92, 80 100, 72.5 98.5 ' +
   'C 69.5 104, 60.5 105, 57.5 100.5 C 53.5 104.5, 45 103, 44.5 97.5 C 37.5 99.5, 32.5 91.5, 38 85.5 ' +
@@ -201,7 +249,12 @@ const BODY =
 function FullBody({ mood, blink }: { mood: Mood; blink: boolean }) {
   const cheer = mood === 'cheer';
   const sleepy = mood === 'sleepy';
-  const happy = !cheer && !sleepy;
+  const thinking = mood === 'thinking';
+  const cheerup = mood === 'cheerup';
+  const happy = !cheer && !sleepy && !thinking && !cheerup;
+  // Kafa eğimi: sleepy sola düşer (mevcut); thinking balona doğru sağa; cheerup "dinliyorum"
+  // eğimi — sola, sleepy'den az.
+  const headTilt = sleepy ? -7 : thinking ? 6 : cheerup ? -5 : 0;
   return (
     <>
       {/* Zemin gölgesi */}
@@ -273,11 +326,44 @@ function FullBody({ mood, blink }: { mood: Mood; blink: boolean }) {
           <Hand cx={85.5} cy={93} r={6} />
         </>
       )}
+      {thinking && (
+        // Sol kol sarkık (sleepy'nin sol kolu), sağ el çeneye — kafadan SONRA çizilir (aşağıda).
+        <>
+          <Limb d="M 40.5 74 C 36.5 79, 34.5 85, 34.5 91" />
+          <Hand cx={34.5} cy={93} r={6} />
+        </>
+      )}
+      {cheerup && (
+        // İki el göğüs önünde kalbi tutar; kalp düdüğün üstüne biner (düdük yine altında duruyor).
+        <>
+          <Limb d="M 40.5 74 C 39.5 80, 42.5 84, 47.5 84.5" />
+          <Limb d="M 79.5 74 C 80.5 80, 77.5 84, 72.5 84.5" />
+          <Path d={HEART} fill={C.heart} stroke={C.ink} strokeWidth={OW} strokeLinejoin="round" />
+          <Path d="M 53.6 77.6 C 54.6 76.4, 56.2 76.2, 57.3 77.2" stroke={C.white} strokeWidth={2.2} strokeLinecap="round" fill="none" />
+          <Hand cx={49.5} cy={84.5} r={5.6} />
+          <Hand cx={70.5} cy={84.5} r={5.6} />
+        </>
+      )}
 
       {/* Kafa */}
-      <G transform={sleepy ? `rotate(-7 60 62) ${HEAD_T}` : HEAD_T}>
+      <G transform={headTilt ? `rotate(${headTilt} 60 62) ${HEAD_T}` : HEAD_T}>
         <Head mood={mood} blink={blink} full />
       </G>
+
+      {/* thinking: sağ kol çeneye — kafanın ÜSTÜNE çizilir ki el burunluğun altını örtsün. */}
+      {thinking && (
+        <>
+          <Limb d="M 79.5 74 C 84 84, 72 85, 64.5 69" />
+          <Hand cx={63} cy={64.5} r={6.2} />
+          {/* Düşünce balonu: kafadan yukarı-sağa büyüyen iki kabarcık + üç noktalı bulut. */}
+          <Circle cx={97} cy={45} r={2.4} fill={C.white} stroke={C.ink} strokeWidth={2.2} />
+          <Circle cx={102.5} cy={36} r={3.6} fill={C.white} stroke={C.ink} strokeWidth={2.4} />
+          <Path d={THOUGHT} fill={C.white} stroke={C.ink} strokeWidth={2.8} strokeLinejoin="round" />
+          <Circle cx={98} cy={16.5} r={2} fill={C.face} />
+          <Circle cx={104.5} cy={16.5} r={2} fill={C.face} />
+          <Circle cx={111} cy={16.5} r={2} fill={C.face} />
+        </>
+      )}
 
       {/* Konfeti (cheer) */}
       {cheer && (
@@ -331,9 +417,9 @@ export function KochkoMascot({ size = 96, mood = 'happy', animated = false }: Pr
     return () => loop.stop();
   }, [animated, reduceMotion, bob]);
 
-  // Göz kırpma: uyanık modlarda ~4 sn'de bir 140 ms.
+  // Göz kırpma: açık gözlü modlarda ~4 sn'de bir 140 ms (sleepy/cheerup gözleri zaten kapalı).
   useEffect(() => {
-    if (!animated || reduceMotion || mood === 'sleepy') { setBlink(false); return; }
+    if (!animated || reduceMotion || mood === 'sleepy' || mood === 'cheerup') { setBlink(false); return; }
     let blinkTimer: ReturnType<typeof setTimeout> | null = null;
     const interval = setInterval(() => {
       setBlink(true);
