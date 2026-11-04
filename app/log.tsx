@@ -31,6 +31,7 @@ import { SPACING, FONT, RADIUS, WATER_INCREMENT, MAX_FONT_SCALE } from '@/lib/co
 import { TYPE, MOTION, mix } from '@/lib/design';
 import { ShelfPressable } from '@/components/ui/ShelfPressable';
 import { ChoiceTile } from '@/components/ui/ChoiceTile';
+import { useReduceMotion } from '@/hooks/useReduceMotion';
 import { Button } from '@/components/ui/Button';
 import { ConfettiBurst } from '@/components/ui/ConfettiBurst';
 import { KochkoMascot } from '@/components/mascot/KochkoMascot';
@@ -95,6 +96,31 @@ function persistedFeedback(data: ChatResponse | null): string | null {
 type RecentItemRow = { food_name: string; portion_text: string | null; portion_grams: number | null; calories: number | null; protein_g: number | null; carbs_g: number | null; fat_g: number | null; data_source: string | null };
 type RecentMealRow = { id: string; raw_input: string; meal_type: string; input_method: string | null; logged_for_date: string; meal_log_items: RecentItemRow[] | null };
 type RecentMeal = { id: string; rawInput: string; mealType: string; inputMethod: string; dayLabel: string; kcal: number; items: MealLogItemInput[] };
+
+/** Kayıt sürerken mikrofonun etrafında genişleyip sönen halka (native driver). Reduce-motion → çizilmez. */
+function MicPulse({ color }: { color: string }) {
+  const reduceMotion = useReduceMotion();
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (reduceMotion) return;
+    const loop = Animated.loop(Animated.timing(t, { toValue: 1, duration: 1200, useNativeDriver: true }));
+    t.setValue(0);
+    loop.start();
+    return () => loop.stop();
+  }, [reduceMotion, t]);
+  if (reduceMotion) return null;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute', top: 0, width: 96, height: 96, borderRadius: 48,
+        borderWidth: 4, borderColor: color,
+        opacity: t.interpolate({ inputRange: [0, 1], outputRange: [0.55, 0] }),
+        transform: [{ scale: t.interpolate({ inputRange: [0, 1], outputRange: [1, 1.45] }) }],
+      }}
+    />
+  );
+}
 
 export default function QuickLogScreen() {
   const { colors, isDark } = useTheme();
@@ -912,24 +938,35 @@ export default function QuickLogScreen() {
 
         {transcribing ? (
           <>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.md }}>Ses tanınıyor...</Text>
+            {/* Bekleme anı karakterli (§0-A): düz çark yerine DÜŞÜNEN Koçko — "seni dinledim,
+                şimdi çözüyorum". Çark küçük olarak kalır: sürecin sürdüğünün nesnel işareti. */}
+            <KochkoMascot size={112} mood="thinking" animated />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.lg }}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={{ ...TYPE.body, color: colors.textSecondary }}>Ses tanınıyor...</Text>
+            </View>
           </>
         ) : (
           <>
-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-              onPress={() => { haptics.tap(); void handleVoiceToggle(); }}
-              accessibilityRole="button"
-              accessibilityLabel={isRecording ? 'Kaydı durdur' : 'Kayda başla'}
-              style={{
-                width: 96, height: 96, borderRadius: 48,
-                backgroundColor: isRecording ? colors.error : colors.pink,
-                alignItems: 'center', justifyContent: 'center',
-                marginBottom: SPACING.xxl,
-              }}
-            >
-              <Ionicons name={isRecording ? 'stop' : 'mic'} size={40} color={getContrastColor(isRecording ? colors.error : colors.pink)} />
-            </TouchableOpacity>
+            {/* Gövdeli mikrofon (§0-B): disk + koyu raf, basınca iner. Kayıt sürerken etrafında
+                nabız halkası (reduce-motion → yok) — "dinliyorum" yalnız metinle değil hareketle. */}
+            <View style={{ width: 96, height: 96 + MOTION.shelf, marginBottom: SPACING.xxl, alignItems: 'center' }}>
+              {isRecording && <MicPulse color={colors.error} />}
+              <ShelfPressable
+                onPress={() => { haptics.tap(); void handleVoiceToggle(); }}
+                accessibilityRole="button"
+                accessibilityLabel={isRecording ? 'Kaydı durdur' : 'Kayda başla'}
+                radius={48}
+                shelfColor={isRecording ? colors.errorDark : mix(colors.pink, '#000000', 0.72)}
+                faceStyle={{
+                  width: 96, height: 96,
+                  backgroundColor: isRecording ? colors.error : colors.pink,
+                  alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                <Ionicons name={isRecording ? 'stop' : 'mic'} size={40} color={getContrastColor(isRecording ? colors.error : colors.pink)} />
+              </ShelfPressable>
+            </View>
             <Text style={{ ...TYPE.title3, color: colors.text, marginBottom: SPACING.sm }}>
               {isRecording ? 'Dinliyorum...' : 'Konuşmaya başla'}
             </Text>
