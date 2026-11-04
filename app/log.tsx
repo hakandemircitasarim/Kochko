@@ -28,7 +28,10 @@ import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { DateTimeField } from '@/components/ui/DateTimeField';
 import { SPACING, FONT, RADIUS, WATER_INCREMENT, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE, MOTION, alpha } from '@/lib/design';
+import { TYPE, MOTION, mix } from '@/lib/design';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
+import { ConfettiBurst } from '@/components/ui/ConfettiBurst';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { formatDecimal } from '@/lib/units';
 
 type Screen = 'main' | 'barcode' | 'voice' | 'weight' | 'sleep' | 'recovery' | 'steps';
@@ -1230,13 +1233,27 @@ export default function QuickLogScreen() {
         accessibilityRole="button"
         accessibilityLabel={`${successMsg}. Kapatmak için dokun`}
         style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+        {/* "Ders tamam" anı (Duolingo dili, §0-A): kayıt bir onay ikonu değil, sevinen Koçko +
+            köşesinde tik rozeti + arkasından konfeti. Kart gövdeli (2px çerçeve + başarı rengi raf).
+            Konfeti 1,1 sn — ekran 1,2 sn'de kendiliğinden kapanıyor. Reduce-motion: konfeti yok. */}
         <View style={{
-          backgroundColor: colors.card, borderRadius: RADIUS.md, padding: SPACING.xxl,
-          alignItems: 'center', borderWidth: 0.5, borderColor: colors.border,
+          backgroundColor: colors.card, borderRadius: RADIUS.lg, padding: SPACING.xxl,
+          alignItems: 'center', borderWidth: 2, borderColor: isDark ? colors.border : colors.progressTrack,
+          borderBottomWidth: MOTION.shelf, borderBottomColor: colors.success,
         }}>
-          <Animated.View style={{ transform: [{ scale: successScale }] }}>
-            <Ionicons name="checkmark-circle" size={48} color={colors.primary} />
-          </Animated.View>
+          <View style={{ width: 112, height: 112, alignItems: 'center', justifyContent: 'center' }}>
+            <Animated.View style={{ transform: [{ scale: successScale }] }}>
+              <KochkoMascot size={100} mood="cheer" />
+            </Animated.View>
+            <Animated.View style={{
+              position: 'absolute', right: 2, bottom: 2, width: 32, height: 32, borderRadius: 16,
+              backgroundColor: colors.success, alignItems: 'center', justifyContent: 'center',
+              borderWidth: 3, borderColor: colors.card, transform: [{ scale: successScale }],
+            }}>
+              <Ionicons name="checkmark" size={18} color={getContrastColor(colors.success)} />
+            </Animated.View>
+            <ConfettiBurst burstKey={successMsg} count={22} spread={120} duration={1100} />
+          </View>
           <Text style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md }}>{successMsg}</Text>
           {successDetail ? (
             <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, textAlign: 'center' }} numberOfLines={2}>
@@ -1472,19 +1489,22 @@ export default function QuickLogScreen() {
           // Panodaki su kartıyla aynı dil: su-mavisi pastel yastık (nötr beyaz kart değil).
           // İkon da METRIC_COLORS.water — colors.protein (#378ADD) görsel olarak yakın ama
           // farklı hex'ti; aynı metrik iki ekranda iki ayrı maviyle çizilmesin.
+          // Gövdeli (§0-A): pastel yüz zeminle karıştırılmış OPAK ton, raf aynı mavinin koyusu.
           return (
-          <TouchableOpacity
+          <ShelfPressable
             key={o.label}
             onPress={() => { haptics.tap(); handleWaterAddAmount(o.liters); }}
             disabled={submittingRef.current || waterPendingLiters !== null}
-            activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel={`${o.label} su ekle`}
-            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.md, backgroundColor: alpha(METRIC_COLORS.water, isDark ? 0.18 : 0.13), opacity: (submittingRef.current || waterPendingLiters !== null) ? 0.6 : 1 }}
+            radius={RADIUS.md}
+            shelfColor={mix(METRIC_COLORS.water, colors.background, isDark ? 0.42 : 0.34)}
+            style={{ flex: 1, opacity: (submittingRef.current || waterPendingLiters !== null) ? 0.6 : 1 }}
+            faceStyle={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, backgroundColor: mix(METRIC_COLORS.water, colors.background, isDark ? 0.18 : 0.13) }}
           >
             {busy ? <ActivityIndicator size="small" color={METRIC_COLORS.water} /> : <Ionicons name="water" size={16} color={METRIC_COLORS.water} />}
             <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>{o.label}</Text>
-          </TouchableOpacity>
+          </ShelfPressable>
           );
         })}
       </View>
@@ -1503,9 +1523,11 @@ export default function QuickLogScreen() {
           { icon: 'fitness-outline' as const, label: 'Toparlanma', color: colors.success, navigates: false, pending: false, onPress: () => setScreen('recovery') },
         ].map((action, i) => {
           const busy = navigatingIndex === 100 + i || action.pending;
+          // Gövdeli kutucuk: kart yüz + 2px gri çerçeve + aynı gri raf (Button outline / ChoiceTile
+          // ile aynı gri: açıkta progressTrack, koyuda border).
+          const tileEdge = isDark ? colors.border : colors.progressTrack;
           return (
-          <TouchableOpacity key={i}
-            activeOpacity={MOTION.pressOpacity}
+          <ShelfPressable key={i}
             disabled={navigatingIndex !== null || waterPendingLiters !== null}
             accessibilityRole="button"
             accessibilityLabel={action.label}
@@ -1515,12 +1537,15 @@ export default function QuickLogScreen() {
               if (action.navigates) setNavigatingIndex(100 + i);
               action.onPress();
             }}
-            style={{ width: '48%', backgroundColor: colors.card, borderRadius: RADIUS.md, borderWidth: 0.5, borderColor: colors.border, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm, opacity: (navigatingIndex !== null || waterPendingLiters !== null) && !busy ? 0.5 : 1 }}>
+            radius={RADIUS.md}
+            shelfColor={tileEdge}
+            style={{ width: '48%', opacity: (navigatingIndex !== null || waterPendingLiters !== null) && !busy ? 0.5 : 1 }}
+            faceStyle={{ backgroundColor: colors.card, borderWidth: 2, borderColor: tileEdge, padding: SPACING.lg, alignItems: 'center', gap: SPACING.sm }}>
             {busy
               ? <ActivityIndicator size="small" color={action.color} />
               : <Ionicons name={action.icon} size={24} color={action.color} />}
             <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>{action.label}</Text>
-          </TouchableOpacity>
+          </ShelfPressable>
           );
         })}
       </View>
