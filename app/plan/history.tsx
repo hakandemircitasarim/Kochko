@@ -5,15 +5,20 @@
  * Read-only. Tap an entry → see the snapshot summary (no edit; the plan is
  * frozen). Plans approved long ago are still useful as a record of
  * negotiation history and past meal/workout ideas.
+ *
+ * DUOLINGO DİLİ (2026-11-04): tür seçici iki gövdeli kutucuk (seçili = açık marka yüz +
+ * marka çerçeve + koyu raf, ChoiceTile'ın seçili hâliyle aynı), arşiv satırları gövdeli
+ * kartlar (ShelfPressable; basınca rafa iner, açılınca özet içeride).
  */
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, mix } from '@/lib/design';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
 import { useAuthStore } from '@/stores/auth.store';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadErrorState } from '@/components/ui/LoadErrorState';
@@ -53,7 +58,8 @@ function formatDate(iso: string): string {
 
 export default function PlanHistoryScreen() {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const grey = isDark ? colors.border : colors.progressTrack;
   const params = useLocalSearchParams<{ type?: string }>();
   const initialType: PlanType = params.type === 'workout' ? 'workout' : 'diet';
   const user = useAuthStore(s => s.user);
@@ -93,41 +99,42 @@ export default function PlanHistoryScreen() {
         }}
       />
 
-      {/* Type switcher */}
-      <View
-        style={{
-          flexDirection: 'row',
-          backgroundColor: colors.cardElevated,
-          borderRadius: RADIUS.sm,
-          padding: 3,
-          margin: SPACING.md,
-        }}
-      >
+      {/* Type switcher — iki gövdeli kutucuk. */}
+      <View style={{ flexDirection: 'row', gap: SPACING.sm, margin: SPACING.md }}>
         {(['diet', 'workout'] as const).map(t => {
           const active = planType === t;
           return (
-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+            <ShelfPressable
               key={t}
               onPress={() => setPlanType(t)}
               accessibilityRole="button"
               accessibilityLabel={t === 'diet' ? 'Diyet planları' : 'Antrenman planları'}
-              style={{
-                flex: 1,
-                paddingVertical: SPACING.sm,
-                borderRadius: RADIUS.sm - 2,
-                backgroundColor: active ? colors.text : 'transparent',
+              accessibilityState={{ selected: active }}
+              radius={RADIUS.md}
+              shelfColor={active ? colors.primaryDark : grey}
+              style={{ flex: 1 }}
+              faceStyle={{
+                flexDirection: 'row',
                 alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                paddingVertical: SPACING.sm + 2,
+                borderWidth: 2,
+                borderColor: active ? colors.primary : grey,
+                backgroundColor: active ? mix(colors.primary, colors.card, isDark ? 0.22 : 0.1) : colors.card,
               }}
             >
+              <Ionicons name={t === 'diet' ? 'restaurant' : 'barbell'} size={16} color={active ? colors.primary : colors.textMuted} />
               <Text
                 style={{
                   ...TYPE.bodyStrong,
-                  color: active ? colors.background : colors.textSecondary,
+                  fontWeight: active ? '800' : '600',
+                  color: active ? colors.primary : colors.textSecondary,
                 }}
               >
                 {t === 'diet' ? 'Diyet' : 'Antrenman'}
               </Text>
-            </TouchableOpacity>
+            </ShelfPressable>
           );
         })}
       </View>
@@ -165,7 +172,8 @@ export default function PlanHistoryScreen() {
 }
 
 function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const grey = isDark ? colors.border : colors.progressTrack;
   const [expanded, setExpanded] = useState(false);
 
   const reason = row.archived_reason ?? 'superseded';
@@ -193,20 +201,31 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
   })();
 
   return (
-    <TouchableOpacity
+    <ShelfPressable
       onPress={() => setExpanded(e => !e)}
-      activeOpacity={MOTION.pressOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${formatDate(row.generated_at)} planı, ${reasonLabel}`}
-      style={{
+      accessibilityState={{ expanded }}
+      radius={RADIUS.lg}
+      shelfColor={grey}
+      faceStyle={{
         backgroundColor: colors.card,
-        borderRadius: RADIUS.lg,
         padding: SPACING.md,
-        borderWidth: 1,
-        borderColor: colors.border,
+        borderWidth: 2,
+        borderColor: grey,
       }}
     >
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
+        <View
+          accessible={false}
+          style={{
+            width: 36, height: 36, borderRadius: 12,
+            backgroundColor: mix(planType === 'diet' ? colors.primary : colors.purple, colors.card, isDark ? 0.24 : 0.12),
+            alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={planType === 'diet' ? 'restaurant' : 'barbell'} size={17} color={planType === 'diet' ? colors.primary : colors.purple} />
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
             {formatDate(row.generated_at)}
@@ -235,7 +254,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
       </View>
 
       {expanded ? (
-        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.sm, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
+        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.sm, borderTopWidth: 2, borderTopColor: grey }}>
           {planType === 'diet' ? (
             <DietExpanded plan={row.plan_data as DietPlanData} />
           ) : (
@@ -243,7 +262,7 @@ function HistoryRow({ row, planType }: { row: PlanRow; planType: PlanType }) {
           )}
         </View>
       ) : null}
-    </TouchableOpacity>
+    </ShelfPressable>
   );
 }
 

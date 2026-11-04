@@ -15,6 +15,10 @@
  * explicitly-marked `planType === ...` branches. Branches tagged
  * "drift preserved" reproduce pre-consolidation asymmetries between the two
  * screens VERBATIM — do not unify them without a deliberate behavior decision.
+ *
+ * Sunum notu (2026-11-04, Duolingo dili): onay başarılı olunca `justApproved` yalnız görsel
+ * bir bayrak — PlanActiveView'a `celebrate` olarak gider (tek konfeti + sevinen Koçko).
+ * Görünüm aktiften çıkınca (revizyon/taslak/boş) söner; akışın kendisine dokunmaz.
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -160,6 +164,11 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
   const accent = planType === 'diet' ? colors.primary : colors.purple;
 
   const [view, setView] = useState<ViewState>('loading');
+  // Yalnız sunum: az önce onaylandı → aktif görünümde bir kez kutla.
+  const [justApproved, setJustApproved] = useState(false);
+  useEffect(() => {
+    if (view !== 'active') setJustApproved(false);
+  }, [view]);
   const [active, setActive] = useState<PlanRow | null>(null);
   const [draft, setDraft] = useState<PlanRow | null>(null);
   const [goal, setGoal] = useState<{ goal_type?: string; target_weight_kg?: number } | null>(null);
@@ -570,6 +579,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
     // SECOND plan/revision reads the stale count, skips the up-front quota warning, and only walls at
     // "Onayla" (the invest-then-wall this warning was added to prevent).
     if (user?.id) await fetchProfile(user.id);
+    setJustApproved(true);
     // Reload to switch to active view.
     await load();
     setChatSessionId(null);
@@ -761,6 +771,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
           // the same generation flow as the empty-state 'Plan oluştur'.
           onCreateFresh={startDraftCreation}
           creatingRevision={sending}
+          celebrate={justApproved}
         />
       </View>
     );
@@ -937,7 +948,7 @@ export function PlanManagerScreen({ planType }: { planType: PlanType }) {
 }
 
 function DraftChatBubble({ msg, accent }: { msg: ChatMsg; accent: string }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const isUser = msg.role === 'user';
   const hiddenTrigger = msg.content.startsWith('[PLAN_INIT]') || msg.content.startsWith('[ALT]');
   if (isUser && hiddenTrigger) return null;
@@ -963,8 +974,9 @@ function DraftChatBubble({ msg, accent }: { msg: ChatMsg; accent: string }) {
         borderBottomLeftRadius: isUser ? 16 : 4,
         paddingHorizontal: SPACING.lg,
         paddingVertical: SPACING.md,
-        borderWidth: isUser ? 0 : 0.5,
-        borderColor: colors.border,
+        // Koç balonu: gövdeli kartlarla aynı 2px gri kenar (açıkta progressTrack, koyuda border).
+        borderWidth: isUser ? 0 : 2,
+        borderColor: isDark ? colors.border : colors.progressTrack,
       }}
     >
       {/* Taslak sohbeti ana sohbetle ayni okuma adiminda olmali — 14/20 kendi basina bir spec'ti. */}

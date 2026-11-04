@@ -1,85 +1,99 @@
 /**
  * Single exercise entry for workout plan full view.
+ *
+ * DUOLINGO DİLİ (2026-11-04): kart dokunulamaz (yalnız içindeki "Bunu yaptım" çipi), o
+ * yüzden RAF YOK — raf "bas beni" demek. Canlılığı renkten alır: egzersizin gün içindeki
+ * SIRASI dolu bir yastık rozette numara olarak durur (1, 2, 3…) ve her sıra kendi tonunu
+ * taşır (menekşe/mavi/kehribar/gül döngüsü — metrik paleti, yeni hue yok). Sıra numarası
+ * gerçek bilgi: antrenman sırayla yapılır. Pastel opak yüz + aynı tonun 2px çerçevesi
+ * MealCard ile aynı spec.
  */
-import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '@/lib/theme';
+import { useTheme, METRIC_COLORS } from '@/lib/theme';
 import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE } from '@/lib/design';
+import { PlanTileBadge, PlanActionChip, PLATE_INK, pastel } from './MealCard';
 import type { WorkoutExercise } from '@/services/plan.service';
 
 interface Props {
   exercise: WorkoutExercise;
+  /** Gün içindeki sıra (0'dan). Verilirse rozet numara + sıranın tonu; yoksa menekşe halter. */
+  index?: number;
   // FIX (ux-ideas #19): one-tap "Bunu yaptım" — only the ACTIVE plan's TODAY passes these.
   onLogPress?: () => void;
   logStatus?: 'saving' | 'done';
 }
 
-export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
-  const { colors } = useTheme();
+// Sıra tonları + dolu rozet üstündeki ön plan (kehribar/gül mürekkep, mavi/menekşe beyaz).
+const ORDER_TONES: Array<{ tone: string; fg: string }> = [
+  { tone: METRIC_COLORS.workout, fg: '#FFFFFF' },
+  { tone: METRIC_COLORS.water, fg: '#FFFFFF' },
+  { tone: METRIC_COLORS.steps, fg: PLATE_INK },
+  { tone: METRIC_COLORS.weight, fg: PLATE_INK },
+];
+
+export function ExerciseCard({ exercise, index, onLogPress, logStatus }: Props) {
+  const { colors, isDark } = useTheme();
+  const t = ORDER_TONES[(index ?? 0) % ORDER_TONES.length];
+  const { face, edge } = pastel(t.tone, colors.card, isDark);
   const loadText = exercise.weight_kg
     ? `${exercise.sets} × ${exercise.reps} · ${exercise.weight_kg} kg`
     : exercise.rpe
       ? `${exercise.sets} × ${exercise.reps} · RPE ${exercise.rpe}`
       : `${exercise.sets} × ${exercise.reps}`;
+  const done = logStatus === 'done';
 
   return (
     <View
       style={{
-        backgroundColor: colors.card,
+        backgroundColor: face,
         borderRadius: RADIUS.lg,
-        borderWidth: 1,
-        borderColor: colors.border,
+        borderWidth: 2,
+        borderColor: edge,
         padding: SPACING.md,
         marginBottom: SPACING.sm,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-        {/* FIX (ux-polish): match MealCard's badge spec (36/10/18) so the two plan-item cards
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+        {/* FIX (ux-polish): same badge spec as MealCard so the two plan-item cards
             read on-register across the diet/workout tabs. */}
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: colors.purple + '18',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="barbell-outline" size={18} color={colors.purple} />
-        </View>
+        <PlanTileBadge tone={t.tone}>
+          {index != null ? (
+            <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.headline, fontWeight: '800', color: t.fg }}>
+              {index + 1}
+            </Text>
+          ) : (
+            <Ionicons name="barbell" size={20} color={t.fg} />
+          )}
+        </PlanTileBadge>
         <View style={{ flex: 1 }}>
           {/* Measured on device against MealCard: there the meal name is `headline` and the kcal
-              figure sits a step below it, so the name reads as what the card IS. Here name and
-              load were both `bodyStrong`, so "3 × 10" competed with the exercise for first glance.
-              Name up one step; load stays at 15 (a workout's load matters more than a meal's kcal,
-              and the right column measured only ~73dp, so this does not squeeze it). */}
+              figure sits a step below it, so the name reads as what the card IS. Name at headline;
+              load is the workout's key figure, so it keeps bodyStrong — but under the name now,
+              not in a competing right column. */}
           <Text style={{ ...TYPE.headline, color: colors.text }}>
             {exercise.name}
           </Text>
-          {exercise.muscle_groups && exercise.muscle_groups.length > 0 ? (
-            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 1 }}>
-              {exercise.muscle_groups.join(' · ')}
-            </Text>
-          ) : null}
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
+          <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>
             {loadText}
+            {exercise.rest_sec ? (
+              <Text style={{ ...TYPE.caption, color: colors.textSecondary, fontWeight: '500' }}>
+                {`  ·  ${exercise.rest_sec}s dinlenme`}
+              </Text>
+            ) : null}
           </Text>
-          {exercise.rest_sec ? (
-            <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
-              {exercise.rest_sec}s dinlenme
+          {exercise.muscle_groups && exercise.muscle_groups.length > 0 ? (
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 1 }}>
+              {exercise.muscle_groups.join(' · ')}
             </Text>
           ) : null}
         </View>
       </View>
 
       {/* Form cues ("Dizler ayak yönünde, kontrollü in.") are read-to-act content, and the scale
-          reserves 11px for things that are never that. Measured on device it also started at the
-          card's left edge, under the badge, so it read as a stray caption rather than as part of
-          the exercise — indent it to the name column. */}
+          reserves 11px for things that are never that. Indented to the name column so it reads
+          as part of the exercise, not a stray caption under the badge. */}
       {exercise.notes ? (
         <Text
           style={{
@@ -87,7 +101,7 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
             color: colors.textSecondary,
             fontStyle: 'italic',
             marginTop: SPACING.xs,
-            marginLeft: 36 + SPACING.sm,
+            marginLeft: 40 + SPACING.md,
           }}
         >
           {exercise.notes}
@@ -96,44 +110,18 @@ export function ExerciseCard({ exercise, onLogPress, logStatus }: Props) {
 
       {/* FIX (ux-ideas #19): "Bunu yaptım" — closes the track→mark loop on the workout side. */}
       {onLogPress ? (
-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-          onPress={onLogPress}
-          disabled={!!logStatus}
-          accessibilityRole="button"
-          accessibilityLabel={logStatus === 'done' ? 'Yapıldı olarak işaretlendi' : 'Bunu yaptım, günlüğe ekle'}
-          accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 4,
-            alignSelf: 'flex-start',
-            marginTop: SPACING.sm,
-            backgroundColor: logStatus === 'done' ? colors.successLight : colors.purple + '18',
-            borderRadius: RADIUS.full,
-            paddingHorizontal: SPACING.sm,
-            paddingVertical: 8,
-          }}
-        >
-          {logStatus === 'saving' ? (
-            <ActivityIndicator size="small" color={colors.purple} style={{ transform: [{ scale: 0.7 }] }} />
-          ) : (
-            <Ionicons
-              name={logStatus === 'done' ? 'checkmark-circle' : 'add-circle-outline'}
-              size={12}
-              color={logStatus === 'done' ? colors.success : colors.purple}
-            />
-          )}
-          {/* 11px was below the scale's floor for anything you must read to act — and this chip
-              IS the action. Reading-adjacent step; maxFontSizeMultiplier keeps a 150% OS text
-              size from bursting the pill. */}
-          <Text
-            maxFontSizeMultiplier={MAX_FONT_SCALE}
-            style={{ ...TYPE.caption, fontWeight: '700', color: logStatus === 'done' ? colors.success : colors.purple }}
-          >
-            {logStatus === 'done' ? 'Yapıldı' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yaptım'}
-          </Text>
-        </TouchableOpacity>
+        <View style={{ marginTop: SPACING.sm, marginLeft: 40 + SPACING.md }}>
+          <PlanActionChip
+            label={done ? 'Yapıldı' : logStatus === 'saving' ? 'Ekleniyor...' : 'Bunu yaptım'}
+            icon="add-circle"
+            filled
+            done={done}
+            saving={logStatus === 'saving'}
+            onPress={onLogPress}
+            accessibilityLabel={done ? 'Yapıldı olarak işaretlendi' : 'Bunu yaptım, günlüğe ekle'}
+            accessibilityState={{ disabled: !!logStatus, busy: logStatus === 'saving' }}
+          />
+        </View>
       ) : null}
     </View>
   );

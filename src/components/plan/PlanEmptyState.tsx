@@ -2,17 +2,26 @@
  * Empty state for plan screens — shown when no active and no draft exists.
  * CTA is disabled when prerequisites are missing; each missing field becomes
  * a clickable card routing to the correct onboarding task chat.
+ *
+ * DUOLINGO DİLİ (2026-11-04): ikonlu hale yerine Koçko (boş durum karakterin sahnesi, §0-A).
+ * TEK NET EYLEM: ekranın tek dolu tuşu "Plan oluştur" (gövdeli Button, lg). Eksik bilgi
+ * satırları ve "daha iyi olabilir" çipleri gövdeli ama gri (ikincil) — dolu tuşla yarışmaz.
+ * Plan hazırlanırken Koçko sevinir ve kıpırdar (odaktayken, reduce-motion'a uyar); boştayken
+ * statik: dikkat kopya + CTA'da kalmalı (EmptyState ile aynı karar).
  */
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { router } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { useTheme } from '@/lib/theme';
 import { haptics } from '@/lib/haptics';
-import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { TYPE, mix } from '@/lib/design';
 import { getContrastColor } from '@/lib/accessibility';
 import { SkeletonCard } from '@/components/ui/Skeleton';
+import { Button } from '@/components/ui/Button';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
 import { getOrCreateActiveSession } from '@/services/chat.service';
 import { getTaskByKey } from '@/services/onboarding-tasks.service';
 import type { MissingField } from '@/lib/plan-readiness';
@@ -26,7 +35,7 @@ interface Props {
 }
 
 export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, creating }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const ready = missingCore.length === 0;
 
   const openTaskChat = async (taskKey: string, _taskTitle: string) => {
@@ -53,111 +62,90 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
     router.push({ pathname: `/chat/${id}` as never, params });
   };
 
-  const accent = planType === 'diet' ? colors.primary : colors.purple;
+  const isFocused = useIsFocused();
+  const grey = isDark ? colors.border : colors.progressTrack;
+  const isDiet = planType === 'diet';
 
   return (
     <ScrollView contentContainerStyle={{ padding: SPACING.lg, gap: SPACING.md }}>
       <View style={{ alignItems: 'center', marginTop: SPACING.xl }}>
-        {/* Decorative radial-gradient halo behind the icon */}
-        <View
-          style={{ width: 180, height: 180, alignItems: 'center', justifyContent: 'center' }}
-          accessible={false}
-          importantForAccessibility="no-hide-descendants"
-        >
-          <Svg width={180} height={180} style={{ position: 'absolute' }}>
-            <Defs>
-              <RadialGradient id="halo" cx="50%" cy="50%" rx="50%" ry="50%">
-                <Stop offset="0%" stopColor={accent} stopOpacity={0.32} />
-                <Stop offset="60%" stopColor={accent} stopOpacity={0.08} />
-                <Stop offset="100%" stopColor={accent} stopOpacity={0} />
-              </RadialGradient>
-            </Defs>
-            <Circle cx={90} cy={90} r={90} fill="url(#halo)" />
-            <Circle cx={90} cy={90} r={60} fill="none" stroke={accent} strokeOpacity={0.18} strokeWidth={1.5} />
-            <Circle cx={90} cy={90} r={75} fill="none" stroke={accent} strokeOpacity={0.10} strokeWidth={1} strokeDasharray="3,4" />
-          </Svg>
-          <View
-            style={{
-              width: 88,
-              height: 88,
-              borderRadius: 28,
-              backgroundColor: accent + '22',
-              alignItems: 'center',
-              justifyContent: 'center',
-              borderWidth: 1,
-              borderColor: accent + '44',
-            }}
-          >
-            <Ionicons
-              name={planType === 'diet' ? 'restaurant' : 'barbell'}
-              size={44}
-              color={accent}
-            />
-          </View>
-        </View>
+        <KochkoMascot size={128} mood={creating || ready ? 'cheer' : 'happy'} animated={!!creating && isFocused} />
         {/* textAlign was missing here while the subtitle right below it centers — so when the
             heading wrapped, the second word ("yok") hung left under a centered first line and the
-            block looked broken. Driven on a device that is exactly how it rendered. Centering fixes
-            the alignment; if it still wraps, that is a container-width question, not an alignment one. */}
+            block looked broken. Driven on a device that is exactly how it rendered. */}
         <Text
           accessibilityRole="header"
-          style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md, textAlign: 'center' }}
+          style={{ ...TYPE.title2, color: colors.text, marginTop: SPACING.lg, textAlign: 'center' }}
         >
-          {planType === 'diet' ? 'Diyet planın yok' : 'Spor planın yok'}
+          {creating
+            ? (isDiet ? 'Menünü hazırlıyorum…' : 'Programını hazırlıyorum…')
+            : (isDiet ? 'Diyet planın yok' : 'Spor planın yok')}
         </Text>
         <Text
           style={{
             ...TYPE.body,
-            color: colors.textMuted,
+            color: colors.textSecondary,
             textAlign: 'center',
-            marginTop: 4,
-            maxWidth: 280,
+            marginTop: SPACING.xs,
+            maxWidth: 300,
           }}
         >
-          {planType === 'diet'
-            ? 'Profiline bakarak haftalık bir menü hazırlayacağım. İstediğin zaman değiştirebilirsin.'
-            : 'Seviyene ve ekipmanına göre haftalık bir program hazırlayacağım.'}
+          {creating
+            ? 'Biraz sürebilir — profilini ve hedefini harmanlıyorum.'
+            : !ready
+              ? 'Önce birkaç bilgiye ihtiyacım var. Tamamlayınca planını hemen hazırlarım.'
+              : isDiet
+                ? 'Profiline bakarak haftalık bir menü hazırlayacağım. İstediğin zaman değiştirebilirsin.'
+                : 'Seviyene ve ekipmanına göre haftalık bir program hazırlayacağım.'}
         </Text>
       </View>
 
-      {/* Missing core — block plan creation */}
+      {/* Missing core — block plan creation. Kehribar uyarı kartı (statik) + gövdeli satırlar. */}
       {missingCore.length > 0 ? (
         <View
           style={{
-            backgroundColor: colors.card,
+            backgroundColor: mix(colors.warning, colors.card, isDark ? 0.14 : 0.07),
             borderRadius: RADIUS.lg,
-            borderWidth: 1,
-            borderColor: colors.warning + '44',
+            borderWidth: 2,
+            borderColor: mix(colors.warning, colors.card, 0.5),
             padding: SPACING.md,
-            marginTop: SPACING.md,
+            marginTop: SPACING.sm,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="alert-circle-outline" size={16} color={colors.warning} />
+            <Ionicons name="alert-circle" size={18} color={colors.warning} />
             <Text style={{ ...TYPE.bodyStrong, color: colors.warning, fontWeight: '700' }}>
               Plan için eksik bilgiler
             </Text>
           </View>
-          <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 4 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
             Şu bilgileri tamamlayınca plan oluşturulabilir:
           </Text>
-          <View style={{ marginTop: SPACING.sm, gap: SPACING.xs }}>
+          <View style={{ marginTop: SPACING.md, gap: SPACING.xs }}>
             {missingCore.map((f, i) => (
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              <ShelfPressable
                 key={i}
                 onPress={() => openTaskChat(f.taskKey, f.taskTitle)}
                 accessibilityRole="button"
                 accessibilityLabel={`${f.field} bilgisi eksik, ${f.taskTitle} kartından tamamla`}
-                style={{
+                radius={RADIUS.md}
+                shelfColor={grey}
+                faceStyle={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  backgroundColor: colors.surfaceLight,
-                  borderRadius: RADIUS.md,
-                  padding: SPACING.sm + 2,
-                  gap: SPACING.sm,
+                  backgroundColor: colors.card,
+                  borderWidth: 2,
+                  borderColor: grey,
+                  paddingHorizontal: SPACING.md,
+                  paddingVertical: SPACING.sm + 2,
+                  gap: SPACING.md,
                 }}
               >
-                <Ionicons name="arrow-forward-circle" size={16} color={colors.primary} />
+                <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' }}>
+                  <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, fontWeight: '800', color: getContrastColor(colors.primary) }}>
+                    {i + 1}
+                  </Text>
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ ...TYPE.bodyStrong, color: colors.text }}>
                     {f.field}
@@ -166,8 +154,8 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
                     {f.taskTitle} kartından tamamla
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
-              </TouchableOpacity>
+                <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+              </ShelfPressable>
             ))}
           </View>
         </View>
@@ -175,85 +163,61 @@ export function PlanEmptyState({ planType, missingCore, weakSpots, onCreate, cre
 
       {/* Generation preview — content-shaped placeholder during the slow LLM wait */}
       {creating ? (
-        <View style={{ marginTop: SPACING.md, gap: SPACING.xs }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <View style={{ marginTop: SPACING.sm, gap: SPACING.xs }} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
           <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
-            {planType === 'diet' ? 'MENÜN HAZIRLANIYOR' : 'PROGRAMIN HAZIRLANIYOR'}
+            {isDiet ? 'MENÜN HAZIRLANIYOR' : 'PROGRAMIN HAZIRLANIYOR'}
           </Text>
           <SkeletonCard lines={4} />
         </View>
       ) : null}
 
-      {/* CTA */}
-      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+      {/* CTA — ekranın TEK dolu tuşu. loading → spinner + busy/disabled (a11y etiketi korunur). */}
+      <Button
+        title={ready ? 'Plan oluştur' : 'Önce bilgileri tamamla'}
+        size="lg"
         onPress={onCreate}
-        disabled={!ready || creating}
-        accessibilityRole="button"
-        accessibilityLabel={ready ? `${planType === 'diet' ? 'Diyet' : 'Spor'} planı oluştur` : 'Önce eksik bilgileri tamamla'}
-        accessibilityState={{ disabled: !ready || !!creating, busy: !!creating }}
-        style={{
-          marginTop: SPACING.md,
-          backgroundColor: ready && !creating ? colors.primary : colors.surfaceLight,
-          borderRadius: RADIUS.xl,
-          paddingVertical: SPACING.md,
-          alignItems: 'center',
-        }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-          {creating ? (
-            <ActivityIndicator size="small" color={getContrastColor(colors.primary)} />
-          ) : null}
-          <Text
-            style={{
-              ...TYPE.headline,
-              color: ready && !creating ? getContrastColor(colors.primary) : colors.textMuted,
-              fontWeight: '800',
-            }}
-          >
-            {creating ? 'Hazırlanıyor...' : ready ? 'Plan oluştur' : 'Önce bilgileri tamamla'}
-          </Text>
-        </View>
-      </TouchableOpacity>
+        disabled={!ready}
+        loading={!!creating}
+        accessibilityLabel={ready ? `${isDiet ? 'Diyet' : 'Spor'} planı oluştur` : 'Önce eksik bilgileri tamamla'}
+        icon={ready ? <Ionicons name="sparkles" size={18} color={getContrastColor(colors.primary)} /> : undefined}
+        style={{ marginTop: SPACING.sm }}
+      />
 
-      {/* Weak spots — optional */}
-      {weakSpots.length > 0 && ready ? (
-        <View
-          style={{
-            backgroundColor: colors.card,
-            borderRadius: RADIUS.lg,
-            borderWidth: 1,
-            borderColor: colors.border,
-            padding: SPACING.md,
-            marginTop: SPACING.sm,
-          }}
-        >
+      {/* Weak spots — optional, ikincil: gri gövdeli kelime kutucukları (sohbet hızlı cevaplarıyla aynı). */}
+      {weakSpots.length > 0 && ready && !creating ? (
+        <View style={{ marginTop: SPACING.md, alignItems: 'center' }}>
           <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             PLAN DAHA İYİ OLABİLİR
           </Text>
-          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
+          <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4, textAlign: 'center' }}>
             Şunları da konuşursak plan daha kişisel olur:
           </Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: SPACING.sm }}>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: SPACING.sm, marginTop: SPACING.sm }}>
             {weakSpots.slice(0, 4).map((f, i) => (
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              <ShelfPressable
                 key={i}
                 onPress={() => openTaskChat(f.taskKey, f.taskTitle)}
                 accessibilityRole="button"
                 accessibilityLabel={`${f.field} ekle: ${f.taskTitle}`}
-                style={{
+                hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+                radius={RADIUS.pill}
+                shelfColor={grey}
+                faceStyle={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
-                  backgroundColor: colors.surfaceLight,
-                  borderRadius: RADIUS.full,
-                  paddingHorizontal: SPACING.sm,
-                  paddingVertical: 4,
+                  gap: 5,
+                  minHeight: 36,
+                  paddingHorizontal: SPACING.md,
+                  backgroundColor: colors.card,
+                  borderWidth: 2,
+                  borderColor: grey,
                 }}
               >
-                <Ionicons name="add-circle-outline" size={12} color={colors.primary} />
-                <Text style={{ ...TYPE.caption, color: colors.text, fontWeight: '600' }}>
+                <Ionicons name="add" size={16} color={colors.primary} />
+                <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.callout, color: colors.text, fontWeight: '600' }}>
                   {f.field}
                 </Text>
-              </TouchableOpacity>
+              </ShelfPressable>
             ))}
           </View>
         </View>

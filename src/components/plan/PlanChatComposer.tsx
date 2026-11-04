@@ -7,21 +7,26 @@
  *  - "Alternatif gör"    → onRequestAlternative
  *  - "Baştan başla"      → onRegenerate
  *  - "Onayla ve kaydet"  → onApprove (disabled until hasViewedFullPlan)
+ *
+ * DUOLINGO DİLİ (2026-11-04): keşif çipleri gri gövdeli kelime kutucukları (renk yalnız
+ * ikonda — üç renkli dolgu hap ekranda karnaval gibiydi), onay ekranın TEK dolu tuşu: gövdeli
+ * Button (lg). Gönder düğmesi de gövdeli yuvarlak tuş.
  */
 import { useState } from 'react';
 import {
   View,
   Text,
   TextInput,
-  TouchableOpacity,
   Keyboard,
   Platform,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
-import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
+import { TYPE } from '@/lib/design';
+import { Button } from '@/components/ui/Button';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 
@@ -43,25 +48,18 @@ const Chip = ({
   color,
   onPress,
   disabled,
-  solid,
 }: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   color: string;
   onPress: () => void;
   disabled?: boolean;
-  solid?: boolean;
 }) => {
-  const { colors } = useTheme();
-  // Solid (filled) chips get the brand color as the fill with a contrast-safe
-  // foreground; outline chips keep the subtle tinted background.
-  const fg = disabled
-    ? colors.textMuted
-    : solid
-      ? getContrastColor(color)
-      : color;
+  const { colors, isDark } = useTheme();
+  // Gövdeli kelime kutucuğu: kart yüz + 2px gri çerçeve + gri raf (QuickSelectButtons ile aynı).
+  const grey = isDark ? colors.border : colors.progressTrack;
   return (
-    <TouchableOpacity
+    <ShelfPressable
       onPress={() => {
         haptics.tap();
         onPress();
@@ -70,37 +68,28 @@ const Chip = ({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled: !!disabled }}
-      style={{
+      // 36 görsel + hitSlop → ≥44 etkin (eski minHeight 44'ün yerine; gövde yüksekliği büyütmesin).
+      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+      radius={RADIUS.pill}
+      shelfColor={grey}
+      style={{ opacity: disabled ? 0.5 : 1 }}
+      faceStyle={{
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 4,
-        backgroundColor: disabled
-          ? colors.surfaceLight
-          : solid
-            ? color
-            : color + '18',
-        borderRadius: RADIUS.full,
-        paddingHorizontal: SPACING.sm + 2,
-        paddingVertical: 6,
-        minHeight: 44,
-        opacity: disabled ? 0.5 : 1,
+        gap: 5,
+        minHeight: 36,
+        paddingHorizontal: SPACING.md,
+        backgroundColor: colors.card,
+        borderWidth: 2,
+        borderColor: grey,
       }}
-      activeOpacity={MOTION.pressOpacity}
     >
-      {/* Birincil taahhut (solid) okuma adiminda, kesif cipleri bir adim altinda:
-          ikisi de 11'deydi, yani 'Onayla ve kaydet' ekranin en kucuk metniyle ayni boydaydi. */}
-      <Ionicons name={icon} size={solid ? 15 : 13} color={fg} />
-      <Text
-        style={{
-          ...(solid ? TYPE.bodyStrong : TYPE.caption),
-          color: fg,
-          fontWeight: solid ? '700' : '600',
-        }}
-      >
+      <Ionicons name={icon} size={15} color={disabled ? colors.textMuted : color} />
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.caption, color: disabled ? colors.textMuted : colors.text, fontWeight: '700' }}>
         {label}
       </Text>
-    </TouchableOpacity>
+    </ShelfPressable>
   );
 };
 
@@ -115,7 +104,8 @@ export function PlanChatComposer({
   disabled,
   sending,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const grey = isDark ? colors.border : colors.progressTrack;
   const [text, setText] = useState('');
 
   const handleSend = () => {
@@ -157,8 +147,8 @@ export function PlanChatComposer({
         paddingHorizontal: SPACING.md,
         paddingTop: SPACING.xs,
         gap: SPACING.xs,
-        borderTopWidth: 0.5,
-        borderTopColor: colors.border,
+        borderTopWidth: 2,
+        borderTopColor: grey,
         backgroundColor: colors.background,
       }}
     >
@@ -189,13 +179,13 @@ export function PlanChatComposer({
 
       {/* Primary commit action — own row, full-width solid, separated from the
           destructive "Baştan başla" so the two can't be confused/mis-tapped. */}
-      <Chip
-        label="Onayla ve kaydet"
-        icon="checkmark-circle"
-        color={colors.success}
+      <Button
+        title="Onayla ve kaydet"
+        size="lg"
         onPress={handleApprove}
         disabled={disabled || sending || !canApprove}
-        solid
+        accessibilityLabel="Onayla ve kaydet"
+        icon={<Ionicons name="checkmark-circle" size={20} color={getContrastColor(colors.primary)} />}
       />
 
       {approveHint && !canApprove ? (
@@ -218,8 +208,8 @@ export function PlanChatComposer({
           alignItems: 'flex-end',
           backgroundColor: colors.card,
           borderRadius: RADIUS.lg,
-          borderWidth: 0.5,
-          borderColor: colors.border,
+          borderWidth: 2,
+          borderColor: grey,
           paddingHorizontal: SPACING.md,
           paddingVertical: 6,
           gap: 6,
@@ -244,35 +234,35 @@ export function PlanChatComposer({
           maxLength={2000}
           editable={!disabled && !sending}
         />
-        <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+        <ShelfPressable
           onPress={handleSend}
           disabled={!text.trim() || disabled || sending}
           accessibilityRole="button"
           accessibilityLabel="Mesajı gönder"
           accessibilityState={{ disabled: !text.trim() || !!disabled || !!sending, busy: !!sending }}
-          // FIX (ux-pass5): 32x32 with no hitSlop was the app's only bare send target
-          // (main chat's twin carries hitSlop 8) — 48x48 effective.
+          // FIX (ux-pass5): the app's only bare send target had no hitSlop — 48x48+ effective.
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
+          radius={18}
+          shelfColor={!text.trim() || disabled || sending ? grey : colors.primaryDark}
+          faceStyle={{
+            width: 36,
+            height: 36,
             backgroundColor:
-              !text.trim() || disabled || sending ? colors.surfaceLight : colors.primary,
+              !text.trim() || disabled || sending ? (isDark ? colors.surfaceLight : colors.background) : colors.primary,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
           <Ionicons
             name={sending ? 'hourglass-outline' : 'arrow-up'}
-            size={16}
+            size={18}
             color={
               !text.trim() || disabled || sending
                 ? colors.textMuted
                 : getContrastColor(colors.primary)
             }
           />
-        </TouchableOpacity>
+        </ShelfPressable>
       </View>
     </View>
   );

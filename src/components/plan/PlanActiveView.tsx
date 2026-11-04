@@ -2,22 +2,35 @@
  * Active plan state (post-approval): plan is the primary content, optionally
  * open a revision chat overlay, see history, and surface the drift banner
  * when the user's profile has materially changed since approval.
+ *
+ * DUOLINGO DİLİ (2026-11-04): üst kart Koçko'lu bir "bugün" kartı — teşvik cümlesi öne,
+ * bugünün tamamlanması dolan ProgressBar (eski "Bugün 0/4 öğün" hapı yerine). Eylemler
+ * gövdeli Button. "Şimdi sırada" öğünün kendi tonunda. Gün başlıkları PlanDayHeader
+ * (gövdeli tuş; bugün dolu marka tuşu, en üstte). `celebrate` → plan onayının hemen
+ * ardından tek konfeti + sevinen Koçko (ölçülü kutlama).
  */
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, LayoutAnimation } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, LayoutAnimation } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { MEAL_TYPE_LABELS_TR } from '@/lib/labels';
 import { SPACING, RADIUS } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, mix } from '@/lib/design';
 import { haptics } from '@/lib/haptics';
 import { getEffectiveDate } from '@/lib/day-boundary';
 import { supabase } from '@/lib/supabase';
-import { MealCard } from './MealCard';
+import { Button } from '@/components/ui/Button';
+import { ProgressBar } from '@/components/ui/ProgressBar';
+import { ConfettiBurst } from '@/components/ui/ConfettiBurst';
+import { KochkoMascot } from '@/components/mascot/KochkoMascot';
+import { MealCard, MEAL_TONES, PlanTileBadge, pastel } from './MealCard';
+import { PlanDayHeader } from './PlanDayAccordion';
 import { ExerciseCard } from './ExerciseCard';
 import {
   dayLabelTR,
+  DAY_SHORT_TR,
   formatWeekStartTR,
   isPlanStale,
   planWeeksAgo,
@@ -45,6 +58,8 @@ interface Props {
    *  empty-state 'Plan oluştur'). Used by the stale-plan banner CTA. */
   onCreateFresh?: () => void;
   creatingRevision?: boolean;
+  /** Plan az önce onaylandı → tek seferlik ölçülü kutlama (konfeti + sevinen Koçko). */
+  celebrate?: boolean;
 }
 
 // 0 = Monday in our day_index convention (matches the dashboard helper).
@@ -107,8 +122,10 @@ function detectDrift(
   return { soft, hard };
 }
 
-export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, onCreateFresh, creatingRevision }: Props) {
-  const { colors } = useTheme();
+export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHistory, onCreateFresh, creatingRevision, celebrate }: Props) {
+  const { colors, isDark } = useTheme();
+  // Maskot döngüsü odak dışında durur (§0-A).
+  const isFocused = useIsFocused();
 
   const drift = useMemo(() => detectDrift(plan, profile, goal ?? null), [plan, profile, goal]);
 
@@ -323,29 +340,46 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
   const stale = isPlanStale(plan.week_start);
   const staleWeeks = planWeeksAgo(plan.week_start);
 
+  // Gövdeli/çerçeveli yüzeylerin ortak grisi (Button outline / ChoiceTile ile aynı kural).
+  const grey = isDark ? colors.border : colors.progressTrack;
+  const todayAllDone = !!todayCompletion && todayCompletion.done >= todayCompletion.total;
+  // Az sayı, çok teşvik: sayı çubuğun yanında küçük; cümle öne.
+  const todayCheer = !todayCompletion ? null
+    : todayCompletion.done === 0
+      ? (isDiet ? 'Güne ilk öğünle başla' : 'İlk egzersizle ısın')
+      : todayAllDone
+        ? 'Bugün tamam — harika iş!'
+        : todayCompletion.total - todayCompletion.done === 1
+          ? 'Son bir tane kaldı!'
+          : 'İyi gidiyorsun, devam!';
+  const nextTone = nowNext?.kind === 'meal' ? (MEAL_TONES[nowNext.meal.meal_type] ?? MEAL_TONES.lunch) : null;
+  const nextPastel = pastel(nextTone?.tone ?? colors.primary, colors.card, isDark);
+  const hasToday = todayDayIndex >= 0 && orderedDays.some(d => d.day_index === todayDayIndex);
+
   return (
-    <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: SPACING.sm }}>
-      {/* Header: summary + revision CTA */}
+    <ScrollView contentContainerStyle={{ padding: SPACING.md, gap: SPACING.md }}>
+      {/* Header: Koçko + summary + today's progress + revision CTA.
+          Plan onayı anı (celebrate): maskot sevinir, kartın ortasından TEK konfeti patlar —
+          ölçülü kutlama (§0-A kural 5); reduce-motion'da ConfettiBurst hiç çizmez. */}
       <View
         style={{
           backgroundColor: colors.card,
-          borderRadius: RADIUS.xl,
-          borderWidth: 1,
-          borderColor: colors.border,
-          padding: SPACING.md,
+          borderRadius: RADIUS.lg,
+          borderWidth: 2,
+          borderColor: grey,
+          padding: SPACING.lg,
         }}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Ionicons
-            name={isDiet ? 'restaurant' : 'barbell'}
-            size={20}
-            color={isDiet ? colors.primary : colors.purple}
-          />
-          <View style={{ flex: 1, marginLeft: SPACING.sm }}>
-            <Text style={{ ...TYPE.headline, color: colors.text }}>
-              {isDiet ? 'Aktif diyet planın' : 'Aktif spor planın'}
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.md }}>
+          <KochkoMascot size={64} mood={celebrate || todayAllDone ? 'cheer' : 'happy'} animated={isFocused && !!celebrate} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
+              {(isDiet ? 'Aktif diyet planın' : 'Aktif spor planın').toLocaleUpperCase('tr-TR')}
             </Text>
-            <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
+            <Text style={{ ...TYPE.title3, color: colors.text, marginTop: 2 }}>
+              {celebrate ? 'Planın hazır, başlayalım!' : todayCheer ?? (isDiet ? 'Bu haftanın menüsü' : 'Bu haftanın programı')}
+            </Text>
+            <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }}>
               {/* FIX (fix-pass 07-12, item 4a): '2026-06-15 · onaylandı · 19.06.2026' karışık
                   format yerine '15 Haziran haftası · onaylandı 19 Haziran'. */}
               {formatWeekStartTR(plan.week_start)} · onaylandı
@@ -355,6 +389,28 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             </Text>
           </View>
         </View>
+        {/* FIX (ux-ideas #18/#19): today's completion at a glance — artık dolan bir çubuk. */}
+        {todayCompletion && (
+          <View
+            accessible
+            accessibilityRole="progressbar"
+            accessibilityLabel={`Bugün ${todayCompletion.done} / ${todayCompletion.total} ${todayCompletion.unit}`}
+            accessibilityValue={{ min: 0, max: todayCompletion.total, now: todayCompletion.done }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md }}
+          >
+            <ProgressBar
+              progress={todayCompletion.done / todayCompletion.total}
+              color={todayAllDone ? colors.success : colors.primary}
+              height={12}
+              // Koyu temada progressTrack (0.08) kart üstünde neredeyse yok — kenar tonu (0.16).
+              trackColor={isDark ? colors.border : undefined}
+              style={{ flex: 1 }}
+            />
+            <Text style={{ ...TYPE.caption, color: colors.textSecondary, fontWeight: '700' }}>
+              {todayCompletion.done}/{todayCompletion.total} {todayCompletion.unit}
+            </Text>
+          </View>
+        )}
         {/* FIX (ux-round4 #3): daily target / week overview — the yardstick the per-day numbers lacked.
             08-04, cihazda: metin 13'e cikinca tek satira sigmadi ve flexWrap onu KOMPLE alt satira
             atti — bayrak ikonu kendi basina bir satirda kaldi. flex:1 metni ikonun yaninda tutar
@@ -378,80 +434,41 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
             </Text>
           </View>
         ) : null}
-        {/* FIX (ux-ideas #18/#19): today's completion at a glance */}
-        {todayCompletion && (
-          <View style={{
-            flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.sm,
-            alignSelf: 'flex-start', backgroundColor: colors.primary + '18',
-            borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 4,
-          }}>
-            <Ionicons name="checkmark-done-outline" size={13} color={colors.primary} />
-            <Text style={{ ...TYPE.caption, color: colors.primary, fontWeight: '700' }}>
-              Bugün {todayCompletion.done}/{todayCompletion.total} {todayCompletion.unit}
-            </Text>
-          </View>
-        )}
-        <View style={{ flexDirection: 'row', gap: SPACING.xs, marginTop: SPACING.sm }}>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+        {/* Gövdeli Button'lar (§0-B). creatingRevision → loading: busy + disabled, a11y etiketi aynı. */}
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md }}>
+          <Button
+            title="Kochko ile konuş"
             onPress={onStartRevision}
-            disabled={creatingRevision}
-            // FIX (ux-pass5): announce as a button with busy/disabled state (was a text blob).
-            accessibilityRole="button"
+            loading={creatingRevision}
             accessibilityLabel="Kochko ile konuş"
-            accessibilityState={{ disabled: !!creatingRevision, busy: !!creatingRevision }}
-            style={{
-              flex: 1,
-              backgroundColor: colors.primary,
-              borderRadius: RADIUS.md,
-              paddingVertical: SPACING.sm,
-              alignItems: 'center',
-              flexDirection: 'row',
-              justifyContent: 'center',
-              gap: 6,
-              opacity: creatingRevision ? 0.6 : 1,
-            }}
-          >
-            <Ionicons name="chatbubble-ellipses-outline" size={14} color={getContrastColor(colors.primary)} />
-            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>
-              Kochko ile konuş
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+            icon={<Ionicons name="chatbubble-ellipses" size={16} color={getContrastColor(colors.primary)} />}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title="Geçmiş"
+            variant="outline"
             onPress={onOpenHistory}
-            // FIX (ux-pass5): announce as a button (was a text blob to TalkBack).
-            accessibilityRole="button"
             accessibilityLabel="Plan geçmişi"
-            style={{
-              backgroundColor: colors.surfaceLight,
-              borderRadius: RADIUS.md,
-              paddingVertical: SPACING.sm,
-              paddingHorizontal: SPACING.md,
-              alignItems: 'center',
-              flexDirection: 'row',
-              gap: 4,
-            }}
-          >
-            <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
-            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary }}>
-              Geçmiş
-            </Text>
-          </TouchableOpacity>
+            icon={<Ionicons name="time-outline" size={16} color={colors.primary} />}
+          />
         </View>
+        <ConfettiBurst burstKey={celebrate ? plan.id : null} count={22} spread={150} />
       </View>
 
-      {/* FIX (ux-round4 #11): the coach's rationale, kept available after approval (collapsed). */}
+      {/* FIX (ux-round4 #11): the coach's rationale, kept available after approval (collapsed).
+          Koçko mini avatarı: gerekçe koçun ağzından (CoachingNudge ile aynı dil). */}
       {data.reasoning ? (
-        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: colors.border, paddingHorizontal: SPACING.md }}>
+        <View style={{ backgroundColor: colors.card, borderRadius: RADIUS.lg, borderWidth: 2, borderColor: grey, paddingHorizontal: SPACING.md }}>
           <TouchableOpacity activeOpacity={MOTION.pressOpacity}
             onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setShowReasoning(v => !v); }}
             accessibilityRole="button"
             accessibilityLabel="Bu plan neden böyle"
             accessibilityState={{ expanded: showReasoning }}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: SPACING.sm }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.sm }}
           >
-            <Ionicons name="bulb-outline" size={14} color={colors.textSecondary} />
-            <Text style={{ ...TYPE.bodyStrong, color: colors.textSecondary, flex: 1 }}>Bu plan neden böyle?</Text>
-            <Ionicons name={showReasoning ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textMuted} />
+            <KochkoMascot size={30} />
+            <Text style={{ ...TYPE.bodyStrong, color: colors.text, flex: 1 }}>Bu plan neden böyle?</Text>
+            <Ionicons name={showReasoning ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
           </TouchableOpacity>
           {showReasoning ? (
             <Text style={{ ...TYPE.body, color: colors.textSecondary, paddingBottom: SPACING.md }}>
@@ -461,59 +478,57 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         </View>
       ) : null}
 
-      {/* FIX (ux-ideas #9): "şimdi sırada" highlight — answers "ne şimdi?" without scrolling. */}
+      {/* FIX (ux-ideas #9): "şimdi sırada" highlight — answers "ne şimdi?" without scrolling.
+          Öğünün kendi tonunda pastel kart + dolu rozet; eylem gövdeli Button. */}
       {nowNext && (
         <View style={{
-          backgroundColor: colors.primary + '12', borderRadius: RADIUS.lg,
-          borderWidth: 1, borderColor: colors.primary + '40', padding: SPACING.md,
-          flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+          backgroundColor: nextPastel.face, borderRadius: RADIUS.lg,
+          borderWidth: 2, borderColor: nextPastel.edge, padding: SPACING.md,
+          flexDirection: 'row', alignItems: 'center', gap: SPACING.md,
         }}>
-          <Ionicons
-            name={nowNext.kind === 'meal' ? 'restaurant' : nowNext.kind === 'rest' ? 'bed-outline' : 'barbell'}
-            size={18} color={colors.primary}
-          />
+          <PlanTileBadge tone={nextTone?.tone ?? colors.primary}>
+            <Ionicons
+              name={nowNext.kind === 'meal' ? (nextTone?.icon ?? 'restaurant') : nowNext.kind === 'rest' ? 'bed' : 'barbell'}
+              size={20}
+              color={nextTone?.fg ?? getContrastColor(colors.primary)}
+            />
+          </PlanTileBadge>
           <View style={{ flex: 1 }}>
-            <Text style={{ ...TYPE.overline, color: colors.primary }}>ŞİMDİ SIRADA</Text>
+            <Text style={{ ...TYPE.overline, color: colors.textSecondary }}>ŞİMDİ SIRADA</Text>
             {/* This strip crammed meal type + time + name onto ONE line while a "Bunu yedim" button
                 takes the right half, so the name — the only part that says WHAT to eat — was what
                 got cut ("Kahvaltı · 08:30 — Peynirli to…"). Split it: the type/time is a label, the
                 name is the content, and the name gets two lines if it needs them. */}
             {nowNext.kind === 'meal' && (
               <>
-                <Text style={{ ...TYPE.caption, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>
+                <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 2 }} numberOfLines={1}>
                   {MEAL_TYPE_LABELS_TR[nowNext.meal.meal_type]}{nowNext.meal.time ? ` · ${nowNext.meal.time}` : ''}
                 </Text>
-                <Text style={{ ...TYPE.bodyStrong, color: colors.text }} numberOfLines={2}>
+                <Text style={{ ...TYPE.headline, color: colors.text }} numberOfLines={2}>
                   {nowNext.meal.name}
                 </Text>
               </>
             )}
             {nowNext.kind === 'workout' && (
-              <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>
+              <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }}>
                 Bugünkü antrenman · {nowNext.count} egzersiz{nowNext.doneCount > 0 ? ` · ${nowNext.doneCount} bitti` : ''}
               </Text>
             )}
             {nowNext.kind === 'rest' && (
-              <Text style={{ ...TYPE.bodyStrong, color: colors.text, marginTop: 2 }}>Bugün dinlenme günü</Text>
+              <Text style={{ ...TYPE.headline, color: colors.text, marginTop: 2 }}>Bugün dinlenme günü</Text>
             )}
           </View>
           {nowNext.kind === 'meal' && (
             nowNext.done ? (
-              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+              <Ionicons name="checkmark-circle" size={28} color={colors.success} accessibilityLabel="Günlüğe eklendi" />
             ) : (
-              <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+              <Button
+                title="Bunu yedim"
+                size="sm"
                 onPress={() => handleLogMeal(`0-${nowNext.mi}`, nowNext.meal)}
-                disabled={mealLogState[`0-${nowNext.mi}`] === 'saving'}
-                accessibilityRole="button"
+                loading={mealLogState[`0-${nowNext.mi}`] === 'saving'}
                 accessibilityLabel={`${nowNext.meal.name}, bunu yedim, günlüğe ekle`}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.primary, borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 7 }}
-              >
-                {mealLogState[`0-${nowNext.mi}`] === 'saving'
-                  ? <ActivityIndicator size="small" color={getContrastColor(colors.primary)} style={{ transform: [{ scale: 0.7 }] }} />
-                  : <Ionicons name="add-circle-outline" size={14} color={getContrastColor(colors.primary)} />}
-                <Text style={{ ...TYPE.caption, color: getContrastColor(colors.primary), fontWeight: '700' }}>Bunu yedim</Text>
-              </TouchableOpacity>
+              />
             )
           )}
         </View>
@@ -526,15 +541,15 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
       {stale && onCreateFresh ? (
         <View
           style={{
-            backgroundColor: colors.card,
+            backgroundColor: mix(colors.primary, colors.card, isDark ? 0.16 : 0.07),
             borderRadius: RADIUS.lg,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: colors.primary,
             padding: SPACING.md,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="calendar-outline" size={16} color={colors.primary} />
+            <Ionicons name="calendar" size={16} color={colors.primary} />
             <Text style={{ ...TYPE.bodyStrong, color: colors.primary, fontWeight: '700', flex: 1 }}>
               Bu plan {Math.max(1, staleWeeks)} hafta önceydi
             </Text>
@@ -542,25 +557,13 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           <Text style={{ ...TYPE.caption, color: colors.textSecondary, marginTop: 4 }}>
             Sana güncel bir haftalık plan hazırlayayım — onayladığında bu plan geçmişe kaydolur.
           </Text>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+          <Button
+            title="Yeni haftalık plan hazırla"
             onPress={onCreateFresh}
-            disabled={creatingRevision}
-            accessibilityRole="button"
+            loading={creatingRevision}
             accessibilityLabel="Yeni haftalık plan hazırla"
-            accessibilityState={{ disabled: !!creatingRevision, busy: !!creatingRevision }}
-            style={{
-              backgroundColor: colors.primary,
-              borderRadius: RADIUS.md,
-              paddingVertical: SPACING.sm,
-              alignItems: 'center',
-              marginTop: SPACING.sm,
-              opacity: creatingRevision ? 0.6 : 1,
-            }}
-          >
-            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>
-              {creatingRevision ? 'Hazırlanıyor...' : 'Yeni haftalık plan hazırla'}
-            </Text>
-          </TouchableOpacity>
+            style={{ marginTop: SPACING.md }}
+          />
         </View>
       ) : null}
 
@@ -568,16 +571,17 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
       {drift.hard.length > 0 ? (
         <View
           style={{
-            backgroundColor: colors.errorLight,
+            backgroundColor: mix(colors.error, colors.card, isDark ? 0.16 : 0.07),
             borderRadius: RADIUS.lg,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: colors.error,
             padding: SPACING.md,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Ionicons name="warning" size={16} color={colors.error} />
-            <Text style={{ ...TYPE.bodyStrong, color: colors.error, fontWeight: '700' }}>
+            <Ionicons name="warning" size={16} color={colors.errorText} />
+            {/* Kural 7: küçük kırmızı metin errorText (error kart üstünde AA altı). */}
+            <Text style={{ ...TYPE.bodyStrong, color: colors.errorText, fontWeight: '700', flex: 1 }}>
               Güvenliğin için planı güncelleyelim
             </Text>
           </View>
@@ -586,20 +590,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
               • {m}
             </Text>
           ))}
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
-            onPress={onStartRevision}
-            style={{
-              backgroundColor: colors.error,
-              borderRadius: RADIUS.md,
-              paddingVertical: SPACING.sm,
-              alignItems: 'center',
-              marginTop: SPACING.sm,
-            }}
-          >
-            <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.error), fontWeight: '700' }}>
-              Planı güncelle
-            </Text>
-          </TouchableOpacity>
+          <Button title="Planı güncelle" variant="danger" onPress={onStartRevision} style={{ marginTop: SPACING.md }} />
         </View>
       ) : null}
 
@@ -608,7 +599,7 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
           style={{
             backgroundColor: colors.warningLight,
             borderRadius: RADIUS.lg,
-            borderWidth: 1,
+            borderWidth: 2,
             borderColor: colors.warning,
             padding: SPACING.md,
           }}
@@ -640,117 +631,104 @@ export function PlanActiveView({ plan, profile, goal, onStartRevision, onOpenHis
         </View>
       ) : null}
 
-      {/* Days */}
+      {/* Days — gövdeli gün tuşları (PlanDayHeader). Bugün en üstte dolu marka tuşu; kalan
+          günler "HAFTANIN KALANI" başlığı altında hafta sırasıyla. */}
       {days.length === 0 ? (
         <Text style={{ ...TYPE.body, color: colors.textMuted, textAlign: 'center', paddingVertical: SPACING.xl }}>
           Bu planın içeriği eksik görünüyor. Plan sekmesinden yeni bir plan oluşturabilirsin.
         </Text>
-      ) : orderedDays.map((day, dayIdx) => {
-        // FIX (audit UI-PLN-06): compare/key by array position, not day.day_index.
-        const isOpen = expandedDay === dayIdx;
-        const isToday = todayDayIndex >= 0 && day.day_index === todayDayIndex;
-        // FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled labels ('Sali' → 'Salı').
-        const label = dayLabelTR(day.day_index, day.day_label);
-        return (
-          <View key={`${day.day_index}-${dayIdx}`}>
-            <TouchableOpacity
-              onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(isOpen ? -1 : dayIdx); }}
-              activeOpacity={MOTION.pressOpacity}
-              // FIX (ux-pass5): same a11y treatment as the visually identical draft accordion
-              // (PlanDayAccordion) — role + label + expanded state for the daily-use plan.
-              accessibilityRole="button"
-              accessibilityLabel={`${isToday ? `Bugün, ${label}` : label}, ${isOpen ? 'açık' : 'aç'}`}
-              accessibilityState={{ expanded: isOpen }}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.surfaceLight,
-                borderRadius: RADIUS.md,
-                borderWidth: isToday ? 1 : 0,
-                borderColor: isToday ? colors.primary + '66' : undefined,
-                paddingHorizontal: SPACING.md,
-                paddingVertical: SPACING.sm,
-                gap: SPACING.sm,
-              }}
-            >
-              <Text style={{ ...TYPE.bodyStrong, color: isToday ? colors.primary : colors.text, fontWeight: '700', flex: 1 }}>
-                {isToday ? `Bugün · ${label}` : label}
-              </Text>
-              {isDiet ? (
-                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
-                  {/* FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
-                      ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal". */}
-                  {Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal
-                  {/* FIX (ux-round4 #7): protein is the macro the coaching model revolves around —
-                      show it in the collapsed row instead of hiding it behind an expand. */}
-                  {(day as DietPlanData['days'][number]).total_protein
-                    ? ` · ${Math.round((day as DietPlanData['days'][number]).total_protein)}g P`
-                    : ''}
-                </Text>
-              ) : (
-                <Text style={{ ...TYPE.caption, color: colors.textMuted }}>
-                  {(day as WorkoutPlanData['days'][number]).rest_day
-                    ? 'Dinlenme'
-                    : `${(day as WorkoutPlanData['days'][number]).exercises?.length ?? 0} egzersiz`}
-                </Text>
-              )}
-              <Ionicons
-                name={isOpen ? 'chevron-up' : 'chevron-down'}
-                size={16}
-                color={colors.textMuted}
-              />
-            </TouchableOpacity>
-            {isOpen ? (
-              <View style={{ marginTop: SPACING.sm }}>
-                {isDiet ? (
-                  ((day as DietPlanData['days'][number]).meals ?? []).map((meal, mi) => {
-                    // FIX (audit UI-PLN-06 + ux-review): scope meal key by array position, NOT
-                    // meal_type — a day with two 'snack' (ara öğün) meals would collide on
-                    // '0-snack', so logging one marked BOTH done and over-counted the badge.
-                    const key = `${dayIdx}-${mi}`;
-                    return (
-                      <MealCard
-                        key={key}
-                        meal={meal}
-                        expanded={expandedMeal === key}
-                        onToggle={() => setExpandedMeal(expandedMeal === key ? null : key)}
-                        // 'Bunu yedim' only on the ACTIVE plan's TODAY (fix-pass 07-12, item 9).
-                        onLogPress={isToday ? () => handleLogMeal(key, meal) : undefined}
-                        logStatus={mealLogState[key]}
-                      />
-                    );
-                  })
-                ) : (day as WorkoutPlanData['days'][number]).rest_day ? (
-                  <Text
-                    style={{
-                      ...TYPE.callout,
-                      color: colors.textMuted,
-                      fontStyle: 'italic',
-                      textAlign: 'center',
-                      paddingVertical: SPACING.md,
-                    }}
-                  >
-                    Dinlenme günü.
+      ) : (
+        <View style={{ gap: SPACING.sm }}>
+          {orderedDays.map((day, dayIdx) => {
+            // FIX (audit UI-PLN-06): compare/key by array position, not day.day_index.
+            const isOpen = expandedDay === dayIdx;
+            const isToday = todayDayIndex >= 0 && day.day_index === todayDayIndex;
+            // FIX (fix-pass 07-12, item 3): canonicalize LLM-mangled labels ('Sali' → 'Salı').
+            const label = dayLabelTR(day.day_index, day.day_label);
+            const wd = day as WorkoutPlanData['days'][number];
+            const isRest = !isDiet && !!wd.rest_day;
+            const summary = isDiet
+              // FIX (audit UI-PLN-02): round day total (raw LLM JSON may carry decimals);
+              // ux-round4 review: ?? 0 guard so a legacy day missing total_kcal isn't "NaN kcal".
+              // FIX (ux-round4 #7): protein is the macro the coaching model revolves around —
+              // show it in the collapsed row instead of hiding it behind an expand.
+              ? `${Math.round((day as DietPlanData['days'][number]).total_kcal ?? 0)} kcal${(day as DietPlanData['days'][number]).total_protein
+                ? ` · ${Math.round((day as DietPlanData['days'][number]).total_protein)}g protein` : ''}`
+              : isRest ? 'Dinlenme günü'
+              : [wd.focus, `${wd.exercises?.length ?? 0} egzersiz`].filter(Boolean).join(' · ');
+            return (
+              <View key={`${day.day_index}-${dayIdx}`} style={{ gap: SPACING.sm }}>
+                {hasToday && dayIdx === 1 ? (
+                  <Text style={{ ...TYPE.overline, color: colors.textMuted, marginTop: SPACING.sm, marginLeft: SPACING.xs }}>
+                    HAFTANIN KALANI
                   </Text>
-                ) : (
-                  ((day as WorkoutPlanData['days'][number]).exercises ?? []).map((ex, i) => {
-                    const exKey = `ex-${dayIdx}-${i}`;
-                    return (
-                      <ExerciseCard
-                        key={i}
-                        exercise={ex}
-                        // 'Bunu yaptım' only on the ACTIVE plan's TODAY (ux-ideas #19).
-                        onLogPress={isToday ? () => handleLogExercise(exKey, ex) : undefined}
-                        logStatus={exLogState[exKey]}
-                      />
-                    );
-                  })
-                )}
+                ) : null}
+                <PlanDayHeader
+                  label={label}
+                  shortLabel={DAY_SHORT_TR[day.day_index] ?? label.slice(0, 3)}
+                  summary={summary}
+                  isOpen={isOpen}
+                  isToday={isToday}
+                  isRest={isRest}
+                  onPress={() => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpandedDay(isOpen ? -1 : dayIdx); }}
+                  // FIX (ux-pass5): same a11y treatment as the draft accordion (PlanDayAccordion) —
+                  // role + label + expanded state for the daily-use plan.
+                  accessibilityLabel={`${isToday ? `Bugün, ${label}` : label}, ${isOpen ? 'açık' : 'aç'}`}
+                />
+                {isOpen ? (
+                  <View>
+                    {isDiet ? (
+                      ((day as DietPlanData['days'][number]).meals ?? []).map((meal, mi) => {
+                        // FIX (audit UI-PLN-06 + ux-review): scope meal key by array position, NOT
+                        // meal_type — a day with two 'snack' (ara öğün) meals would collide on
+                        // '0-snack', so logging one marked BOTH done and over-counted the badge.
+                        const key = `${dayIdx}-${mi}`;
+                        return (
+                          <MealCard
+                            key={key}
+                            meal={meal}
+                            expanded={expandedMeal === key}
+                            onToggle={() => setExpandedMeal(expandedMeal === key ? null : key)}
+                            // 'Bunu yedim' only on the ACTIVE plan's TODAY (fix-pass 07-12, item 9).
+                            onLogPress={isToday ? () => handleLogMeal(key, meal) : undefined}
+                            logStatus={mealLogState[key]}
+                          />
+                        );
+                      })
+                    ) : isRest ? (
+                      <Text
+                        style={{
+                          ...TYPE.callout,
+                          color: colors.textMuted,
+                          fontStyle: 'italic',
+                          textAlign: 'center',
+                          paddingVertical: SPACING.md,
+                        }}
+                      >
+                        Dinlenme günü — toparlanmak da antrenmanın parçası.
+                      </Text>
+                    ) : (
+                      (wd.exercises ?? []).map((ex, i) => {
+                        const exKey = `ex-${dayIdx}-${i}`;
+                        return (
+                          <ExerciseCard
+                            key={i}
+                            exercise={ex}
+                            index={i}
+                            // 'Bunu yaptım' only on the ACTIVE plan's TODAY (ux-ideas #19).
+                            onLogPress={isToday ? () => handleLogExercise(exKey, ex) : undefined}
+                            logStatus={exLogState[exKey]}
+                          />
+                        );
+                      })
+                    )}
+                  </View>
+                ) : null}
               </View>
-            ) : null}
-          </View>
-        );
-      })}
+            );
+          })}
+        </View>
+      )}
     </ScrollView>
   );
 }

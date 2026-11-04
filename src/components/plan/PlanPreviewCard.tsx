@@ -7,16 +7,21 @@
  * time a new snapshot arrives. This pairs with hasViewedFullPlan reset
  * (MASTER_PLAN §4.2 rev2.1) so users can tell which version they'd be
  * approving.
+ *
+ * DUOLINGO DİLİ (2026-11-04): kart gövdeli tuş (ShelfPressable; 2px gri çerçeve + gri raf,
+ * basınca iner — eski PressableCard küçülmesi yerine). Gün şeridi yastık kutucuklar: içerikli
+ * gün markanın/antrenmanın açık tonunda opak yüz + 2px ton kenar, boş/dinlenme günü gri.
  */
 import { useMemo } from 'react';
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/lib/theme';
+import { mix } from '@/lib/design';
 import { SPACING, RADIUS } from '@/lib/constants';
 import { TYPE } from '@/lib/design';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
 import { DAY_LABELS_TR, DAY_SHORT_TR, formatWeekStartTR } from '@/services/plan.service';
-import { PressableCard } from '@/components/ui/PressableCard';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
 
 interface Props {
   plan: PlanData;
@@ -35,24 +40,35 @@ function dayShort(dayIndex: number, position: number): string {
   return DAY_SHORT_TR[dayIndex] ?? DAY_SHORT_TR[position] ?? '';
 }
 
+/** Şerit kutucuğunun tonları — opak (gövdeli kartın içinde de yarı saydamlık yok). */
+function useTileTones(accent: string) {
+  const { colors, isDark } = useTheme();
+  return {
+    on: { bg: mix(accent, colors.card, isDark ? 0.22 : 0.12), bd: mix(accent, colors.card, isDark ? 0.6 : 0.45), fg: accent },
+    off: { bg: isDark ? colors.surfaceLight : colors.background, bd: isDark ? colors.border : colors.progressTrack, fg: colors.textMuted },
+  };
+}
+
 function DietStrip({ plan }: { plan: DietPlanData }) {
   const { colors } = useTheme();
+  const tones = useTileTones(colors.primary);
   // plan_data is raw LLM JSON; guard days/meals so a malformed snapshot can't crash the card.
   const days = Array.isArray(plan?.days) ? plan.days : [];
   return (
     <View style={{ flexDirection: 'row', gap: 4, marginTop: SPACING.xs }}>
       {days.map((d, i) => {
         const hasMeals = (d.meals?.length ?? 0) > 0;
+        const tone = hasMeals ? tones.on : tones.off;
         return (
         // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
         <View key={`${d.day_index}-${i}`} style={{ flex: 1 }}>
           <View
             style={{
-              height: 28,
-              borderRadius: 6,
-              backgroundColor: hasMeals ? colors.primary + '22' : colors.surfaceLight,
-              borderWidth: 0.5,
-              borderColor: hasMeals ? colors.primary : colors.border,
+              height: 32,
+              borderRadius: 10,
+              backgroundColor: tone.bg,
+              borderWidth: 2,
+              borderColor: tone.bd,
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -60,8 +76,8 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
             <Text
               style={{
                 ...TYPE.caption,
-                color: hasMeals ? colors.primary : colors.textMuted,
-                fontWeight: '700',
+                color: tone.fg,
+                fontWeight: '800',
               }}
             >
               {DAY_LABELS_TR[d.day_index]?.[0]}
@@ -82,30 +98,33 @@ function DietStrip({ plan }: { plan: DietPlanData }) {
 
 function WorkoutStrip({ plan }: { plan: WorkoutPlanData }) {
   const { colors } = useTheme();
+  const tones = useTileTones(colors.purple);
   const days = Array.isArray(plan?.days) ? plan.days : [];
   return (
     <View style={{ flexDirection: 'row', gap: 4, marginTop: SPACING.xs }}>
       {days.map((d, i) => {
-        const tone = d.rest_day
-          ? { bg: colors.surfaceLight, bd: colors.border, fg: colors.textMuted }
-          : { bg: colors.purple + '22', bd: colors.purple, fg: colors.purple };
+        const tone = d.rest_day ? tones.off : tones.on;
         return (
           // FIX (audit UI-PLN-06): key by array position, not untrusted LLM day_index
           <View key={`${d.day_index}-${i}`} style={{ flex: 1 }}>
             <View
               style={{
-                height: 28,
-                borderRadius: 6,
+                height: 32,
+                borderRadius: 10,
                 backgroundColor: tone.bg,
-                borderWidth: 0.5,
+                borderWidth: 2,
                 borderColor: tone.bd,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ ...TYPE.caption, color: tone.fg, fontWeight: '700' }}>
-                {d.rest_day ? '–' : `${d.exercises?.length ?? 0}`}
-              </Text>
+              {d.rest_day ? (
+                <Ionicons name="moon" size={13} color={tone.fg} />
+              ) : (
+                <Text style={{ ...TYPE.caption, color: tone.fg, fontWeight: '800' }}>
+                  {`${d.exercises?.length ?? 0}`}
+                </Text>
+              )}
             </View>
             {/* FIX (ux-pass5): fontSize 8 → 10, see DietStrip. */}
             <Text style={{ ...TYPE.footnote, color: colors.textMuted, fontWeight: '600', textAlign: 'center', marginTop: 2 }}>
@@ -130,7 +149,8 @@ function isStaleWeek(weekStart: string | null | undefined): boolean {
 }
 
 export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekStart }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  const grey = isDark ? colors.border : colors.progressTrack;
 
   const summary = useMemo(() => {
     if (plan.plan_type === 'diet') {
@@ -155,23 +175,29 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
   }, [plan]);
 
   return (
-    <PressableCard
+    <ShelfPressable
       onPress={onPress}
-      style={{
+      accessibilityRole="button"
+      accessibilityLabel={`${planType === 'diet' ? 'Bu haftaki diyetin' : 'Bu haftaki sporun'}, ${summary.primary}`}
+      accessibilityHint="Planın tamamını tam ekranda aç"
+      radius={RADIUS.lg}
+      shelfColor={grey}
+      faceStyle={{
         backgroundColor: colors.card,
-        borderRadius: RADIUS.xl,
         padding: SPACING.md,
-        borderWidth: 1,
-        borderColor: colors.border,
+        borderWidth: 2,
+        borderColor: grey,
       }}
     >
       {/* Header row */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: SPACING.sm }}>
-        <Ionicons
-          name={planType === 'diet' ? 'restaurant-outline' : 'barbell-outline'}
-          size={18}
-          color={planType === 'diet' ? colors.primary : colors.purple}
-        />
+        <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: planType === 'diet' ? colors.primary : colors.purple, alignItems: 'center', justifyContent: 'center' }}>
+          <Ionicons
+            name={planType === 'diet' ? 'restaurant' : 'barbell'}
+            size={18}
+            color="#FFFFFF"
+          />
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
             {planType === 'diet' ? 'Bu haftaki diyetin' : 'Bu haftaki sporun'}
@@ -187,13 +213,7 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
               : `${formatWeekStartTR(weekStart ?? plan.week_start)} · v${plan.version ?? 1}${updatedLabel ? ` · ${updatedLabel}` : ''}`}
           </Text>
         </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={{ ...TYPE.bodyStrong, color: colors.text, fontWeight: '700' }}>
-            {summary.primary}
-          </Text>
-          <Text style={{ ...TYPE.caption, color: colors.textSecondary }}>{summary.secondary}</Text>
-        </View>
-        <Ionicons name="expand-outline" size={14} color={colors.textMuted} />
+        <Ionicons name="expand-outline" size={16} color={colors.textMuted} />
       </View>
 
       {/* Day strip */}
@@ -203,16 +223,16 @@ export function PlanPreviewCard({ plan, planType, onPress, updatedLabel, weekSta
         <WorkoutStrip plan={plan as WorkoutPlanData} />
       )}
 
-      <Text
-        style={{
-          ...TYPE.caption,
-          color: colors.textMuted,
-          marginTop: SPACING.xs,
-          textAlign: 'center',
-        }}
-      >
-        Detayı görmek için dokun
-      </Text>
-    </PressableCard>
+      {/* Özet artık başlığın sağında değil, şeridin altında: sağ sütun başlığı ikiye bölüyordu
+          ("Bu haftaki / diyetin") — 390dp'de rozet + başlık + özet tek satıra sığmıyor. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm, gap: SPACING.sm }}>
+        <Text style={{ ...TYPE.caption, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>
+          <Text style={{ fontWeight: '800', color: colors.text }}>{summary.primary}</Text>
+          {`  ·  ${summary.secondary}`}
+        </Text>
+        <Text style={{ ...TYPE.caption, color: colors.primary, fontWeight: '700' }}>Detay</Text>
+        <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+      </View>
+    </ShelfPressable>
   );
 }

@@ -6,15 +6,20 @@
  *
  * Intentionally compact (summary-level, not full meal detail) — users
  * can open FullPlanModal after picking if they want to drill in.
+ *
+ * DUOLINGO DİLİ (2026-11-04): iki aday iki renkli yastık kart (A marka, B gül; opak pastel yüz
+ * + 2px ton çerçeve), dolu A/B rozeti, "Bunu seç" gövdeli Button (aynı eylem → aynı tuş; renk
+ * ayrımı kartta). "2 alternatif daha" ikincil outline Button.
  */
-import { View, Text, ScrollView, TouchableOpacity, Modal, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Modal, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '@/lib/theme';
 import { getContrastColor } from '@/lib/accessibility';
 import { haptics } from '@/lib/haptics';
 import { SPACING, RADIUS, MAX_FONT_SCALE } from '@/lib/constants';
-import { TYPE, GUTTER, MOTION } from '@/lib/design';
+import { TYPE, GUTTER, MOTION, mix } from '@/lib/design';
+import { Button } from '@/components/ui/Button';
 import type { DietPlanData, WorkoutPlanData, PlanData } from '@/services/plan.service';
 import { DAY_LABELS_TR } from '@/services/plan.service';
 
@@ -38,13 +43,13 @@ function PlanBadge({ label, accent }: { label: string; accent: string }) {
     <View
       style={{
         alignSelf: 'flex-start',
-        backgroundColor: accent + '22',
-        paddingHorizontal: 9,
-        paddingVertical: 3,
+        backgroundColor: accent,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
         borderRadius: 999,
       }}
     >
-      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.overline, color: accent }}>
+      <Text maxFontSizeMultiplier={MAX_FONT_SCALE} style={{ ...TYPE.overline, color: getContrastColor(accent) }}>
         PLAN {label}
       </Text>
     </View>
@@ -52,7 +57,7 @@ function PlanBadge({ label, accent }: { label: string; accent: string }) {
 }
 
 /** Shared pick CTA — one definition so the diet and workout cards cannot drift apart. */
-function PickButton({ label, accent, onPick, pickDisabled }: { label: string; accent: string; onPick: () => void; pickDisabled?: boolean }) {
+function PickButton({ label, onPick, pickDisabled }: { label: string; accent: string; onPick: () => void; pickDisabled?: boolean }) {
   return (
     <>
       {/* The row stretches both cards to the taller one's height, but the CTA followed its own
@@ -60,31 +65,14 @@ function PickButton({ label, accent, onPick, pickDisabled }: { label: string; ac
           spacer eats the leftover height in the shorter card (min 12 so the taller card still
           gets a gap), putting both CTAs on one baseline. */}
       <View style={{ flexGrow: 1, minHeight: SPACING.md }} />
-      <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+      {/* FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
+          apply a candidate that's about to be swapped under the finger — block it. */}
+      <Button
+        title="Bunu seç"
         onPress={onPick}
-        // FIX (ux-pass5): picking while a "2 alternatif daha" request is in flight would
-        // apply a candidate that's about to be swapped under the finger — block it.
         disabled={pickDisabled}
-        accessibilityRole="button"
         accessibilityLabel={`Plan ${label}'yı seç`}
-        accessibilityState={{ disabled: !!pickDisabled }}
-        style={{
-          backgroundColor: accent,
-          borderRadius: RADIUS.md,
-          // 8pt padding around a 13px label gave a ~38px target; the reading step plus 12pt
-          // clears 44 without the button growing wider than the half-width card.
-          paddingVertical: SPACING.md,
-          alignItems: 'center',
-          opacity: pickDisabled ? 0.5 : 1,
-        }}
-      >
-      <Text
-        maxFontSizeMultiplier={MAX_FONT_SCALE}
-        style={{ ...TYPE.bodyStrong, fontWeight: '700', color: getContrastColor(accent) }}
-      >
-          Bunu seç
-        </Text>
-      </TouchableOpacity>
+      />
     </>
   );
 }
@@ -101,11 +89,11 @@ function DietSummary({ plan, label, accent, onPick, pickDisabled, colors }: { pl
     <View
       style={{
         flex: 1,
-        backgroundColor: colors.card,
-        borderRadius: RADIUS.xl,
-        borderWidth: 1,
-        borderColor: accent + '44',
-        padding: SPACING.lg,
+        backgroundColor: mix(accent, colors.card, 0.08),
+        borderRadius: RADIUS.lg,
+        borderWidth: 2,
+        borderColor: mix(accent, colors.card, 0.45),
+        padding: SPACING.md,
       }}
     >
       <PlanBadge label={label} accent={accent} />
@@ -121,7 +109,7 @@ function DietSummary({ plan, label, accent, onPick, pickDisabled, colors }: { pl
       </Text>
 
       {sampleDay ? (
-        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
+        <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 2, borderTopColor: mix(accent, colors.card, 0.25) }}>
           <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
             ÖRNEK GÜN ({sampleDay.day_label})
           </Text>
@@ -154,11 +142,11 @@ function WorkoutSummary({ plan, label, accent, onPick, pickDisabled, colors }: {
     <View
       style={{
         flex: 1,
-        backgroundColor: colors.card,
-        borderRadius: RADIUS.xl,
-        borderWidth: 1,
-        borderColor: accent + '44',
-        padding: SPACING.lg,
+        backgroundColor: mix(accent, colors.card, 0.08),
+        borderRadius: RADIUS.lg,
+        borderWidth: 2,
+        borderColor: mix(accent, colors.card, 0.45),
+        padding: SPACING.md,
       }}
     >
       <PlanBadge label={label} accent={accent} />
@@ -170,7 +158,7 @@ function WorkoutSummary({ plan, label, accent, onPick, pickDisabled, colors }: {
         {total} toplam egzersiz
       </Text>
 
-      <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 0.5, borderTopColor: colors.divider }}>
+      <View style={{ marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 2, borderTopColor: mix(accent, colors.card, 0.25) }}>
         <Text style={{ ...TYPE.overline, color: colors.textMuted }}>
           HAFTALIK BÖLÜM
         </Text>
@@ -315,34 +303,16 @@ export function AlternativeComparisonModal({
             // FIX (ux-pass5): the 10-30s LLM call had ZERO in-flight indication inside this
             // fullscreen modal (the composer's TypingIndicator is occluded) and re-taps fired
             // parallel generations — spinner + disabled while loadingMore.
-            <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+            <Button
+              title="Hiçbiri olmadı, 2 alternatif daha"
+              variant="outline"
+              size="sm"
               onPress={() => { haptics.tap(); onRequestMore(); }}
-              disabled={loadingMore}
-              accessibilityRole="button"
+              loading={loadingMore}
               accessibilityLabel={loadingMore ? 'Yeni alternatifler hazırlanıyor' : 'Hiçbiri olmadı, 2 alternatif daha göster'}
-              accessibilityState={{ disabled: !!loadingMore, busy: !!loadingMore }}
-              style={{
-                marginTop: SPACING.lg,
-                alignSelf: 'center',
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 6,
-                backgroundColor: colors.surfaceLight,
-                borderRadius: RADIUS.full,
-                paddingHorizontal: SPACING.md,
-                paddingVertical: SPACING.sm,
-                opacity: loadingMore ? 0.7 : 1,
-              }}
-            >
-              {loadingMore ? (
-                <ActivityIndicator size="small" color={colors.textSecondary} style={{ transform: [{ scale: 0.8 }] }} />
-              ) : (
-                <Ionicons name="refresh" size={15} color={colors.textSecondary} />
-              )}
-              <Text style={{ ...TYPE.caption, fontWeight: '600', color: colors.textSecondary }}>
-                {loadingMore ? 'Yeni alternatifler hazırlanıyor...' : 'Hiçbiri olmadı, 2 alternatif daha göster'}
-              </Text>
-            </TouchableOpacity>
+              icon={<Ionicons name="refresh" size={15} color={colors.primary} />}
+              style={{ marginTop: SPACING.lg, alignSelf: 'center' }}
+            />
           ) : null}
         </ScrollView>
       </View>
