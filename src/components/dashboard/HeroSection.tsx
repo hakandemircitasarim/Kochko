@@ -15,7 +15,8 @@ import { Reveal } from '@/components/ui/Reveal';
 import { ProgressBar } from '@/components/ui/ProgressBar';
 import { CoachBubble } from '@/components/dashboard/CoachBubble';
 import { SPACING, RADIUS, HERO } from '@/lib/constants';
-import { TYPE, MOTION } from '@/lib/design';
+import { TYPE, MOTION, alpha } from '@/lib/design';
+import { ShelfPressable } from '@/components/ui/ShelfPressable';
 import { a11yProgress, formatProgressForScreenReader, getContrastColor } from '@/lib/accessibility';
 
 interface Props {
@@ -103,7 +104,9 @@ export function HeroSection({
   carbs, carbsTarget = 200, fat, fatTarget = 65,
   ifActive, ifEatingStart, ifEatingEnd, userName, showMacros = true,
 }: Props) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
+  // Gövdeli ikincil tuş grisi — tüm gövdeli yüzeylerle aynı (§0-B).
+  const grayEdge = isDark ? colors.border : colors.progressTrack;
   const insets = useSafeAreaInsets();
 
   const hasTargets = targetMax > 0;
@@ -225,17 +228,33 @@ export function HeroSection({
             activeOpacity={MOTION.pressOpacity}
             accessibilityRole="button"
             accessibilityLabel="Henüz hedef belirlenmedi. Koçuna hedeflerini anlatmak için dokun"
-            style={{ alignItems: 'center', paddingVertical: SPACING.xxl, alignSelf: 'stretch' }}
+            style={{ alignItems: 'center', paddingVertical: SPACING.xl, alignSelf: 'stretch' }}
           >
-            <Ionicons name="nutrition-outline" size={36} color={colors.textMuted} />
-            <Text style={{ ...TYPE.title3, color: colors.textMuted, marginTop: SPACING.md, textAlign: 'center' }}>
-              Henüz hedef belirlenmedi
+            {/* Boş kahraman SÖNÜK GRİ bir elma + gri başlıktı: günün en büyük yüzeyi "kapalı"
+                gibi okunuyordu. Şimdi davet: marka tonunda ikon dairesi, koyu başlık, kısa vaat
+                ve gövdeli bir eylem hapı (dokunma hedefi yine bütün alan — hap görsel işaret). */}
+            <View style={{
+              width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center',
+              backgroundColor: colors.card, borderWidth: 2, borderColor: alpha(colors.primary, 0.25),
+            }}>
+              <Ionicons name="flag" size={32} color={colors.primary} />
+            </View>
+            <Text style={{ ...TYPE.title3, color: colors.text, marginTop: SPACING.md, textAlign: 'center' }}>
+              Hedefini birlikte koyalım
             </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.sm }}>
-              <Text style={{ ...TYPE.bodyStrong, color: colors.primary }}>
-                Koçuna hedeflerini anlat
+            <Text style={{ ...TYPE.body, color: colors.textSecondary, marginTop: SPACING.xs, textAlign: 'center' }}>
+              Koçun sana günlük kalori ve makro hedefini çıkarsın.
+            </Text>
+            <View style={{
+              flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: SPACING.lg,
+              backgroundColor: colors.primary, borderRadius: RADIUS.pill,
+              paddingVertical: SPACING.sm, paddingHorizontal: SPACING.xl,
+              borderBottomWidth: MOTION.shelf / 2, borderBottomColor: colors.primaryDark,
+            }}>
+              <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>
+                Hedefimi belirle
               </Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+              <Ionicons name="chevron-forward" size={14} color={getContrastColor(colors.primary)} />
             </View>
           </TouchableOpacity>
         )}
@@ -248,25 +267,33 @@ export function HeroSection({
           user gets the goal CTA inside the ring card instead). */}
       {hasTargets && (
         <Reveal delay={120}>
+        {/* Gövdeli (§0-B): eskiden rafları `borderBottom` ile ÇİZİLİYDİ ama basınca inmiyor,
+            soluyordu. Şimdi ShelfPressable — birincil dolu + koyu raf, ikincil kart yüz + gri gövde. */}
         <View style={{ flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md }}>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+          <ShelfPressable
             onPress={() => { haptics.tap(); router.push('/log'); }}
             accessibilityRole="button"
             accessibilityLabel="Öğün ekle"
-            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: colors.primary, borderBottomWidth: 4, borderBottomColor: colors.primaryDark }}
+            radius={RADIUS.pill}
+            shelfColor={colors.primaryDark}
+            style={{ flex: 1 }}
+            faceStyle={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, backgroundColor: colors.primary }}
           >
             <Ionicons name="add-circle-outline" size={16} color={getContrastColor(colors.primary)} />
             <Text style={{ ...TYPE.bodyStrong, color: getContrastColor(colors.primary), fontWeight: '700' }}>Öğün ekle</Text>
-          </TouchableOpacity>
-          <TouchableOpacity activeOpacity={MOTION.pressOpacity}
+          </ShelfPressable>
+          <ShelfPressable
             onPress={() => { haptics.tap(); router.push({ pathname: '/(tabs)/chat', params: { prefill: 'Bugün antrenman yaptım: ', taskNonce: String(Date.now()) } }); }}
             accessibilityRole="button"
             accessibilityLabel="Antrenman ekle"
-            style={{ flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md, borderRadius: RADIUS.pill, backgroundColor: colors.surfaceLight, borderBottomWidth: 4, borderBottomColor: colors.border }}
+            radius={RADIUS.pill}
+            shelfColor={grayEdge}
+            style={{ flex: 1 }}
+            faceStyle={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: SPACING.md - 2, backgroundColor: colors.card, borderWidth: 2, borderColor: grayEdge }}
           >
             <Ionicons name="barbell-outline" size={16} color={colors.primary} />
             <Text style={{ ...TYPE.bodyStrong, color: colors.primary, fontWeight: '700' }}>Antrenman</Text>
-          </TouchableOpacity>
+          </ShelfPressable>
         </View>
         </Reveal>
       )}
